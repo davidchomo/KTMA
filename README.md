@@ -25,14 +25,14 @@ Pôvodný projekt (sumarizácia správ cez LLM) je v [legacy/news_summarizer/](l
 ```bash
 git clone https://github.com/davidchomo/KTMA.git ~/ktma && cd ~/ktma
 git checkout claude/ta-alerts-labeling
-cp .env.example .env && nano .env         # OANDA token, Telegram token, chat id, KTMA_LABEL_URL
+cp .env.example .env && nano .env         # Telegram token, chat id, KTMA_LABEL_URL
 mkdir -p data
 ```
 
-**OANDA (dáta XAU/USD v reálnom čase, zadarmo):** založ si demo (practice) účet na oanda.com → v účte
-**Manage API Access** → **Generate** → token vlož do `.env` ako `OANDA_API_TOKEN` (`OANDA_ENV=practice`).
-Objem pri spotovom zlate je tick volume (počet zmien ceny). Bez OANDA účtu sa dá v `config.yaml` prepnúť
-`provider: yfinance` a symbol `GC=F` (futures, oneskorené ≥ 10 min).
+**Dáta XAU/USD:** predvolene z **Binance** (zlatý kontrakt XAUUSDT). Netreba žiadny účet ani kľúč, je real-time
+a má skutočný objem obchodov. Cena sleduje spotové XAU/USD, rozdiel oproti brokerovi býva pár dolárov. Sviečky mimo
+obchodných hodín zlata (víkend, denná pauza 17–18 h New York) sa zahadzujú. Iné zdroje v `config.yaml`:
+`oanda` (spot od brokera, treba demo účet a token) alebo `yfinance` s `GC=F` (futures, oneskorené ≥ 10 min).
 
 **Telegram bot:** v Telegrame napíš `@BotFather` → `/newbot` → dostaneš `TELEGRAM_BOT_TOKEN`.
 Napíš svojmu botovi ľubovoľnú správu, otvor `https://api.telegram.org/bot<TOKEN>/getUpdates` a z `"chat":{"id":…}`
@@ -104,7 +104,7 @@ python -m pytest -q                                       # testy (vrátane test
 
 ## Štruktúra
 ```
-ktma/data.py        zdroje dát (OANDA, yfinance, synthetic), skladanie vyšších TF z 1m
+ktma/data.py        zdroje dát (Binance, OANDA, yfinance, synthetic), skladanie vyšších TF z 1m
 ktma/describe.py    zrozumiteľné popisy signálov a hodnôt (appka aj Telegram)
 ktma/indicators.py  RSI, MACD, EMA, ATR, ADX, Bollinger, OBV, VWAP, Donchian, regresný kanál
 ktma/structure.py   ATR ZigZag swingy, trendové čiary, paralelné kanály (bez prekresľovania)

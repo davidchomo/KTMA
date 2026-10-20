@@ -87,6 +87,59 @@ class YFinanceProvider:
         return drop_unclosed(df, timeframe)
 
 
+def gold_market_open(open_time_ms: pd.Series) -> pd.Series:
+    """True when spot gold trades: Sun 18:00 – Fri 17:00 New York time, with a
+    daily break 17:00–18:00. Used to drop weekend/off-hours candles from 24/7
+    venues (crypto-exchange gold contracts)."""
+    ny = pd.to_datetime(open_time_ms, unit="ms", utc=True).dt.tz_convert("America/New_York")
+    wd, h = ny.dt.weekday, ny.dt.hour  # Mon=0 … Sun=6
+    closed = (wd == 5) | ((wd == 6) & (h < 18)) | ((wd == 4) & (h >= 17)) | ((wd <= 3) & (h == 17))
+    return ~closed
+
+
+class BinanceGoldProvider:
+    """Binance USDT-margined gold/silver perpetuals (XAUUSDT, XAGUSDT, listed Jan 2026).
+
+    Public market data: no account, no API key. The contract tracks spot
+    XAU/USD closely; volume is real traded volume on Binance. The contract
+    trades 24/7, so off-hours candles are dropped when `market_hours_only`.
+    """
+
+    SYMBOLS = {"XAUUSD": "XAUUSDT", "XAGUSD": "XAGUSDT"}
+    URL = "https://fapi.binance.com/fapi/v1/klines"
+    LIMIT = 1500
+
+    def __init__(self, history_days: dict | None = None, market_hours_only: bool = True):
+        self.history_days = {"1m": 14, "5m": 90, "15m": 180, "1h": 730, **(history_days or {})}
+        self.market_hours_only = market_hours_only
+
+    def fetch(self, symbol: str, timeframe: str, since_ms: int | None = None) -> pd.DataFrame:
+        import requests
+
+        step = tf_ms(timeframe)
+        start = since_ms if since_ms is not None else now_ms() - self.history_days[timeframe] * 86_400_000
+        rows = []
+        while True:
+            r = requests.get(self.URL, timeout=30, params={
+                "symbol": self.SYMBOLS.get(symbol, symbol), "interval": timeframe,
+                "startTime": start, "limit": self.LIMIT,
+            })
+            if r.status_code != 200:
+                raise RuntimeError(f"Binance {r.status_code}: {r.text[:200]}")
+            batch = r.json()
+            rows += [(int(k[0]), float(k[1]), float(k[2]), float(k[3]), float(k[4]), float(k[5])) for k in batch]
+            if len(batch) < self.LIMIT:
+                break
+            start = int(batch[-1][0]) + step
+            if start >= now_ms():
+                break
+            time.sleep(0.2)  # stay far below Binance rate limits
+        df = pd.DataFrame(rows, columns=COLUMNS).drop_duplicates("open_time").sort_values("open_time")
+        if self.market_hours_only and not df.empty:
+            df = df[gold_market_open(df["open_time"]).to_numpy()]
+        return drop_unclosed(df.reset_index(drop=True), timeframe)
+
+
 class OandaProvider:
     """OANDA v20 REST API: spot XAU/USD, XAG/USD in real time (free practice account).
 
@@ -197,6 +250,8 @@ def get_provider(cfg: dict):
     name = cfg["data"]["provider"]
     if name == "yfinance":
         return YFinanceProvider()
+    if name == "binance":
+        return BinanceGoldProvider(cfg["data"].get("history_days"), cfg["data"].get("market_hours_only", True))
     if name == "oanda":
         return OandaProvider(cfg["data"].get("history_days"))
     if name == "synthetic":

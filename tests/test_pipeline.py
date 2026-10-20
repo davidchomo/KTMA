@@ -217,3 +217,37 @@ def test_oanda_provider_paginates_and_skips_incomplete(monkeypatch):
     assert len(calls) == 2                       # 7001 candles -> two pages of max 5000
     assert len(df) == 7000                       # incomplete last candle dropped
     assert df["open_time"].is_monotonic_increasing and df["open_time"].iloc[0] == start
+
+
+def test_binance_provider_paginates_and_drops_off_hours(monkeypatch):
+    from ktma.data import BinanceGoldProvider, gold_market_open
+
+    step = 60_000
+    # Wed 2026-10-14 12:00 UTC .. +3000 min (crosses the 17:00 NY daily break twice)
+    start = int(pd.Timestamp("2026-10-14 12:00", tz="UTC").value // 1_000_000)
+    end = start + 3000 * step
+    calls = []
+
+    class Resp:
+        status_code = 200
+
+        def __init__(self, rows):
+            self._r = rows
+
+        def json(self):
+            return self._r
+
+    def fake_get(url, timeout, params):
+        assert params["symbol"] == "XAUUSDT" and "fapi.binance.com" in url
+        calls.append(params)
+        t0 = params["startTime"]
+        n = max(0, min(params["limit"], (end - t0) // step))
+        return Resp([[t0 + k * step, "1", "2", "0.5", "1.5", "10", t0 + (k + 1) * step - 1] for k in range(n)])
+
+    monkeypatch.setattr("requests.get", fake_get)
+    df = BinanceGoldProvider().fetch("XAUUSD", "1m", since_ms=start)
+    assert len(calls) == 3                         # 3000 candles -> pages of 1500
+    assert len(df) == 3000 - 2 * 60                # two daily breaks (17:00-18:00 NY) removed
+    assert gold_market_open(df["open_time"]).all()
+    sat = pd.Series([int(pd.Timestamp("2026-10-17 12:00", tz="UTC").value // 1_000_000)])
+    assert not gold_market_open(sat).iloc[0]

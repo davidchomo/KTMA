@@ -2,15 +2,17 @@
 # Všetky časy sú v UTC. Podrobnosti v docs/ARCHITEKTURA.md a docs/RESEARCH.md.
 
 data:
-  # oanda     – spotové XAU/USD a XAG/USD v reálnom čase (OANDA demo účet zadarmo).
-  #             Objem = tick volume (spot nemá centrálny objem). Potrebuje OANDA_API_TOKEN v .env.
-  # yfinance  – futures GC=F / SI=F z Yahoo, skutočný objem, ale oneskorené ≥ 10 min.
+  # binance   – XAU/USD cez Binance zlatý kontrakt (XAUUSDT). BEZ účtu a bez kľúča, real-time,
+  #             skutočný objem obchodov. Cena sleduje spotové XAU/USD (rozdiel býva pár dolárov).
+  # oanda     – spotové XAU/USD od brokera OANDA, real-time; treba demo účet a OANDA_API_TOKEN.
+  # yfinance  – futures GC=F / SI=F z Yahoo, bez účtu, ale oneskorené ≥ 10 min.
   # synthetic – vymyslené dáta na offline test (python -m ktma demo).
-  provider: oanda
-  history_days: {1m: 14, 5m: 90, 15m: 180, 1h: 730}   # koľko histórie stiahnuť pri backfille (oanda)
+  provider: binance
+  market_hours_only: true    # binance: zahodiť sviečky mimo obchodných hodín zlata (víkend, denná pauza)
+  history_days: {1m: 14, 5m: 90, 15m: 180, 1h: 730}   # koľko histórie stiahnuť pri backfille
 
 symbols:
-  - XAUUSD                   # zlato (spot XAU/USD)
+  - XAUUSD                   # zlato (XAU/USD)
   # - XAGUSD                 # striebro – odkomentuj, keď ho budete chcieť sledovať
   # pri provider: yfinance použi GC=F (zlato) / SI=F (striebro)
 
