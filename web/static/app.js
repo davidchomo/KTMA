@@ -493,7 +493,8 @@
   $('#bSymbol').onclick = e => openMenu(e.currentTarget, META.symbols.map(s => `<div class="it ${s.id === S.symbol ? 'on' : ''}" data-s="${s.id}"><span class="ic">◆</span><span class="grow">${esc(s.name)}<br><small>${esc(s.desc)}</small></span></div>`).join(''),
     m => $$('[data-s]', m).forEach(x => x.onclick = () => { closeMenu(); setAndReload({ symbol: x.dataset.s }); }), { side: side() });
   $('#bType').onclick = e => openMenu(e.currentTarget, TYPES.map(([k, n, ic]) => `<div class="it ${k === S.type ? 'on' : ''}" data-t="${k}"><span class="ic">${ic}</span><span class="grow">${n}</span>${k === 'renko' ? '<small>⚙ v Nastaveniach</small>' : ''}</div>`).join(''),
-    m => $$('[data-t]', m).forEach(x => x.onclick = () => { closeMenu(); S.type = x.dataset.t; save(); applyToolbar(); buildChart(); }), { side: side() });
+    m => $$('[data-t]', m).forEach(x => x.onclick = () => {   // Renko / HA change the number of bars: start from the newest again
+      closeMenu(); const fresh = (x.dataset.t === 'renko') !== (S.type === 'renko'); S.type = x.dataset.t; save(); applyToolbar(); buildChart(fresh ? null : undefined); }), { side: side() });
   $('#bTf').onclick = e => openMenu(e.currentTarget, TF_GROUPS.map(([g, list]) => `<div class="sec">${g}</div><div class="tfgrid">${list.map(tf => `<div class="${tf === S.tf ? 'on' : ''}" data-tf="${tf}">${tf}</div>`).join('')}</div>`).join(''),
     m => $$('[data-tf]', m).forEach(x => x.onclick = () => { closeMenu(); setAndReload({ tf: x.dataset.tf }); }), { side: side(), cls: 'tfs' });
   $('#bDraw').onclick = e => {
@@ -677,7 +678,7 @@
         const k = x.dataset.k, v = x.type === 'checkbox' ? x.checked : x.type === 'number' || x.tagName === 'SELECT' && /^-?\d+(\.\d+)?$/.test(x.value) ? +x.value : x.value;
         set(k, v); save();
         if (k === 'labeler' && v) { if (await pullPrefs(v)) { closeDialog(); applyToolbar(); load(); } else save(); }
-        else if (k === 'hours' || k === 'bars') load(); else { Object.keys(tzFmt).forEach(z => delete tzFmt[z]); buildChart(); }
+        else if (k === 'hours' || k === 'bars') load(); else { Object.keys(tzFmt).forEach(z => delete tzFmt[z]); buildChart(k.startsWith('renko.') ? null : undefined); }
       });
       const sw = (k, st, keys, o) => { const b = $(`[data-sw="${k}"]`, d); if (b) b.onclick = () => colorPopover(b, st, o || { noOpacity: true }, () => { save(); buildChart(); }, keys); };
       for (const k of ['up', 'down', 'borderUp', 'borderDown', 'wickUp', 'wickDown', 'line', 'bg', 'text', 'gridColor']) sw(k, L, { color: k, opacity: '_o' + k });

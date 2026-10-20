@@ -15,14 +15,14 @@ body.tb-left #app { flex-direction: row; }
 body.tb-bottom #toolbar { border-bottom: 0; border-top: 1px solid var(--border); }
 body.tb-left #toolbar { flex-direction: column; border-bottom: 0; border-right: 1px solid var(--border); padding: 4px 3px; overflow-y: auto; }
 body.tb-hidden #toolbar { display: none; }
-.tbtn { width: 112px; height: 30px; display: inline-flex; align-items: center; gap: 6px; padding: 0 8px; background: transparent; border: 1px solid transparent;
+.tbtn { width: 132px; flex: 0 1 132px; min-width: 42px; height: 30px; display: inline-flex; align-items: center; gap: 6px; padding: 0 8px; background: transparent; border: 1px solid transparent;
         border-radius: 4px; cursor: pointer; white-space: nowrap; overflow: hidden; }
 .tbtn:hover, .tbtn.open { background: var(--panel2); }
 .tbtn.on { background: var(--accent); color: #fff; }
 .tbtn .ic { width: 18px; text-align: center; flex: 0 0 auto; font-size: 14px; }
 .tbtn .tx { flex: 1; text-align: left; overflow: hidden; text-overflow: ellipsis; }
 .tbtn .car { width: 8px; font-size: 9px; color: var(--muted); }
-body.tb-left .tbtn { width: 38px; padding: 0; justify-content: center; }
+body.tb-left .tbtn { width: 38px; flex: 0 0 auto; min-width: 0; padding: 0; justify-content: center; }
 body.tb-left .tbtn .tx, body.tb-left .tbtn .car, body.tb-left .status span { display: none; }
 .tb-gap { flex: 1; }
 .status { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; padding: 0 8px; white-space: nowrap; }
