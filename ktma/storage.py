@@ -63,6 +63,9 @@ CREATE TABLE IF NOT EXISTS assistant_log (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     alert_id INTEGER, labeler TEXT, question TEXT, answer TEXT, model TEXT, created_at TEXT
 );
+CREATE TABLE IF NOT EXISTS prefs (
+    key TEXT PRIMARY KEY, value TEXT, updated_at TEXT
+);
 CREATE TABLE IF NOT EXISTS scan_state (
     symbol TEXT, timeframe TEXT, last_bar_time INTEGER,
     PRIMARY KEY (symbol, timeframe)
@@ -242,6 +245,15 @@ class Store:
     def assistant_count_last_hour(self) -> int:
         since = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat(timespec="seconds")
         return self.conn.execute("SELECT COUNT(*) FROM assistant_log WHERE created_at >= ?", (since,)).fetchone()[0]
+
+    # ---- UI preferences (chart style, view, layers) per labeler -------
+    def get_pref(self, key: str) -> dict | None:
+        row = self.conn.execute("SELECT value FROM prefs WHERE key=?", (key,)).fetchone()
+        return json.loads(row[0]) if row else None
+
+    def set_pref(self, key: str, value: dict):
+        self.conn.execute("INSERT OR REPLACE INTO prefs VALUES (?,?,?)", (key, json.dumps(value), utcnow_iso()))
+        self.conn.commit()
 
     # ---- scan state ----------------------------------------------------
     def get_state(self, symbol: str, timeframe: str) -> int | None:

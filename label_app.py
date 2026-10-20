@@ -25,7 +25,7 @@ from ktma.indicators import add_indicators
 from ktma.outcomes import trade_result
 from ktma.storage import Store
 from ktma.structure import StructureEngine, lines_snapshot
-from ktma.tvchart import build_spec, render
+from ktma.tvchart import CHART_TYPES, SCALES, STYLE_DEFAULTS, THEMES, build_spec, render, style_indicators
 
 _load_env()
 st.set_page_config(page_title="KTMA labelovanie", page_icon="📈", layout="wide")
@@ -67,9 +67,9 @@ def fmt_time(ms: int) -> str:
     return pd.Timestamp(int(ms), unit="ms", tz="UTC").strftime("%Y-%m-%d %H:%M")
 
 
-LAYERS = ["Čiary", "Dotyky", "Rovnobežky", "Kanál", "EMA 21/50", "EMA 200", "VWAP",
+LAYERS = ["Čiary", "Dotyky", "Rovnobežky", "Kanál", "EMA", "EMA dlhá", "VWAP",
           "Alerty", "Labely", "Objem", "RSI", "MACD"]
-DEFAULT_LAYERS = ["Čiary", "Dotyky", "Kanál", "EMA 21/50", "Alerty", "Labely", "Objem", "RSI", "MACD"]
+DEFAULT_LAYERS = ["Čiary", "Dotyky", "Kanál", "EMA", "Alerty", "Labely", "Objem", "RSI", "MACD"]
 PANELS = ["Objem", "RSI", "MACD"]
 
 
@@ -95,6 +95,85 @@ def view_settings(key: str) -> dict:
         st.markdown("<style>[data-testid='stSidebar'],[data-testid='stSidebarCollapsedControl']"
                     "{display:none}</style>", unsafe_allow_html=True)
     return v
+
+
+def chart_style() -> dict:
+    return {**STYLE_DEFAULTS, **st.session_state.get("chart_style", {})}
+
+
+def _pref_key(labeler: str) -> str:
+    return f"ui:{(labeler or '').strip().lower() or 'default'}"
+
+
+def load_prefs(store, labeler: str):
+    """Load the saved chart/view/layer settings for this name once per session (or when the name changes)."""
+    key = _pref_key(labeler)
+    if st.session_state.get("prefs_loaded_for") == key:
+        return
+    st.session_state["prefs_loaded_for"] = key
+    saved = store.get_pref(key) or (store.get_pref(_pref_key("")) if labeler else None)
+    if not saved:
+        return
+    for k in [k for k in st.session_state if k.startswith(("view_", "layers_label", "layers_live", "style_"))]:
+        del st.session_state[k]   # let widgets re-initialise from the loaded values
+    st.session_state["view"] = {**VIEW_DEFAULTS, **saved.get("view", {})}
+    st.session_state["layers_saved"] = saved.get("layers", DEFAULT_LAYERS)
+    st.session_state["chart_style"] = {**STYLE_DEFAULTS, **saved.get("chart", {})}
+
+
+def chart_settings(store, labeler: str):
+    """'🎨 Graf' popover: chart type, colours, theme, scale, indicator periods, line widths."""
+    s = chart_style()
+    with st.popover("🎨 Graf", use_container_width=True):
+        c = st.columns(2)
+        s["type"] = c[0].selectbox("Typ grafu", CHART_TYPES, CHART_TYPES.index(s["type"]), key="style_type")
+        s["theme"] = c[1].radio("Pozadie", list(THEMES), list(THEMES).index(s["theme"]), key="style_theme",
+                                horizontal=True)
+        c = st.columns(3)
+        s["up"] = c[0].color_picker("Rastúca", s["up"], key="style_up")
+        s["down"] = c[1].color_picker("Klesajúca", s["down"], key="style_down")
+        s["grid"] = c[2].toggle("Mriežka", s["grid"], key="style_grid")
+        s["scale"] = st.radio("Cenová mierka", list(SCALES), list(SCALES).index(s["scale"]), key="style_scale",
+                              horizontal=True)
+        st.markdown("**EMA** (vrstvy „EMA“ a „EMA dlhá“)")
+        c = st.columns(3)
+        for col, k, label in ((c[0], "ema_fast", "rýchla"), (c[1], "ema_slow", "pomalá"), (c[2], "ema_long", "dlhá")):
+            s[k] = col.number_input(label, 2, 500, int(s[k]), key=f"style_{k}")
+            s[f"{k}_color"] = col.color_picker(f"farba {label}", s[f"{k}_color"], key=f"style_{k}_color",
+                                               label_visibility="collapsed")
+        st.markdown("**RSI**")
+        c = st.columns(3)
+        s["rsi_period"] = c[0].number_input("perióda", 2, 100, int(s["rsi_period"]), key="style_rsi_period")
+        s["rsi_upper"] = c[1].number_input("horná úroveň", 50, 100, int(s["rsi_upper"]), key="style_rsi_upper")
+        s["rsi_lower"] = c[2].number_input("dolná úroveň", 0, 50, int(s["rsi_lower"]), key="style_rsi_lower")
+        s["rsi_color"] = st.color_picker("farba RSI", s["rsi_color"], key="style_rsi_color")
+        st.markdown("**MACD**")
+        c = st.columns(3)
+        s["macd_fast"] = c[0].number_input("rýchla", 2, 100, int(s["macd_fast"]), key="style_macd_fast")
+        s["macd_slow"] = c[1].number_input("pomalá", 3, 200, int(s["macd_slow"]), key="style_macd_slow")
+        s["macd_signal"] = c[2].number_input("signál", 2, 100, int(s["macd_signal"]), key="style_macd_signal")
+        c = st.columns(4)
+        s["macd_up"] = c[0].color_picker("histogram +", s["macd_up"], key="style_macd_up")
+        s["macd_down"] = c[1].color_picker("histogram −", s["macd_down"], key="style_macd_down")
+        s["macd_line_color"] = c[2].color_picker("MACD", s["macd_line_color"], key="style_macd_line_color")
+        s["macd_signal_color"] = c[3].color_picker("signál", s["macd_signal_color"], key="style_macd_signal_color")
+        c = st.columns(2)
+        s["line_width"] = c[0].slider("Hrúbka indikátorov", 1, 4, int(s["line_width"]), key="style_line_width")
+        s["trendline_width"] = c[1].slider("Hrúbka trendových čiar", 1, 5, int(s["trendline_width"]),
+                                           key="style_trendline_width")
+        st.caption("Periódy tu menia iba zobrazenie. Skener počíta podľa ⚙️ Nastavení.")
+        st.session_state["chart_style"] = s
+        c = st.columns(2)
+        if c[0].button("💾 Uložiť ako moje", use_container_width=True,
+                       help="Graf, zobrazenie a vrstvy sa načítajú pri ďalšom otvorení pod týmto menom."):
+            store.set_pref(_pref_key(labeler), {"chart": s, "view": st.session_state.get("view", VIEW_DEFAULTS),
+                                                "layers": st.session_state.get("layers_saved", DEFAULT_LAYERS)})
+            st.toast(f"Uložené pre „{labeler or 'default'}“ ✅")
+        if c[1].button("↺ Predvolené", use_container_width=True):
+            st.session_state["chart_style"] = dict(STYLE_DEFAULTS)
+            for k in [k for k in st.session_state if k.startswith("style_")]:
+                del st.session_state[k]
+            st.rerun()
 
 
 def layer_picker(key: str, stacked: bool = False) -> set:
@@ -140,7 +219,7 @@ def chart(cfg, store, alert, blind: bool, before: int, after: int, plan: dict, l
     ai = int(np.searchsorted(times, alert["bar_time"]))
     lo = max(0, ai - before - 300)              # extra bars to warm up indicators
     hi = ai + 1 if blind else min(len(df), ai + after + 1)
-    w = add_indicators(df.iloc[lo:hi].reset_index(drop=True), cfg)
+    w = style_indicators(add_indicators(df.iloc[lo:hi].reset_index(drop=True), cfg), chart_style())
     start = ai - lo - before if ai - lo - before > 0 else 0
     w = w.iloc[start:].reset_index(drop=True)
     a_x = ai - lo - start
@@ -150,8 +229,7 @@ def chart(cfg, store, alert, blind: bool, before: int, after: int, plan: dict, l
                       markers=[{"i": a_x, "direction": alert["direction"], "size": 2,
                                 "text": "LONG?" if alert["direction"] == "bullish" else "SHORT?"}],
                       price_lines=plan_lines(plan), reg_channel=cfg["structure"].get("regression_channel"),
-                      rsi_levels=(cfg["indicators"]["rsi"]["overbought"], cfg["indicators"]["rsi"]["oversold"]),
-                      label_marks=past_labels(store, alert["symbol"], alert["timeframe"], w, alert["id"]))
+                      style=chart_style(), label_marks=past_labels(store, alert["symbol"], alert["timeframe"], w, alert["id"]))
     return spec, chart_height(layers), df
 
 
@@ -161,7 +239,7 @@ def live_view(cfg, store, symbol: str, tf: str, bars: int, only_notified: bool, 
     if len(raw) < 60:
         st.info("Zatiaľ málo dát. Spusti backfill alebo počkaj na skener.")
         return
-    f = add_indicators(raw, cfg)
+    f = style_indicators(add_indicators(raw, cfg), chart_style())
     k = cfg["structure"]["zigzag_atr"].get(tf, 2.0)
     struct = StructureEngine(cfg["structure"], k).run(f)
     lines = lines_snapshot(struct["lines"], len(f) - 1, f["open_time"].to_numpy())
@@ -191,8 +269,7 @@ def live_view(cfg, store, symbol: str, tf: str, bars: int, only_notified: bool, 
     c[3].metric("Alerty za 24 h", n24, f"{s24} na Telegram", delta_color="off")
     spec = build_spec(w, layers, lines, extend=15, markers=markers,
                       reg_channel=cfg["structure"].get("regression_channel"),
-                      rsi_levels=(cfg["indicators"]["rsi"]["overbought"], cfg["indicators"]["rsi"]["oversold"]),
-                      label_marks=past_labels(store, symbol, tf, w))
+                      style=chart_style(), label_marks=past_labels(store, symbol, tf, w))
     render(spec, chart_height(layers), f"live-{symbol}-{tf}-{bars}")
     st.caption(f"Čiary a kanál presne tak, ako ich skener vidí teraz (aktívne čiary: {len(lines)}). "
                "Šípky = alerty (popis uvidíš hore, keď prejdeš myšou na sviečku). Obnovuje sa každú minútu.")
@@ -564,8 +641,12 @@ def main():
             st.session_state["current"] = None
             st.rerun()
 
-    with st.columns([8, 1.4])[1]:
+    load_prefs(store, labeler)
+    top = st.columns([7, 1.4, 1.4])
+    with top[1]:
         view_settings("view")
+    with top[2]:
+        chart_settings(store, labeler)
     tabs = st.tabs(["🏷️ Labelovanie", "📡 Živý graf", "➕ Premeškaný vstup", "📊 Štatistiky a EV",
                     "⚙️ Nastavenia a slovník"])
     with tabs[0]:

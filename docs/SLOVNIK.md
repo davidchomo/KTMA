@@ -91,6 +91,16 @@
 
 ---
 
+## 🎨 Graf a 👁️ Zobrazenie (vpravo hore v appke)
+
+- **🎨 Graf:** typ (sviečky, bary, čiara, Heikin-Ashi), farby, tmavé/svetlé pozadie, mriežka, mierka
+  (normálna, logaritmická, percentá), periódy a farby EMA, RSI a MACD, hrúbka čiar. Periódy tu menia iba
+  zobrazenie, skener počíta podľa ⚙️ Nastavení.
+- **👁️ Zobrazenie:** skryť bočný panel, hlavičku, prepínače vrstiev, výsledky a Clauda; formulár vedľa grafu,
+  pod ním alebo skrytý; výška grafu.
+- **💾 Uložiť ako moje** uloží graf, zobrazenie aj vrstvy pod tvojím menom. Načítajú sa vždy, keď zadáš meno.
+- **⛶** v rohu grafu = celá obrazovka, Esc = späť.
+
 ## ⚙️ Čo robiť v nastaveniach
 
 Nastavenia sú v `config.yaml` (záložka ⚙️ v appke). Po uložení si ich skener načíta do minúty.

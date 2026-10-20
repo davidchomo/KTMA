@@ -16,11 +16,53 @@ LIB_LOCAL = "/app/static/lightweight-charts-5.2.1.js"   # served by Streamlit st
 LIB_CDN = "https://unpkg.com/lightweight-charts@5.2.1/dist/lightweight-charts.standalone.production.js"
 
 UP, DOWN = "#26a69a", "#ef5350"
+
+CHART_TYPES = ["Sviečky", "Bary", "Čiara", "Heikin-Ashi"]
+THEMES = {
+    "Tmavé": {"bg": "#131722", "text": "#d1d4dc", "grid": "#1e222d", "border": "#2a2e39",
+              "legend": "rgba(19,23,34,0.75)", "button": "#2a2e39"},
+    "Svetlé": {"bg": "#ffffff", "text": "#131722", "grid": "#f0f3fa", "border": "#d1d4dc",
+               "legend": "rgba(255,255,255,0.8)", "button": "#f0f3fa"},
+}
+SCALES = {"Normálna": 0, "Logaritmická": 1, "Percentá": 2}
+STYLE_DEFAULTS = {
+    "type": "Sviečky", "up": UP, "down": DOWN, "theme": "Tmavé", "grid": True, "scale": "Normálna",
+    "ema_fast": 21, "ema_slow": 50, "ema_long": 200,
+    "ema_fast_color": "#f2a900", "ema_slow_color": "#2962ff", "ema_long_color": "#ce93d8",
+    "rsi_period": 14, "rsi_upper": 80, "rsi_lower": 20, "rsi_color": "#b39ddb",
+    "macd_fast": 12, "macd_slow": 26, "macd_signal": 9,
+    "macd_up": UP, "macd_down": DOWN, "macd_line_color": "#2962ff", "macd_signal_color": "#ff6d00",
+    "line_width": 1, "trendline_width": 2,
+}
+
+
+def style_indicators(df: pd.DataFrame, style: dict) -> pd.DataFrame:
+    """Display-only indicators with the user's own periods (the scanner keeps its config).
+    Call on the frame *with* warm-up bars, before slicing the visible window."""
+    from .indicators import ema, macd, rsi
+
+    st = {**STYLE_DEFAULTS, **(style or {})}
+    out = df.copy()
+    c = out["close"]
+    for k in ("ema_fast", "ema_slow", "ema_long"):
+        out[f"s_{k}"] = ema(c, int(st[k]))
+    out["s_rsi"] = rsi(c, int(st["rsi_period"]))
+    m = macd(c, int(st["macd_fast"]), int(st["macd_slow"]), int(st["macd_signal"]))
+    out["s_macd"], out["s_macd_signal"], out["s_macd_hist"] = m["macd"], m["macd_signal"], m["macd_hist"]
+    if st["type"] == "Heikin-Ashi":
+        o, h, l, cl = (out[k].to_numpy(float) for k in ("open", "high", "low", "close"))
+        ha_c = (o + h + l + cl) / 4
+        ha_o = np.empty_like(ha_c)
+        ha_o[0] = (o[0] + cl[0]) / 2
+        for i in range(1, len(ha_c)):
+            ha_o[i] = (ha_o[i - 1] + ha_c[i - 1]) / 2
+        out["ha_open"], out["ha_close"] = ha_o, ha_c
+        out["ha_high"] = np.maximum.reduce([h, ha_o, ha_c])
+        out["ha_low"] = np.minimum.reduce([l, ha_o, ha_c])
+    return out
 # Past human labels on the chart: (position, colour, text)
 LABEL_STYLE = {"LONG": ("belowBar", "#26a69a", "L"), "SHORT": ("aboveBar", "#ef5350", "S"),
                "SKIP": ("aboveBar", "#787b86", "✕"), "UNSURE": ("aboveBar", "#787b86", "?")}
-# TradingView's 4-colour MACD histogram: strong/weak green above zero, strong/weak red below.
-MACD_COLORS = {"up_rising": "#26a69a", "up_falling": "#b2dfdb", "down_falling": "#ff5252", "down_rising": "#ffcdd2"}
 
 
 def chart_times(open_time_ms) -> np.ndarray:
@@ -41,22 +83,31 @@ def _series(times, values) -> list[dict]:
 
 def build_spec(w: pd.DataFrame, layers: set, lines: list[dict] | None = None, focus_i: int | None = None,
                extend: int = 40, markers: list[dict] | None = None, price_lines: list[dict] | None = None,
-               reg_channel: dict | None = None, rsi_levels=(80, 20), label_marks: list[dict] | None = None,
-               zoom_before: int = 70, zoom_after: int = 40) -> dict:
-    """`w` = frame from add_indicators (bars of one timeframe, index 0..n-1)."""
+               reg_channel: dict | None = None, label_marks: list[dict] | None = None,
+               zoom_before: int = 70, zoom_after: int = 40, style: dict | None = None) -> dict:
+    """`w` = frame from add_indicators + style_indicators (bars of one timeframe, index 0..n-1)."""
+    st = {**STYLE_DEFAULTS, **(style or {})}
+    up_c, down_c = st["up"], st["down"]
     t = chart_times(w["open_time"])
     n = len(w)
     focus = n - 1 if focus_i is None else focus_i
+    ohlc = ("ha_open", "ha_high", "ha_low", "ha_close") if st["type"] == "Heikin-Ashi" and "ha_open" in w \
+        else ("open", "high", "low", "close")
     spec: dict = {
         "candles": [{"time": int(a), "open": float(o), "high": float(h), "low": float(l), "close": float(c)}
-                    for a, o, h, l, c in zip(t, w["open"], w["high"], w["low"], w["close"])],
+                    for a, o, h, l, c in zip(t, *(w[k] for k in ohlc))],
         "overlays": [], "segments": [], "markers": [], "priceLines": price_lines or [], "panes": {},
+        "style": {**st, "series": {"Bary": "bar", "Čiara": "line"}.get(st["type"], "candle"),
+                  "colors": THEMES.get(st["theme"], THEMES["Tmavé"]), "scaleMode": SCALES.get(st["scale"], 0)},
     }
-    if "EMA 21/50" in layers:
-        spec["overlays"] += [{"name": "EMA 21", "color": "#f2a900", "data": _series(t, w.get("ma_21", []))},
-                             {"name": "EMA 50", "color": "#2962ff", "data": _series(t, w.get("ma_50", []))}]
-    if "EMA 200" in layers and "ma_200" in w:
-        spec["overlays"].append({"name": "EMA 200", "color": "#ce93d8", "data": _series(t, w["ma_200"])})
+    col = lambda name, fallback: w[name] if name in w else w.get(fallback, pd.Series(dtype=float))  # noqa: E731
+    if "EMA" in layers:
+        spec["overlays"] += [
+            {"name": f"EMA {st['ema_fast']}", "color": st["ema_fast_color"], "data": _series(t, col("s_ema_fast", "ma_21"))},
+            {"name": f"EMA {st['ema_slow']}", "color": st["ema_slow_color"], "data": _series(t, col("s_ema_slow", "ma_50"))}]
+    if "EMA dlhá" in layers:
+        spec["overlays"].append({"name": f"EMA {st['ema_long']}", "color": st["ema_long_color"],
+                                 "data": _series(t, col("s_ema_long", "ma_200"))})
     if "VWAP" in layers and "vwap" in w:
         spec["overlays"].append({"name": "VWAP", "color": "#4db6ac", "style": 2, "data": _series(t, w["vwap"])})
 
@@ -80,8 +131,8 @@ def build_spec(w: pd.DataFrame, layers: set, lines: list[dict] | None = None, fo
         if x_end <= x_start:
             continue
         val = lambda x: ln["p1"] + ln["slope_per_bar"] * (x - x1)  # noqa: E731
-        color = DOWN if ln["kind"] == "resistance" else UP
-        spec["segments"].append({"color": color, "width": 2, "style": 0, "data": [
+        color = down_c if ln["kind"] == "resistance" else up_c
+        spec["segments"].append({"color": color, "width": st["trendline_width"], "style": 0, "data": [
             {"time": int(t[x_start]), "value": float(val(x_start))}, {"time": int(t[x_end]), "value": float(val(x_end))}]})
         if "Dotyky" in layers:
             # Swing points the line was built from / touched (what the scanner "saw").
@@ -103,7 +154,7 @@ def build_spec(w: pd.DataFrame, layers: set, lines: list[dict] | None = None, fo
             bull = m["direction"] == "bullish"
             spec["markers"].append({
                 "time": int(t[i]), "position": "belowBar" if bull else "aboveBar",
-                "color": UP if bull else DOWN, "shape": "arrowUp" if bull else "arrowDown",
+                "color": up_c if bull else down_c, "shape": "arrowUp" if bull else "arrowDown",
                 "text": m.get("text", ""), "size": m.get("size", 1)})
             if m.get("note"):
                 notes.setdefault(int(t[i]), []).append(("🟢 " if bull else "🔴 ") + m["note"])
@@ -122,35 +173,37 @@ def build_spec(w: pd.DataFrame, layers: set, lines: list[dict] | None = None, fo
 
     if "Objem" in layers:
         up = (w["close"] >= w["open"]).to_numpy()
-        spec["volume"] = [{"time": int(a), "value": float(v), "color": (UP if u else DOWN) + "80"}
+        spec["volume"] = [{"time": int(a), "value": float(v), "color": (up_c if u else down_c) + "80"}
                           for a, v, u in zip(t, w["volume"].fillna(0), up)]
     if "RSI" in layers:
-        spec["panes"]["rsi"] = {"data": _series(t, w["rsi"]), "levels": list(rsi_levels)}
+        spec["panes"]["rsi"] = {"data": _series(t, col("s_rsi", "rsi")),
+                                "levels": [st["rsi_upper"], st["rsi_lower"]]}
     if "MACD" in layers:
-        h = w["macd_hist"].to_numpy()
+        h = col("s_macd_hist", "macd_hist").to_numpy()
         prev = np.concatenate([[np.nan], h[:-1]])
-        colors = np.where(h >= 0, np.where(h >= prev, MACD_COLORS["up_rising"], MACD_COLORS["up_falling"]),
-                          np.where(h <= prev, MACD_COLORS["down_falling"], MACD_COLORS["down_rising"]))
+        # Green above zero, red below; a weakening bar is the same colour, slightly transparent.
+        mu, md = st["macd_up"], st["macd_down"]
+        colors = np.where(h >= 0, np.where(h >= prev, mu, mu + "99"), np.where(h <= prev, md, md + "99"))
         spec["panes"]["macd"] = {
             "hist": [{"time": int(a), "value": round(float(v), 4), "color": c}
                      for a, v, c in zip(t, h, colors) if pd.notna(v)],
-            "macd": _series(t, w["macd"]), "signal": _series(t, w["macd_signal"]),
+            "macd": _series(t, col("s_macd", "macd")), "signal": _series(t, col("s_macd_signal", "macd_signal")),
         }
     return spec
 
 
 _TEMPLATE = """<!doctype html><html><head><meta charset="utf-8">
 <style>
-  html, body { margin: 0; padding: 0; background: #131722; font-family: -apple-system, system-ui, sans-serif; }
+  html, body { margin: 0; padding: 0; background: __BG__; font-family: -apple-system, system-ui, sans-serif; }
   #chart { position: relative; width: 100%; height: __HEIGHT__px; }
-  #legend { position: absolute; left: 8px; top: 6px; z-index: 5; font-size: 12px; color: #d1d4dc;
-            pointer-events: none; line-height: 1.5; background: rgba(19,23,34,0.75); padding: 0 4px; }
+  #legend { position: absolute; left: 8px; top: 6px; z-index: 5; font-size: 12px; color: __TEXT__;
+            pointer-events: none; line-height: 1.5; background: __LEGEND__; padding: 0 4px; }
   #legend b { font-weight: 600; }
   #help { font-size: 11px; color: #787b86; padding: 2px 8px; }
-  #fs { position: absolute; right: 70px; top: 6px; z-index: 6; background: #2a2e39; color: #d1d4dc;
-        border: 1px solid #363a45; border-radius: 4px; font-size: 15px; line-height: 1; padding: 4px 7px;
+  #fs { position: absolute; right: 70px; top: 6px; z-index: 6; background: __BUTTON__; color: __TEXT__;
+        border: 1px solid __BORDER__; border-radius: 4px; font-size: 15px; line-height: 1; padding: 4px 7px;
         cursor: pointer; }
-  #fs:hover { background: #363a45; }
+  #fs:hover { opacity: 0.8; }
   html:fullscreen #chart { height: 100vh !important; }
   html:fullscreen #help { display: none; }
 </style></head><body>
@@ -165,26 +218,36 @@ function draw() {
   if (!window.LightweightCharts || window.__drawn) return;
   window.__drawn = true;
   const LW = LightweightCharts;
+  const ST = SPEC.style, C = ST.colors;
   const el = document.getElementById('chart');
   const chart = LW.createChart(el, {
     autoSize: true,
-    layout: { background: { color: '#131722' }, textColor: '#d1d4dc', fontSize: 11,
-              panes: { separatorColor: '#2a2e39', enableResize: true } },
-    grid: { vertLines: { color: '#1e222d' }, horzLines: { color: '#1e222d' } },
+    layout: { background: { color: C.bg }, textColor: C.text, fontSize: 11,
+              panes: { separatorColor: C.border, enableResize: true } },
+    grid: { vertLines: { color: C.grid, visible: ST.grid }, horzLines: { color: C.grid, visible: ST.grid } },
     crosshair: { mode: LW.CrosshairMode.Normal },
-    rightPriceScale: { borderColor: '#2a2e39', scaleMargins: { top: 0.08, bottom: 0.12 } },
-    timeScale: { borderColor: '#2a2e39', timeVisible: true, secondsVisible: false, rightOffset: 5 },
+    rightPriceScale: { borderColor: C.border, scaleMargins: { top: 0.08, bottom: 0.12 }, mode: ST.scaleMode },
+    timeScale: { borderColor: C.border, timeVisible: true, secondsVisible: false, rightOffset: 5 },
     handleScale: { axisPressedMouseMove: { time: true, price: true }, mouseWheel: true, pinch: true,
                    axisDoubleClickReset: { time: true, price: true } },
     handleScroll: { mouseWheel: false, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: false },
   });
-  const candles = chart.addSeries(LW.CandlestickSeries, {
-    upColor: '#26a69a', downColor: '#ef5350', borderVisible: false,
-    wickUpColor: '#26a69a', wickDownColor: '#ef5350' });
-  candles.setData(SPEC.candles);
+  let candles;
+  if (ST.series === 'line') {
+    candles = chart.addSeries(LW.LineSeries, { color: ST.up, lineWidth: Math.max(2, ST.line_width) });
+    candles.setData(SPEC.candles.map(c => ({ time: c.time, value: c.close })));
+  } else if (ST.series === 'bar') {
+    candles = chart.addSeries(LW.BarSeries, { upColor: ST.up, downColor: ST.down, thinBars: false });
+    candles.setData(SPEC.candles);
+  } else {
+    candles = chart.addSeries(LW.CandlestickSeries, { upColor: ST.up, downColor: ST.down, borderVisible: false,
+                                                       wickUpColor: ST.up, wickDownColor: ST.down });
+    candles.setData(SPEC.candles);
+  }
+  const byTime = new Map(SPEC.candles.map(c => [c.time, c]));
   const quiet = { priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false };
   for (const o of SPEC.overlays) {
-    const s = chart.addSeries(LW.LineSeries, { ...quiet, color: o.color, lineWidth: 1, lineStyle: o.style || 0,
+    const s = chart.addSeries(LW.LineSeries, { ...quiet, color: o.color, lineWidth: ST.line_width, lineStyle: o.style || 0,
                                                  title: '', autoscaleInfoProvider: () => null });
     s.setData(o.data);
   }
@@ -206,7 +269,7 @@ function draw() {
   }
   let pane = 1, rsiSeries = null;
   if (SPEC.panes.rsi) {
-    rsiSeries = chart.addSeries(LW.LineSeries, { color: '#b39ddb', lineWidth: 1, priceLineVisible: false }, pane);
+    rsiSeries = chart.addSeries(LW.LineSeries, { color: ST.rsi_color, lineWidth: ST.line_width, priceLineVisible: false }, pane);
     rsiSeries.setData(SPEC.panes.rsi.data);
     for (const lvl of SPEC.panes.rsi.levels) {
       rsiSeries.createPriceLine({ price: lvl, color: '#5d606b', lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: '' });
@@ -216,10 +279,10 @@ function draw() {
   if (SPEC.panes.macd) {
     const h = chart.addSeries(LW.HistogramSeries, { priceLineVisible: false, lastValueVisible: false }, pane);
     h.setData(SPEC.panes.macd.hist);
-    const m = chart.addSeries(LW.LineSeries, { color: '#2962ff', lineWidth: 1, priceLineVisible: false,
+    const m = chart.addSeries(LW.LineSeries, { color: ST.macd_line_color, lineWidth: ST.line_width, priceLineVisible: false,
                                                lastValueVisible: false }, pane);
     m.setData(SPEC.panes.macd.macd);
-    const s = chart.addSeries(LW.LineSeries, { color: '#ff6d00', lineWidth: 1, priceLineVisible: false,
+    const s = chart.addSeries(LW.LineSeries, { color: ST.macd_signal_color, lineWidth: ST.line_width, priceLineVisible: false,
                                                lastValueVisible: false }, pane);
     s.setData(SPEC.panes.macd.signal);
   }
@@ -235,7 +298,7 @@ function draw() {
   const esc = x => String(x).replace(/[&<>]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;'}[c]));
   const show = d => {
     if (!d) { legend.innerHTML = ''; return; }
-    const col = d.close >= d.open ? '#26a69a' : '#ef5350';
+    const col = d.close >= d.open ? ST.up : ST.down;
     const notes = (SPEC.notes || {})[String(d.time)] || [];
     legend.innerHTML = `O <b style="color:${col}">${fmt(d.open)}</b> H <b style="color:${col}">${fmt(d.high)}</b> ` +
                        `L <b style="color:${col}">${fmt(d.low)}</b> C <b style="color:${col}">${fmt(d.close)}</b>` +
@@ -243,7 +306,7 @@ function draw() {
   };
   show(SPEC.candles[SPEC.candles.length - 1]);
   chart.subscribeCrosshairMove(p => {
-    const d = p && p.seriesData ? p.seriesData.get(candles) : null;
+    const d = p && p.time !== undefined ? byTime.get(p.time) : null;
     show(d || SPEC.candles[SPEC.candles.length - 1]);
   });
 
@@ -279,7 +342,11 @@ if (window.LightweightCharts) start(); else window.addEventListener('load', star
 def render(spec: dict, height: int, key: str):
     import streamlit.components.v1 as components
 
+    colors = spec.get("style", {}).get("colors", THEMES["Tmavé"])
     html = (_TEMPLATE.replace("__HEIGHT__", str(height))
+            .replace("__BG__", colors["bg"]).replace("__TEXT__", colors["text"])
+            .replace("__LEGEND__", colors["legend"]).replace("__BUTTON__", colors["button"])
+            .replace("__BORDER__", colors["border"])
             .replace("__LIB_LOCAL__", LIB_LOCAL).replace("__LIB_CDN__", LIB_CDN)
             .replace("__KEY__", "".join(ch for ch in key if ch.isalnum() or ch in "-_"))
             .replace("__SPEC__", json.dumps(spec, separators=(",", ":")).replace("</", "<\\/")))
