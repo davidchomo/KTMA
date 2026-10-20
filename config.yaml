@@ -1,0 +1,67 @@
+# KTMA – konfigurácia skenera technických signálov
+# Všetky časy sú v UTC.
+
+data:
+  # yfinance  – zlato/striebro futures (GC=F, SI=F), akcie, ETF. Zadarmo, bez API kľúča.
+  #             Limity Yahoo: 1m ~7 dní, 5m/15m/30m ~60 dní, 1h ~730 dní histórie.
+  #             4h sa skladá z 1h sviečok.
+  # ccxt      – krypto burzy (napr. PAXG/USDT = tokenizované zlato, obchoduje sa 24/7).
+  # synthetic – vymyslené dáta na offline test (python -m ktma demo).
+  provider: yfinance
+  exchange: binance          # iba pre provider: ccxt
+
+symbols:
+  - GC=F                     # zlato (COMEX futures) – má skutočný objem
+  # - SI=F                   # striebro – odkomentuj, keď ho budete chcieť sledovať
+  # Alternatívy: GLD / SLV (ETF), alebo s provider: ccxt -> PAXG/USDT, XAUT/USDT
+
+timeframes: [5m, 15m, 1h, 4h, 1d]
+
+history_bars: 500            # koľko sviečok sťahovať na jeden timeframe pri skenovaní
+poll_seconds: 60             # ako často skener kontroluje nové sviečky
+db_path: data/ktma.sqlite    # sem sa ukladá všetko (sviečky, alerty, labely)
+
+indicators:
+  rsi:
+    period: 14
+    overbought: 80
+    oversold: 20
+  macd:
+    fast: 12
+    slow: 26
+    signal: 9
+  ma:
+    type: ema                # ema | sma
+    periods: [9, 21, 50, 200]
+    crosses: [[9, 21], [50, 200]]   # páry (rýchla, pomalá) na sledovanie prekríženia
+  volume:
+    period: 20
+    spike_ratio: 2.0         # objem >= 2x priemer posledných 20 sviečok = volume spike
+  atr_period: 14
+
+signals:
+  rsi_zone: true             # RSI vstúpi nad 80 / pod 20 (a odíde z nich)
+  rsi_zone_exit: true        # hlásiť aj návrat z pásma (80 -> pod 80, 20 -> nad 20)
+  macd_cross: true           # MACD prekríži signálnu čiaru
+  macd_zero_cross: false     # MACD prekríži nulu
+  ma_cross: true             # prekríženia MA podľa indicators.ma.crosses
+  price_ma_cross: [200]      # cena prekríži tieto MA
+  volume_spike: true
+  # Filter: ostatné signály sa hlásia iba ak volume_ratio >= tejto hodnoty (0 = vypnuté).
+  # Signál sa uloží do DB vždy (pre trénovanie), filter ovplyvňuje iba notifikácie.
+  min_volume_ratio: 0
+
+outcomes:
+  # Čo sa stalo po signáli – pomocný údaj pre kamaráta a automatické labely.
+  horizons: [5, 10, 20]      # výnos po N sviečkach
+  take_profit_atr: 2.0       # triple-barrier: TP = 2x ATR
+  stop_loss_atr: 1.0         #                 SL = 1x ATR
+  max_bars: 20               #                 timeout po 20 sviečkach
+
+notify:
+  console: true
+  telegram: false            # potrebuje env TELEGRAM_BOT_TOKEN a TELEGRAM_CHAT_ID
+  discord: false             # potrebuje env DISCORD_WEBHOOK_URL
+
+model:
+  path: models/model.joblib  # ak súbor existuje, skener pridá ku každému alertu skóre modelu
