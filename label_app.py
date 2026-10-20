@@ -87,10 +87,9 @@ def fmt_time(ms: int) -> str:
     return pd.Timestamp(int(ms), unit="ms", tz="UTC").strftime("%Y-%m-%d %H:%M")
 
 
-LAYERS = ["Čiary", "S/R", "Dotyky", "Rovnobežky", "Kanál", "EMA", "EMA dlhá", "VWAP",
-          "Alerty", "Labely", "Objem", "RSI", "MACD"]
-DEFAULT_LAYERS = ["Čiary", "S/R", "Dotyky", "Kanál", "EMA", "Alerty", "Labely", "Objem", "RSI", "MACD"]
-PANELS = ["Objem", "RSI", "MACD"]
+# Scanner layers (what the scanner saw). Indicators (EMA, RSI, MACD, …) live in the chart's own "ƒx Indikátory" menu.
+LAYERS = ["Čiary", "S/R", "Dotyky", "Rovnobežky", "Kanál", "Alerty", "Labely"]
+DEFAULT_LAYERS = ["Čiary", "S/R", "Dotyky", "Kanál", "Alerty", "Labely"]
 
 
 VIEW_DEFAULTS = {"sidebar": True, "header": True, "extras": True,
@@ -141,7 +140,7 @@ def load_prefs(store, labeler: str):
 
 
 def chart_settings(store, labeler: str):
-    """'🎨 Graf' popover: chart type, colours, theme, scale, indicator periods, line widths."""
+    """'🎨 Graf' popover: chart type, colours, theme, scale, trendline width."""
     s = chart_style()
     with st.popover("🎨 Graf", use_container_width=True):
         c = st.columns(2)
@@ -154,33 +153,10 @@ def chart_settings(store, labeler: str):
         s["grid"] = c[2].toggle("Mriežka", s["grid"], key="style_grid")
         s["scale"] = st.radio("Cenová mierka", list(SCALES), list(SCALES).index(s["scale"]), key="style_scale",
                               horizontal=True)
-        st.markdown("**EMA** (vrstvy „EMA“ a „EMA dlhá“)")
-        c = st.columns(3)
-        for col, k, label in ((c[0], "ema_fast", "rýchla"), (c[1], "ema_slow", "pomalá"), (c[2], "ema_long", "dlhá")):
-            s[k] = col.number_input(label, 2, 500, int(s[k]), key=f"style_{k}")
-            s[f"{k}_color"] = col.color_picker(f"farba {label}", s[f"{k}_color"], key=f"style_{k}_color",
-                                               label_visibility="collapsed")
-        st.markdown("**RSI**")
-        c = st.columns(3)
-        s["rsi_period"] = c[0].number_input("perióda", 2, 100, int(s["rsi_period"]), key="style_rsi_period")
-        s["rsi_upper"] = c[1].number_input("horná úroveň", 50, 100, int(s["rsi_upper"]), key="style_rsi_upper")
-        s["rsi_lower"] = c[2].number_input("dolná úroveň", 0, 50, int(s["rsi_lower"]), key="style_rsi_lower")
-        s["rsi_color"] = st.color_picker("farba RSI", s["rsi_color"], key="style_rsi_color")
-        st.markdown("**MACD**")
-        c = st.columns(3)
-        s["macd_fast"] = c[0].number_input("rýchla", 2, 100, int(s["macd_fast"]), key="style_macd_fast")
-        s["macd_slow"] = c[1].number_input("pomalá", 3, 200, int(s["macd_slow"]), key="style_macd_slow")
-        s["macd_signal"] = c[2].number_input("signál", 2, 100, int(s["macd_signal"]), key="style_macd_signal")
-        c = st.columns(4)
-        s["macd_up"] = c[0].color_picker("histogram +", s["macd_up"], key="style_macd_up")
-        s["macd_down"] = c[1].color_picker("histogram −", s["macd_down"], key="style_macd_down")
-        s["macd_line_color"] = c[2].color_picker("MACD", s["macd_line_color"], key="style_macd_line_color")
-        s["macd_signal_color"] = c[3].color_picker("signál", s["macd_signal_color"], key="style_macd_signal_color")
-        c = st.columns(2)
-        s["line_width"] = c[0].slider("Hrúbka indikátorov", 1, 4, int(s["line_width"]), key="style_line_width")
-        s["trendline_width"] = c[1].slider("Hrúbka trendových čiar", 1, 5, int(s["trendline_width"]),
-                                           key="style_trendline_width")
-        st.caption("Periódy tu menia iba zobrazenie. Skener počíta podľa ⚙️ Nastavení.")
+        s["trendline_width"] = st.slider("Hrúbka trendových čiar", 1, 5, int(s["trendline_width"]),
+                                         key="style_trendline_width")
+        st.caption("Indikátory (EMA, RSI, MACD…) nastavíš priamo v grafe tlačidlom **ƒx Indikátory**, aj na celej "
+                   "obrazovke. Menia iba zobrazenie, skener počíta podľa ⚙️ Nastavení.")
         st.session_state["chart_style"] = s
         c = st.columns(2)
         if c[0].button("💾 Uložiť ako moje", use_container_width=True,
@@ -202,10 +178,9 @@ def active_layers() -> set:
 def layer_picker(key: str) -> set:
     """Layer on/off checkboxes like a filter menu (top-bar '🗂 Vrstvy'). Shared by all charts."""
     saved = active_layers()
-    overlays = [l for l in LAYERS if l not in PANELS]
-    groups = [("Na grafe", overlays[: (len(overlays) + 1) // 2]), ("", overlays[(len(overlays) + 1) // 2:]),
-              ("Panely pod grafom", PANELS)]
-    cols = st.columns(3)
+    half = (len(LAYERS) + 1) // 2
+    groups = [("Zo skenera", LAYERS[:half]), ("", LAYERS[half:])]
+    cols = st.columns(2)
     picked = set()
     for col, (title, items) in zip(cols, groups):
         with col:
@@ -213,12 +188,13 @@ def layer_picker(key: str) -> set:
             for layer in items:
                 if st.checkbox(layer, value=layer in saved, key=f"{key}_{layer}"):
                     picked.add(layer)
+    st.caption("Indikátory (EMA, RSI, MACD, objem…) zapneš a nastavíš priamo v grafe tlačidlom **ƒx Indikátory**.")
     st.session_state["layers_saved"] = list(picked)
     return picked
 
 
 def chart_height(layers: set) -> int:
-    """Total chart height stays the same when panels are hidden; the price pane gets the space."""
+    """Total chart height stays the same when indicator panes are hidden; the price pane gets the space."""
     return int(st.session_state.get("view", VIEW_DEFAULTS).get("height", 700))
 
 
@@ -237,15 +213,15 @@ def chart(cfg, store, alert, blind: bool, before: int, after: int, plan: dict, l
     df = candles(store, alert["symbol"], alert["timeframe"])
     times = df["open_time"].to_numpy()
     ai = int(np.searchsorted(times, alert["bar_time"]))
-    lo = max(0, ai - before - 300)              # extra bars to warm up indicators
+    lo = max(0, ai - before - 500)              # extra bars to warm up indicators
     hi = ai + 1 if blind else min(len(df), ai + after + 1)
-    w = style_indicators(add_indicators(df.iloc[lo:hi].reset_index(drop=True), cfg), chart_style())
+    full = style_indicators(add_indicators(df.iloc[lo:hi].reset_index(drop=True), cfg), chart_style())
     start = ai - lo - before if ai - lo - before > 0 else 0
-    w = w.iloc[start:].reset_index(drop=True)
+    warm, w = full.iloc[:start], full.iloc[start:].reset_index(drop=True)
     a_x = ai - lo - start
 
-    layers = set(layers) | ({"VWAP"} if alert["signal"].startswith("VWAP") else set())
-    spec = build_spec(w, layers, alert.get("lines"), focus_i=a_x,
+    spec = build_spec(w, set(layers), alert.get("lines"), focus_i=a_x, warm=warm,
+                      force_studies=["vwap"] if alert["signal"].startswith("VWAP") else None,
                       markers=[{"i": a_x, "direction": alert["direction"], "size": 2,
                                 "text": "LONG?" if alert["direction"] == "bullish" else "SHORT?"}],
                       reg_channel=cfg["structure"].get("regression_channel"),
@@ -268,6 +244,7 @@ def live_view(cfg, store, symbol: str, tf: str, bars: int, only_notified: bool, 
     levels = levels_snapshot(struct["levels"], len(f) - 1, f["open_time"].to_numpy(), float(f["close"].iloc[-1]),
                              (cfg["structure"].get("levels") or {}).get("min_touches", 2))
     w = f.tail(bars).reset_index(drop=True)
+    warm = f.iloc[:-bars] if len(f) > bars else None
 
     t0 = int(w["open_time"].iloc[0])
     q = "SELECT id, bar_time, signal, direction, price, notify FROM alerts WHERE symbol=? AND timeframe=? AND bar_time>=?"
@@ -292,7 +269,7 @@ def live_view(cfg, store, symbol: str, tf: str, bars: int, only_notified: bool, 
     n24, s24 = store.conn.execute(
         "SELECT COUNT(*), COALESCE(SUM(notify),0) FROM alerts WHERE symbol=? AND bar_time>=?", (symbol, day)).fetchone()
     c[3].metric("Alerty za 24 h", n24, f"{s24} na Telegram", delta_color="off")
-    spec = build_spec(w, layers, lines, extend=15, markers=markers,
+    spec = build_spec(w, layers, lines, extend=15, markers=markers, warm=warm,
                       reg_channel=cfg["structure"].get("regression_channel"),
                       style=chart_style(), label_marks=past_labels(store, symbol, tf, w), levels=levels)
     render(spec, chart_height(layers), f"live-{symbol}-{tf}-{bars}")

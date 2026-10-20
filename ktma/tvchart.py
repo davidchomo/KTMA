@@ -3,11 +3,15 @@ Charts (Apache-2.0, vendored in static/). Drag the price axis to stretch it,
 wheel/pinch to zoom, double-click an axis to reset, like on TradingView.
 
 `build_spec` turns an indicator frame into plain JSON; `render` draws it.
+Display indicators (EMA, RSI, MACD, …) are computed in the browser from raw
+OHLCV, so the "ƒx Indikátory" menu inside the chart (also in fullscreen) can
+add, hide and restyle them instantly, like on TradingView.
 """
 
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -20,13 +24,16 @@ UP, DOWN = "#26a69a", "#ef5350"
 CHART_TYPES = ["Sviečky", "Bary", "Čiara", "Heikin-Ashi"]
 THEMES = {
     "Tmavé": {"bg": "#131722", "text": "#d1d4dc", "grid": "#1e222d", "border": "#2a2e39",
-              "legend": "rgba(19,23,34,0.75)", "button": "#2a2e39"},
+              "legend": "rgba(19,23,34,0.75)", "button": "#2a2e39", "panel": "#1e222d", "muted": "#787b86",
+              "scheme": "dark"},
     "Svetlé": {"bg": "#ffffff", "text": "#131722", "grid": "#f0f3fa", "border": "#d1d4dc",
-               "legend": "rgba(255,255,255,0.8)", "button": "#f0f3fa"},
+               "legend": "rgba(255,255,255,0.8)", "button": "#f0f3fa", "panel": "#ffffff", "muted": "#787b86",
+               "scheme": "light"},
 }
 SCALES = {"Normálna": 0, "Logaritmická": 1, "Percentá": 2}
 STYLE_DEFAULTS = {
     "type": "Sviečky", "up": UP, "down": DOWN, "theme": "Tmavé", "grid": True, "scale": "Normálna",
+    # Seed values for the in-chart indicators (used until the browser has its own saved set).
     "ema_fast": 21, "ema_slow": 50, "ema_long": 200,
     "ema_fast_color": "#f2a900", "ema_slow_color": "#2962ff", "ema_long_color": "#ce93d8",
     "rsi_period": 14, "rsi_upper": 80, "rsi_lower": 20, "rsi_color": "#b39ddb",
@@ -34,21 +41,13 @@ STYLE_DEFAULTS = {
     "macd_up": UP, "macd_down": DOWN, "macd_line_color": "#2962ff", "macd_signal_color": "#ff6d00",
     "line_width": 1, "trendline_width": 2,
 }
+WARMUP_BARS = 500   # extra bars before the visible window so browser-side indicators are warmed up
 
 
 def style_indicators(df: pd.DataFrame, style: dict) -> pd.DataFrame:
-    """Display-only indicators with the user's own periods (the scanner keeps its config).
-    Call on the frame *with* warm-up bars, before slicing the visible window."""
-    from .indicators import ema, macd, rsi
-
+    """Display-only candle transforms (Heikin-Ashi). Call on the frame *with* warm-up bars."""
     st = {**STYLE_DEFAULTS, **(style or {})}
     out = df.copy()
-    c = out["close"]
-    for k in ("ema_fast", "ema_slow", "ema_long"):
-        out[f"s_{k}"] = ema(c, int(st[k]))
-    out["s_rsi"] = rsi(c, int(st["rsi_period"]))
-    m = macd(c, int(st["macd_fast"]), int(st["macd_slow"]), int(st["macd_signal"]))
-    out["s_macd"], out["s_macd_signal"], out["s_macd_hist"] = m["macd"], m["macd_signal"], m["macd_hist"]
     if st["type"] == "Heikin-Ashi":
         o, h, l, cl = (out[k].to_numpy(float) for k in ("open", "high", "low", "close"))
         ha_c = (o + h + l + cl) / 4
@@ -60,6 +59,29 @@ def style_indicators(df: pd.DataFrame, style: dict) -> pd.DataFrame:
         out["ha_high"] = np.maximum.reduce([h, ha_o, ha_c])
         out["ha_low"] = np.minimum.reduce([l, ha_o, ha_c])
     return out
+
+
+def default_studies(style: dict | None = None) -> list[dict]:
+    """Starting indicator set for a browser without saved indicators (seeded from the saved chart style)."""
+    st = {**STYLE_DEFAULTS, **(style or {})}
+    lw = int(st["line_width"])
+    line = lambda c: {"color": c, "width": lw}  # noqa: E731
+    return [
+        {"type": "ema", "inputs": {"period": int(st["ema_fast"])}, "plots": {"ma": line(st["ema_fast_color"])}},
+        {"type": "ema", "inputs": {"period": int(st["ema_slow"])}, "plots": {"ma": line(st["ema_slow_color"])}},
+        {"type": "ema", "visible": False, "inputs": {"period": int(st["ema_long"])},
+         "plots": {"ma": line(st["ema_long_color"])}},
+        {"type": "vwap", "visible": False},
+        {"type": "volume", "plots": {"up": {"color": st["up"]}, "down": {"color": st["down"]}}},
+        {"type": "rsi", "inputs": {"period": int(st["rsi_period"]), "upper": int(st["rsi_upper"]),
+                                   "lower": int(st["rsi_lower"])}, "plots": {"rsi": line(st["rsi_color"])}},
+        {"type": "macd", "inputs": {"fast": int(st["macd_fast"]), "slow": int(st["macd_slow"]),
+                                    "signal": int(st["macd_signal"])},
+         "plots": {"macd": line(st["macd_line_color"]), "signal": line(st["macd_signal_color"]),
+                   "hup": {"color": st["macd_up"]}, "hdown": {"color": st["macd_down"]}}},
+    ]
+
+
 # Past human labels on the chart: (position, colour, text)
 LABEL_STYLE = {"LONG": ("belowBar", "#26a69a", "L"), "SHORT": ("aboveBar", "#ef5350", "S"),
                "SKIP": ("aboveBar", "#787b86", "✕"), "UNSURE": ("aboveBar", "#787b86", "?")}
@@ -81,12 +103,25 @@ def _series(times, values) -> list[dict]:
     return [{"time": int(t), "value": round(float(v), 4)} for t, v in zip(times, values) if pd.notna(v)]
 
 
+def _ohlcv(w: pd.DataFrame, warm: pd.DataFrame | None) -> dict:
+    """Raw OHLCV (+ VWAP session id) of warm-up + visible bars for the browser-side indicators."""
+    full = w if warm is None or warm.empty else pd.concat([warm.tail(WARMUP_BARS), w], ignore_index=True)
+    r = lambda col: [round(float(x), 4) for x in full[col].fillna(0.0)]  # noqa: E731
+    out = {"t": [int(x) for x in chart_times(full["open_time"])],
+           "o": r("open"), "h": r("high"), "l": r("low"), "c": r("close"), "v": r("volume")}
+    if "session" in full:
+        out["s"] = [int(x) if pd.notna(x) else None for x in full["session"]]
+    return out
+
+
 def build_spec(w: pd.DataFrame, layers: set, lines: list[dict] | None = None, focus_i: int | None = None,
                extend: int = 40, markers: list[dict] | None = None, price_lines: list[dict] | None = None,
                reg_channel: dict | None = None, label_marks: list[dict] | None = None,
                zoom_before: int = 70, zoom_after: int = 40, style: dict | None = None,
-               levels: list[dict] | None = None, position: dict | None = None, bar_seconds: int = 300) -> dict:
-    """`w` = frame from add_indicators + style_indicators (bars of one timeframe, index 0..n-1)."""
+               levels: list[dict] | None = None, position: dict | None = None, bar_seconds: int = 300,
+               warm: pd.DataFrame | None = None, force_studies: list[str] | None = None) -> dict:
+    """`w` = frame from add_indicators + style_indicators (bars of one timeframe, index 0..n-1);
+    `warm` = the bars just before `w` (indicator warm-up only, not drawn)."""
     st = {**STYLE_DEFAULTS, **(style or {})}
     up_c, down_c = st["up"], st["down"]
     t = chart_times(w["open_time"])
@@ -94,23 +129,16 @@ def build_spec(w: pd.DataFrame, layers: set, lines: list[dict] | None = None, fo
     focus = n - 1 if focus_i is None else focus_i
     ohlc = ("ha_open", "ha_high", "ha_low", "ha_close") if st["type"] == "Heikin-Ashi" and "ha_open" in w \
         else ("open", "high", "low", "close")
+    ohlcv = _ohlcv(w, warm)
     spec: dict = {
         "candles": [{"time": int(a), "open": float(o), "high": float(h), "low": float(l), "close": float(c)}
                     for a, o, h, l, c in zip(t, *(w[k] for k in ohlc))],
-        "overlays": [], "segments": [], "markers": [], "priceLines": price_lines or [], "panes": {},
+        "segments": [], "markers": [], "priceLines": price_lines or [],
+        "ohlcv": ohlcv, "warm": len(ohlcv["t"]) - n,
+        "studyDefaults": default_studies(st), "forceStudies": force_studies or [],
         "style": {**st, "series": {"Bary": "bar", "Čiara": "line"}.get(st["type"], "candle"),
                   "colors": THEMES.get(st["theme"], THEMES["Tmavé"]), "scaleMode": SCALES.get(st["scale"], 0)},
     }
-    col = lambda name, fallback: w[name] if name in w else w.get(fallback, pd.Series(dtype=float))  # noqa: E731
-    if "EMA" in layers:
-        spec["overlays"] += [
-            {"name": f"EMA {st['ema_fast']}", "color": st["ema_fast_color"], "data": _series(t, col("s_ema_fast", "ma_21"))},
-            {"name": f"EMA {st['ema_slow']}", "color": st["ema_slow_color"], "data": _series(t, col("s_ema_slow", "ma_50"))}]
-    if "EMA dlhá" in layers:
-        spec["overlays"].append({"name": f"EMA {st['ema_long']}", "color": st["ema_long_color"],
-                                 "data": _series(t, col("s_ema_long", "ma_200"))})
-    if "VWAP" in layers and "vwap" in w:
-        spec["overlays"].append({"name": "VWAP", "color": "#4db6ac", "style": 2, "data": _series(t, w["vwap"])})
 
     if "Kanál" in layers and reg_channel and focus + 1 >= reg_channel["period"]:
         xs = np.arange(focus + 1 - reg_channel["period"], focus + 1)
@@ -203,187 +231,12 @@ def build_spec(w: pd.DataFrame, layers: set, lines: list[dict] | None = None, fo
     # Open zoomed in around the focus bar (older bars stay reachable by dragging left).
     spec["focus"] = {"from": max(0, focus - zoom_before), "to": min(n - 1, focus + zoom_after) + 3}
     spec["notes"] = {str(k): v for k, v in notes.items()}
-
-    if "Objem" in layers:
-        up = (w["close"] >= w["open"]).to_numpy()
-        spec["volume"] = [{"time": int(a), "value": float(v), "color": (up_c if u else down_c) + "80"}
-                          for a, v, u in zip(t, w["volume"].fillna(0), up)]
-    if "RSI" in layers:
-        spec["panes"]["rsi"] = {"data": _series(t, col("s_rsi", "rsi")),
-                                "levels": [st["rsi_upper"], st["rsi_lower"]]}
-    if "MACD" in layers:
-        h = col("s_macd_hist", "macd_hist").to_numpy()
-        prev = np.concatenate([[np.nan], h[:-1]])
-        # Green above zero, red below; a weakening bar is the same colour, slightly transparent.
-        mu, md = st["macd_up"], st["macd_down"]
-        colors = np.where(h >= 0, np.where(h >= prev, mu, mu + "99"), np.where(h <= prev, md, md + "99"))
-        spec["panes"]["macd"] = {
-            "hist": [{"time": int(a), "value": round(float(v), 4), "color": c}
-                     for a, v, c in zip(t, h, colors) if pd.notna(v)],
-            "macd": _series(t, col("s_macd", "macd")), "signal": _series(t, col("s_macd_signal", "macd_signal")),
-        }
     return spec
 
 
-_TEMPLATE = """<!doctype html><html><head><meta charset="utf-8">
-<style>
-  html, body { margin: 0; padding: 0; background: __BG__; font-family: -apple-system, system-ui, sans-serif; }
-  #chart { position: relative; width: 100%; height: __HEIGHT__px; }
-  #legend { position: absolute; left: 8px; top: 6px; z-index: 5; font-size: 12px; color: __TEXT__;
-            pointer-events: none; line-height: 1.5; background: __LEGEND__; padding: 0 4px; }
-  #legend b { font-weight: 600; }
-  #help { font-size: 11px; color: #787b86; padding: 2px 8px; }
-  #fs { position: absolute; right: 70px; top: 6px; z-index: 6; background: __BUTTON__; color: __TEXT__;
-        border: 1px solid __BORDER__; border-radius: 4px; font-size: 15px; line-height: 1; padding: 4px 7px;
-        cursor: pointer; }
-  #fs:hover { opacity: 0.8; }
-  html:fullscreen #chart { height: 100vh !important; }
-  html:fullscreen #help { display: none; }
-</style></head><body>
-<div id="chart"><div id="legend"></div><button id="fs" title="Celá obrazovka (Esc = späť)">⛶</button></div>
-<div id="help">ťahaj graf = posun · koliesko / dva prsty = zoom · ťahaj cenovú stupnicu hore/dole = natiahnuť ·
- dvojklik na stupnicu = späť</div>
-<script src="__LIB_LOCAL__" onerror="var s=document.createElement('script');s.src='__LIB_CDN__';s.onload=start;document.head.appendChild(s);"></script>
-<script>
-const SPEC = __SPEC__;
-const STORE_KEY = "ktma-range-__KEY__";
-function draw() {
-  if (!window.LightweightCharts || window.__drawn) return;
-  window.__drawn = true;
-  const LW = LightweightCharts;
-  const ST = SPEC.style, C = ST.colors;
-  const el = document.getElementById('chart');
-  const chart = LW.createChart(el, {
-    autoSize: true,
-    layout: { background: { color: C.bg }, textColor: C.text, fontSize: 11,
-              panes: { separatorColor: C.border, enableResize: true } },
-    grid: { vertLines: { color: C.grid, visible: ST.grid }, horzLines: { color: C.grid, visible: ST.grid } },
-    crosshair: { mode: LW.CrosshairMode.Normal },
-    rightPriceScale: { borderColor: C.border, scaleMargins: { top: 0.08, bottom: 0.12 }, mode: ST.scaleMode },
-    timeScale: { borderColor: C.border, timeVisible: true, secondsVisible: false, rightOffset: 5 },
-    handleScale: { axisPressedMouseMove: { time: true, price: true }, mouseWheel: true, pinch: true,
-                   axisDoubleClickReset: { time: true, price: true } },
-    handleScroll: { mouseWheel: false, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: false },
-  });
-  let candles;
-  if (ST.series === 'line') {
-    candles = chart.addSeries(LW.LineSeries, { color: ST.up, lineWidth: Math.max(2, ST.line_width) });
-    candles.setData(SPEC.candles.map(c => ({ time: c.time, value: c.close })));
-  } else if (ST.series === 'bar') {
-    candles = chart.addSeries(LW.BarSeries, { upColor: ST.up, downColor: ST.down, thinBars: false });
-    candles.setData(SPEC.candles);
-  } else {
-    candles = chart.addSeries(LW.CandlestickSeries, { upColor: ST.up, downColor: ST.down, borderVisible: false,
-                                                       wickUpColor: ST.up, wickDownColor: ST.down });
-    candles.setData(SPEC.candles);
-  }
-  const byTime = new Map(SPEC.candles.map(c => [c.time, c]));
-  const quiet = { priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false };
-  for (const o of SPEC.overlays) {
-    const s = chart.addSeries(LW.LineSeries, { ...quiet, color: o.color, lineWidth: ST.line_width, lineStyle: o.style || 0,
-                                                 title: '', autoscaleInfoProvider: () => null });
-    s.setData(o.data);
-  }
-  for (const g of SPEC.segments) {
-    const s = chart.addSeries(LW.LineSeries, { ...quiet, color: g.color, lineWidth: g.width, lineStyle: g.style,
-                                                 autoscaleInfoProvider: () => null });
-    s.setData(g.data);
-  }
-  if (SPEC.position) {
-    const P = SPEC.position;
-    const zone = (value, color) => {
-      const z = chart.addSeries(LW.BaselineSeries, {
-        baseValue: { type: 'price', price: P.entry },
-        topFillColor1: color, topFillColor2: color, bottomFillColor1: color, bottomFillColor2: color,
-        topLineColor: 'rgba(0,0,0,0)', bottomLineColor: 'rgba(0,0,0,0)', lineWidth: 1,
-        priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false,
-        autoscaleInfoProvider: () => null });
-      z.setData(P.times.map(t => ({ time: t, value: value })));
-    };
-    zone(P.tp, P.profit);
-    zone(P.sl, P.loss);
-  }
-  if (SPEC.markers.length) LW.createSeriesMarkers(candles, SPEC.markers);
-  for (const p of SPEC.priceLines) {
-    candles.createPriceLine({ price: p.price, color: p.color, lineWidth: p.width || 1,
-                              lineStyle: p.style === undefined ? 2 : p.style, axisLabelVisible: true, title: p.title });
-  }
-  if (SPEC.volume) {
-    const v = chart.addSeries(LW.HistogramSeries, { priceFormat: { type: 'volume' }, priceScaleId: 'vol',
-                                                     priceLineVisible: false, lastValueVisible: false });
-    v.priceScale().applyOptions({ scaleMargins: { top: 0.82, bottom: 0 } });
-    v.setData(SPEC.volume);
-  }
-  let pane = 1, rsiSeries = null;
-  if (SPEC.panes.rsi) {
-    rsiSeries = chart.addSeries(LW.LineSeries, { color: ST.rsi_color, lineWidth: ST.line_width, priceLineVisible: false }, pane);
-    rsiSeries.setData(SPEC.panes.rsi.data);
-    for (const lvl of SPEC.panes.rsi.levels) {
-      rsiSeries.createPriceLine({ price: lvl, color: '#5d606b', lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: '' });
-    }
-    pane++;
-  }
-  if (SPEC.panes.macd) {
-    const h = chart.addSeries(LW.HistogramSeries, { priceLineVisible: false, lastValueVisible: false }, pane);
-    h.setData(SPEC.panes.macd.hist);
-    const m = chart.addSeries(LW.LineSeries, { color: ST.macd_line_color, lineWidth: ST.line_width, priceLineVisible: false,
-                                               lastValueVisible: false }, pane);
-    m.setData(SPEC.panes.macd.macd);
-    const s = chart.addSeries(LW.LineSeries, { color: ST.macd_signal_color, lineWidth: ST.line_width, priceLineVisible: false,
-                                               lastValueVisible: false }, pane);
-    s.setData(SPEC.panes.macd.signal);
-  }
-  const panes = chart.panes();
-  if (panes.length > 1) {
-    panes[0].setStretchFactor(5);
-    for (let i = 1; i < panes.length; i++) panes[i].setStretchFactor(1);
-  }
-
-  // OHLC legend like on TradingView
-  const legend = document.getElementById('legend');
-  const fmt = x => (x === undefined ? '–' : x.toFixed(2));
-  const esc = x => String(x).replace(/[&<>]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;'}[c]));
-  const show = d => {
-    if (!d) { legend.innerHTML = ''; return; }
-    const col = d.close >= d.open ? ST.up : ST.down;
-    const notes = (SPEC.notes || {})[String(d.time)] || [];
-    legend.innerHTML = `O <b style="color:${col}">${fmt(d.open)}</b> H <b style="color:${col}">${fmt(d.high)}</b> ` +
-                       `L <b style="color:${col}">${fmt(d.low)}</b> C <b style="color:${col}">${fmt(d.close)}</b>` +
-                       notes.map(x => `<br>${esc(x)}`).join('');
-  };
-  show(SPEC.candles[SPEC.candles.length - 1]);
-  chart.subscribeCrosshairMove(p => {
-    const d = p && p.time !== undefined ? byTime.get(p.time) : null;
-    show(d || SPEC.candles[SPEC.candles.length - 1]);
-  });
-
-  // Keep zoom/scroll across Streamlit reruns (e.g. while editing SL/TP).
-  const ts = chart.timeScale();
-  let restored = false;
-  try {
-    const saved = JSON.parse(window.localStorage.getItem(STORE_KEY) || 'null');
-    if (saved && saved.to - saved.from > 5) { ts.setVisibleLogicalRange(saved); restored = true; }
-  } catch (e) {}
-  if (!restored) { if (SPEC.focus) ts.setVisibleLogicalRange(SPEC.focus); else ts.fitContent(); }
-  ts.subscribeVisibleLogicalRangeChange(r => {
-    if (!r || el.clientWidth === 0) return;   // never remember the range of a hidden chart
-    try { window.localStorage.setItem(STORE_KEY, JSON.stringify(r)); } catch (e) {}
-  });
-}
-document.getElementById('fs').onclick = () => {
-  if (document.fullscreenElement) document.exitFullscreen();
-  else document.documentElement.requestFullscreen().catch(() => {});
-};
-// A chart inside a hidden Streamlit tab has zero width; wait until it is visible.
-function start() {
-  if (!window.LightweightCharts) return;
-  const el = document.getElementById('chart');
-  if (el.clientWidth > 0) { draw(); return; }
-  const obs = new ResizeObserver(() => { if (el.clientWidth > 0) { obs.disconnect(); draw(); } });
-  obs.observe(el);
-}
-if (window.LightweightCharts) start(); else window.addEventListener('load', start);
-</script></body></html>"""
+_HERE = Path(__file__).parent
+_TEMPLATE = (_HERE / "tvchart_template.html").read_text(encoding="utf-8")
+_STUDIES_JS = (_HERE / "tvchart_studies.js").read_text(encoding="utf-8")
 
 
 def render(spec: dict, height: int, key: str):
@@ -393,8 +246,10 @@ def render(spec: dict, height: int, key: str):
     html = (_TEMPLATE.replace("__HEIGHT__", str(height))
             .replace("__BG__", colors["bg"]).replace("__TEXT__", colors["text"])
             .replace("__LEGEND__", colors["legend"]).replace("__BUTTON__", colors["button"])
-            .replace("__BORDER__", colors["border"])
+            .replace("__BORDER__", colors["border"]).replace("__PANEL__", colors["panel"])
+            .replace("__MUTED__", colors["muted"]).replace("__SCHEME__", colors["scheme"])
             .replace("__LIB_LOCAL__", LIB_LOCAL).replace("__LIB_CDN__", LIB_CDN)
             .replace("__KEY__", "".join(ch for ch in key if ch.isalnum() or ch in "-_"))
+            .replace("__STUDIES_JS__", _STUDIES_JS)
             .replace("__SPEC__", json.dumps(spec, separators=(",", ":")).replace("</", "<\\/")))
     components.html(html, height=height + 24)

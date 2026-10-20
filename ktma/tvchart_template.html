@@ -1,0 +1,415 @@
+<!doctype html><html><head><meta charset="utf-8">
+<style>
+  html, body { margin: 0; padding: 0; background: __BG__; font-family: -apple-system, system-ui, sans-serif; }
+  :root { color-scheme: __SCHEME__; }
+  #chart { position: relative; width: 100%; height: __HEIGHT__px; }
+  #legend { position: absolute; left: 8px; top: 6px; z-index: 5; font-size: 12px; color: __TEXT__;
+            line-height: 1.5; max-width: calc(100% - 260px); pointer-events: none; }
+  #legend b { font-weight: 600; }
+  #ohlc, .lg-row { background: __LEGEND__; padding: 0 4px; display: inline-block; border-radius: 3px; }
+  .lg-row { pointer-events: auto; margin-top: 1px; white-space: nowrap; }
+  .lg-row.off { opacity: .45; }
+  .lg-name { margin-right: 6px; }
+  .lg-val { margin-right: 4px; font-variant-numeric: tabular-nums; }
+  .lg-btn { display: none; cursor: pointer; border: 0; background: transparent; color: __TEXT__; font-size: 12px;
+            padding: 0 3px; line-height: 1.4; }
+  .lg-row:hover .lg-btn, .lg-row.off .lg-btn { display: inline; }
+  .lg-btn:hover { color: #2962ff; }
+  #help { font-size: 11px; color: __MUTED__; padding: 2px 8px; }
+  .tb { position: absolute; top: 6px; z-index: 6; background: __BUTTON__; color: __TEXT__; border: 1px solid __BORDER__;
+        border-radius: 4px; font-size: 13px; line-height: 1; padding: 5px 8px; cursor: pointer; }
+  .tb:hover { opacity: 0.8; }
+  #fs { right: 70px; font-size: 15px; padding: 4px 7px; }
+  #fx { right: 108px; font-weight: 600; }
+  html:fullscreen #chart { height: 100vh !important; }
+  html:fullscreen #help { display: none; }
+  /* dialogs (inside #chart so they also work in fullscreen) */
+  #modal { position: absolute; inset: 0; z-index: 20; background: rgba(0,0,0,.45); display: none;
+           align-items: flex-start; justify-content: center; padding-top: 40px; box-sizing: border-box; }
+  #modal.open { display: flex; }
+  .dlg { background: __PANEL__; color: __TEXT__; border: 1px solid __BORDER__; border-radius: 8px; width: min(440px, 94%);
+         max-height: calc(100% - 60px); display: flex; flex-direction: column; box-shadow: 0 12px 40px rgba(0,0,0,.5);
+         font-size: 13px; }
+  .dlg-h { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px;
+           border-bottom: 1px solid __BORDER__; font-weight: 600; font-size: 14px; }
+  .dlg-b { overflow: auto; padding: 6px 14px 12px; }
+  .dlg-f { display: flex; gap: 8px; justify-content: flex-end; padding: 10px 14px; border-top: 1px solid __BORDER__; }
+  .sec { font-size: 11px; color: __MUTED__; text-transform: uppercase; letter-spacing: .05em; margin: 12px 0 4px; }
+  .row { display: flex; align-items: center; gap: 8px; padding: 5px 4px; border-radius: 4px; }
+  .row:hover { background: __BUTTON__; }
+  .row .grow { flex: 1; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+  .add { cursor: pointer; padding: 6px 8px; border: 1px solid __BORDER__; border-radius: 4px; line-height: 1.25; }
+  .add:hover { border-color: #2962ff; background: __BUTTON__; }
+  .add small { display: block; color: __MUTED__; font-size: 11px; }
+  .row small { color: __MUTED__; }
+  .ib { cursor: pointer; border: 0; background: transparent; color: __TEXT__; font-size: 14px; padding: 2px 5px; border-radius: 4px; }
+  .ib:hover { background: __BORDER__; }
+  .btn { cursor: pointer; border: 1px solid __BORDER__; background: __BUTTON__; color: __TEXT__; border-radius: 4px;
+         padding: 6px 12px; font-size: 13px; }
+  .btn.pri { background: #2962ff; border-color: #2962ff; color: #fff; }
+  .tabs { display: flex; gap: 4px; border-bottom: 1px solid __BORDER__; margin: 0 -14px 8px; padding: 0 14px; }
+  .tab { cursor: pointer; padding: 8px 10px; border-bottom: 2px solid transparent; color: __MUTED__; }
+  .tab.on { color: __TEXT__; border-bottom-color: #2962ff; }
+  .fld { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 5px 0; }
+  .fld input[type=number], .fld select { width: 110px; background: __BG__; color: __TEXT__; border: 1px solid __BORDER__;
+         border-radius: 4px; padding: 4px 6px; font-size: 13px; }
+  .fld input[type=color] { width: 34px; height: 24px; padding: 0; border: 1px solid __BORDER__; border-radius: 4px;
+         background: transparent; cursor: pointer; }
+  .fld .ctl { display: flex; align-items: center; gap: 6px; }
+  .fld select.sm { width: 64px; }
+  input[type=checkbox] { accent-color: #2962ff; cursor: pointer; }
+</style></head><body>
+<div id="chart"><div id="legend"><div id="ohlc"></div><div id="studies"></div></div>
+<button id="fx" class="tb" title="Indikátory (pridať, skryť, nastaviť)">ƒx Indikátory</button>
+<button id="fs" class="tb" title="Celá obrazovka (Esc = späť)">⛶</button>
+<div id="modal"></div></div>
+<div id="help">ťahaj graf = posun · koliesko / dva prsty = zoom · ťahaj cenovú stupnicu hore/dole = natiahnuť ·
+ dvojklik na stupnicu = späť · ƒx = indikátory</div>
+<script>__STUDIES_JS__</script>
+<script src="__LIB_LOCAL__" onerror="var s=document.createElement('script');s.src='__LIB_CDN__';s.onload=start;document.head.appendChild(s);"></script>
+<script>
+const SPEC = __SPEC__;
+const STORE_KEY = "ktma-range-__KEY__";
+const STUDY_KEY = "ktma-studies-v1";          // shared by every chart in this browser
+const LS = {
+  get(k) { try { return JSON.parse(window.localStorage.getItem(k) || 'null'); } catch (e) { return null; } },
+  set(k, v) { try { window.localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} },
+};
+const esc = x => String(x).replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]));
+const LINE_STYLES = [['━ plná', 0], ['┈ bodky', 1], ['╌ čiarky', 2], ['— dlhé čiarky', 3], ['· riedke bodky', 4]];
+const SOURCES = [['close', 'Close'], ['open', 'Open'], ['high', 'High'], ['low', 'Low'], ['hl2', '(H+L)/2'],
+                 ['hlc3', '(H+L+C)/3'], ['ohlc4', '(O+H+L+C)/4']];
+
+// ---- indicator instances (saved in this browser) -------------------------------------------
+function loadStudies() {
+  const saved = LS.get(STUDY_KEY);
+  const list = (Array.isArray(saved) ? saved : SPEC.studyDefaults).map(KS.normalize).filter(Boolean);
+  for (const type of SPEC.forceStudies || []) {     // e.g. VWAP on a VWAP alert, not saved
+    if (!list.some(s => s.type === type && s.visible)) list.push(KS.normalize({ type, temp: true }));
+  }
+  return list;
+}
+function saveStudies() {
+  LS.set(STUDY_KEY, studies.filter(s => !s.temp).map(({ temp, ...s }) => s));
+}
+let studies = loadStudies();
+
+// ---- chart -----------------------------------------------------------------------------------
+const D = SPEC.ohlcv, WARM = SPEC.warm || 0;
+const T = D.t.slice(WARM);
+const idxByTime = new Map(T.map((t, i) => [t, i]));
+const ok = v => v !== null && v !== undefined && !Number.isNaN(v);
+const toSeries = arr => arr.slice(WARM).map((v, i) => [T[i], v]).filter(([, v]) => ok(v)).map(([time, value]) => ({ time, value }));
+let chart = null, rows = [];
+
+function build(keepRange) {
+  const LW = LightweightCharts;
+  const ST = SPEC.style, C = ST.colors;
+  const el = document.getElementById('chart');
+  chart = LW.createChart(el, {
+    autoSize: true,
+    layout: { background: { color: C.bg }, textColor: C.text, fontSize: 11,
+              panes: { separatorColor: C.border, enableResize: true } },
+    grid: { vertLines: { color: C.grid, visible: ST.grid }, horzLines: { color: C.grid, visible: ST.grid } },
+    crosshair: { mode: LW.CrosshairMode.Normal },
+    rightPriceScale: { borderColor: C.border, scaleMargins: { top: 0.08, bottom: 0.12 }, mode: ST.scaleMode },
+    timeScale: { borderColor: C.border, timeVisible: true, secondsVisible: false, rightOffset: 5 },
+    handleScale: { axisPressedMouseMove: { time: true, price: true }, mouseWheel: true, pinch: true,
+                   axisDoubleClickReset: { time: true, price: true } },
+    handleScroll: { mouseWheel: false, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: false },
+  });
+  let candles;
+  if (ST.series === 'line') {
+    candles = chart.addSeries(LW.LineSeries, { color: ST.up, lineWidth: Math.max(2, ST.line_width) });
+    candles.setData(SPEC.candles.map(c => ({ time: c.time, value: c.close })));
+  } else if (ST.series === 'bar') {
+    candles = chart.addSeries(LW.BarSeries, { upColor: ST.up, downColor: ST.down, thinBars: false });
+    candles.setData(SPEC.candles);
+  } else {
+    candles = chart.addSeries(LW.CandlestickSeries, { upColor: ST.up, downColor: ST.down, borderVisible: false,
+                                                       wickUpColor: ST.up, wickDownColor: ST.down });
+    candles.setData(SPEC.candles);
+  }
+  const byTime = new Map(SPEC.candles.map(c => [c.time, c]));
+  const quiet = { priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false };
+  for (const g of SPEC.segments) {
+    const s = chart.addSeries(LW.LineSeries, { ...quiet, color: g.color, lineWidth: g.width, lineStyle: g.style,
+                                                 autoscaleInfoProvider: () => null });
+    s.setData(g.data);
+  }
+  if (SPEC.position) {
+    const P = SPEC.position;
+    const zone = (value, color) => {
+      const z = chart.addSeries(LW.BaselineSeries, {
+        baseValue: { type: 'price', price: P.entry },
+        topFillColor1: color, topFillColor2: color, bottomFillColor1: color, bottomFillColor2: color,
+        topLineColor: 'rgba(0,0,0,0)', bottomLineColor: 'rgba(0,0,0,0)', lineWidth: 1,
+        priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false,
+        autoscaleInfoProvider: () => null });
+      z.setData(P.times.map(t => ({ time: t, value: value })));
+    };
+    zone(P.tp, P.profit);
+    zone(P.sl, P.loss);
+  }
+  if (SPEC.markers.length) LW.createSeriesMarkers(candles, SPEC.markers);
+  for (const p of SPEC.priceLines) {
+    candles.createPriceLine({ price: p.price, color: p.color, lineWidth: p.width || 1,
+                              lineStyle: p.style === undefined ? 2 : p.style, axisLabelVisible: true, title: p.title });
+  }
+
+  // Indicators: overlays on the price pane, volume at its bottom, oscillators in their own panes.
+  rows = [];
+  let pane = 1;
+  for (const s of studies) {
+    const def = KS.STUDIES[s.type];
+    const row = { s, def, values: {} };
+    rows.push(row);
+    if (!s.visible) continue;
+    const r = def.calc(D, s);
+    const p = def.pane === true ? pane++ : 0;
+    const line = (k, extra) => {
+      const st = s.plots[k];
+      const ser = chart.addSeries(LW.LineSeries, { ...quiet, color: st.color, lineWidth: st.width, lineStyle: st.style,
+                                                   visible: st.visible, ...(extra || {}) }, p);
+      ser.setData(toSeries(r[k]));
+      row.values[k] = r[k].slice(WARM);
+      return ser;
+    };
+    if (s.type === 'volume') {
+      const up = s.plots.up.color + '80', dn = s.plots.down.color + '80';
+      const v = chart.addSeries(LW.HistogramSeries, { priceFormat: { type: 'volume' }, priceScaleId: 'vol',
+                                                       priceLineVisible: false, lastValueVisible: false });
+      v.priceScale().applyOptions({ scaleMargins: { top: 0.82, bottom: 0 } });
+      v.setData(T.map((t, i) => ({ time: t, value: D.v[WARM + i] || 0,
+                                   color: D.c[WARM + i] >= D.o[WARM + i] ? up : dn })));
+      row.values.vol = D.v.slice(WARM);
+      if (s.inputs.ma > 0) line('vma', { priceScaleId: 'vol', priceFormat: { type: 'volume' } });
+      continue;
+    }
+    if (s.type === 'macd') {
+      const h = r.hist, mu = s.plots.hup.color, md = s.plots.hdown.color;
+      const hs = chart.addSeries(LW.HistogramSeries, { priceLineVisible: false, lastValueVisible: false }, p);
+      // Green above zero, red below; a weakening bar is the same colour, slightly transparent.
+      hs.setData(h.slice(WARM).map((v, i) => [T[i], v, h[WARM + i - 1]]).filter(([, v]) => ok(v)).map(([time, v, prev]) => ({
+        time, value: v, color: v >= 0 ? (ok(prev) && v < prev ? mu + '99' : mu) : (ok(prev) && v > prev ? md + '99' : md) })));
+      row.values.hist = h.slice(WARM);
+    }
+    let first = null;
+    for (const pl of def.plots) {
+      if (pl.kind !== 'line' || !(pl.k in r)) continue;
+      const ser = line(pl.k, def.pane ? { priceLineVisible: false } : { autoscaleInfoProvider: () => null });
+      first = first || ser;
+    }
+    if (first && s.plots.levels && s.plots.levels.visible) {
+      const lv = s.plots.levels;
+      for (const k of ['upper', 'lower', 'level']) {
+        if (k in s.inputs) first.createPriceLine({ price: s.inputs[k], color: lv.color, lineWidth: lv.width,
+                                                   lineStyle: lv.style, axisLabelVisible: true, title: '' });
+      }
+    }
+  }
+  const panes = chart.panes();
+  if (panes.length > 1) {
+    panes[0].setStretchFactor(Math.max(3, 6 - panes.length));
+    for (let i = 1; i < panes.length; i++) panes[i].setStretchFactor(1);
+  }
+  drawLegendRows();
+
+  // OHLC legend like on TradingView
+  const ohlc = document.getElementById('ohlc');
+  const fmt = x => (x === undefined ? '–' : x.toFixed(2));
+  const show = d => {
+    if (!d) { ohlc.innerHTML = ''; return; }
+    const col = d.close >= d.open ? ST.up : ST.down;
+    const notes = (SPEC.notes || {})[String(d.time)] || [];
+    ohlc.innerHTML = `O <b style="color:${col}">${fmt(d.open)}</b> H <b style="color:${col}">${fmt(d.high)}</b> ` +
+                     `L <b style="color:${col}">${fmt(d.low)}</b> C <b style="color:${col}">${fmt(d.close)}</b>` +
+                     notes.map(x => `<br>${esc(x)}`).join('');
+    updateLegendValues(idxByTime.get(d.time));
+  };
+  const lastCandle = SPEC.candles[SPEC.candles.length - 1];
+  show(lastCandle);
+  chart.subscribeCrosshairMove(p => {
+    const d = p && p.time !== undefined ? byTime.get(p.time) : null;
+    show(d || lastCandle);
+  });
+
+  // Keep zoom/scroll across Streamlit reruns (e.g. while editing SL/TP) and indicator changes.
+  const ts = chart.timeScale();
+  let restored = false;
+  try {
+    const saved = keepRange || JSON.parse(window.localStorage.getItem(STORE_KEY) || 'null');
+    if (saved && saved.to - saved.from > 5) { ts.setVisibleLogicalRange(saved); restored = true; }
+  } catch (e) {}
+  if (!restored) { if (SPEC.focus) ts.setVisibleLogicalRange(SPEC.focus); else ts.fitContent(); }
+  ts.subscribeVisibleLogicalRangeChange(r => {
+    if (!r || el.clientWidth === 0) return;   // never remember the range of a hidden chart
+    try { window.localStorage.setItem(STORE_KEY, JSON.stringify(r)); } catch (e) {}
+  });
+}
+
+function rebuild() {
+  if (!chart) return;
+  const r = chart.timeScale().getVisibleLogicalRange();
+  chart.remove();
+  chart = null;
+  build(r);
+}
+function changed() { saveStudies(); rebuild(); }
+
+// ---- legend rows: name, value under the crosshair, 👁 ⚙ ✕ ------------------------------------
+function fmtVal(v, type) {
+  if (!ok(v)) return '–';
+  if (type === 'volume') return Math.abs(v) >= 1e6 ? (v / 1e6).toFixed(2) + 'M' : Math.abs(v) >= 1e3 ? (v / 1e3).toFixed(1) + 'K' : v.toFixed(0);
+  return Math.abs(v) >= 100 ? v.toFixed(2) : v.toFixed(Math.abs(v) >= 1 ? 2 : 4);
+}
+function drawLegendRows() {
+  const box = document.getElementById('studies');
+  box.innerHTML = rows.map((r, n) => `<div class="lg-row${r.s.visible ? '' : ' off'}" data-n="${n}">` +
+    `<span class="lg-name">${esc(r.def.label(r.s))}</span><span class="vals"></span>` +
+    `<button class="lg-btn" data-act="eye" title="${r.s.visible ? 'Skryť' : 'Zobraziť'}">${r.s.visible ? '👁' : '◌'}</button>` +
+    `<button class="lg-btn" data-act="cfg" title="Nastavenia">⚙</button>` +
+    `<button class="lg-btn" data-act="del" title="Odstrániť">✕</button></div>`).join('<br>');
+  box.querySelectorAll('.lg-row').forEach(div => div.addEventListener('click', e => {
+    const b = e.target.closest('button');
+    const s = rows[+div.dataset.n].s;
+    if (!b) { if (e.detail === 2) openSettings(s); return; }   // double-click name = settings, like TradingView
+    if (b.dataset.act === 'eye') { s.visible = !s.visible; changed(); }
+    else if (b.dataset.act === 'cfg') openSettings(s);
+    else if (b.dataset.act === 'del') { studies = studies.filter(x => x !== s); changed(); }
+  }));
+}
+function updateLegendValues(i) {
+  if (i === undefined) i = T.length - 1;
+  document.querySelectorAll('#studies .lg-row').forEach(div => {
+    const r = rows[+div.dataset.n];
+    const keys = r.s.type === 'volume' ? ['vol'] : r.s.type === 'macd' ? ['macd', 'signal', 'hist']
+               : r.def.plots.filter(p => p.kind === 'line').map(p => p.k);
+    div.querySelector('.vals').innerHTML = keys.filter(k => r.values[k] && (!r.s.plots[k] || r.s.plots[k].visible)).map(k => {
+      const st = r.s.plots[k] || (k === 'hist' ? r.s.plots.hup : r.s.plots.up) || {};
+      return `<span class="lg-val" style="color:${st.color || 'inherit'}">${fmtVal(r.values[k][i], r.s.type)}</span>`;
+    }).join('');
+  });
+}
+
+// ---- dialogs ---------------------------------------------------------------------------------
+const modal = document.getElementById('modal');
+function closeModal() { modal.classList.remove('open'); modal.innerHTML = ''; }
+modal.addEventListener('mousedown', e => { if (e.target === modal) closeModal(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && modal.classList.contains('open')) { e.preventDefault(); closeModal(); } });
+
+function openIndicators() {
+  const types = Object.entries(KS.STUDIES);
+  modal.innerHTML = `<div class="dlg"><div class="dlg-h">Indikátory<button class="ib" data-x>✕</button></div>
+    <div class="dlg-b"><div class="sec">Na grafe (zaškrtnuté = zobrazené)</div><div id="act"></div>
+    <div class="sec">Pridať indikátor</div>
+    <div class="grid">${types.map(([k, d]) => `<div class="add" data-add="${k}" title="Pridať ${esc(d.name)}"><b>＋ ${esc(d.name)}</b>
+      <small>${esc(d.title)}</small></div>`).join('')}</div></div>
+    <div class="dlg-f"><button class="btn" data-reset title="Vráti pôvodnú sadu indikátorov">↺ Predvolené</button>
+      <button class="btn pri" data-x>Hotovo</button></div></div>`;
+  const act = modal.querySelector('#act');
+  const renderActive = () => {
+    act.innerHTML = studies.length ? studies.map((s, n) => `<div class="row" data-n="${n}">
+        <input type="checkbox" ${s.visible ? 'checked' : ''} title="Zobraziť / skryť">
+        <span class="grow">${esc(KS.STUDIES[s.type].label(s))}${s.temp ? ' <small>(k tomuto alertu)</small>' : ''}</span>
+        <button class="ib" data-act="up" title="Vyššie">↑</button>
+        <button class="ib" data-act="cfg" title="Nastavenia">⚙</button>
+        <button class="ib" data-act="del" title="Odstrániť">✕</button></div>`).join('')
+      : '<small>Žiadne indikátory. Pridaj si ich nižšie.</small>';
+    act.querySelectorAll('.row').forEach(div => {
+      const s = studies[+div.dataset.n];
+      div.querySelector('input').addEventListener('change', e => { s.visible = e.target.checked; changed(); });
+      div.querySelectorAll('button').forEach(b => b.addEventListener('click', () => {
+        const n = +div.dataset.n;
+        if (b.dataset.act === 'cfg') { openSettings(s, openIndicators); return; }
+        if (b.dataset.act === 'del') studies.splice(n, 1);
+        if (b.dataset.act === 'up' && n > 0) [studies[n - 1], studies[n]] = [studies[n], studies[n - 1]];
+        changed(); renderActive();
+      }));
+    });
+  };
+  renderActive();
+  modal.querySelectorAll('[data-add]').forEach(div => div.addEventListener('click', () => {
+    const s = KS.normalize({ type: div.dataset.add });
+    studies.push(s); changed(); openSettings(s, openIndicators);
+  }));
+  modal.querySelectorAll('[data-x]').forEach(b => b.addEventListener('click', closeModal));
+  modal.querySelector('[data-reset]').addEventListener('click', () => {
+    const b = modal.querySelector('[data-reset]');
+    if (!b.dataset.sure) { b.dataset.sure = '1'; b.textContent = 'Naozaj? Klikni znova'; return; }
+    studies = SPEC.studyDefaults.map(KS.normalize); changed(); openIndicators();
+  });
+  modal.classList.add('open');
+}
+
+// TradingView-like settings: "Vstupy" (periods, source, levels) and "Štýl" (visibility, colour, width, line style).
+// Changes apply immediately; "Zrušiť" puts the previous values back.
+function openSettings(s, back) {
+  const def = KS.STUDIES[s.type];
+  const before = JSON.stringify({ inputs: s.inputs, plots: s.plots });
+  let tab = def.inputs.length ? 'in' : 'st';
+  const opts = (list, cur) => list.map(([label, v]) => `<option value="${v}" ${String(v) === String(cur) ? 'selected' : ''}>${esc(label)}</option>`).join('');
+  const body = () => tab === 'in'
+    ? def.inputs.map(i => `<div class="fld"><span>${esc(i.label)}</span>${i.type === 'source'
+        ? `<select data-in="${i.k}">${opts(SOURCES.map(([v, l]) => [l, v]), s.inputs[i.k])}</select>`
+        : `<input type="number" data-in="${i.k}" value="${s.inputs[i.k]}" min="${i.min}" max="${i.max}" step="${i.step || 1}">`}</div>`).join('')
+    : def.plots.map(p => { const st = s.plots[p.k];
+        return `<div class="fld"><label class="ctl">${p.kind === 'color' ? '' : `<input type="checkbox" data-pl="${p.k}" data-f="visible" ${st.visible ? 'checked' : ''}>`}
+          ${esc(p.label)}</label><span class="ctl"><input type="color" data-pl="${p.k}" data-f="color" value="${st.color.slice(0, 7)}">
+          ${p.kind === 'color' ? '' : `<select class="sm" data-pl="${p.k}" data-f="width" title="Hrúbka">${opts([1, 2, 3, 4].map(w => [w + ' px', w]), st.width)}</select>
+          <select data-pl="${p.k}" data-f="style" title="Štýl čiary">${opts(LINE_STYLES, st.style)}</select>`}</span></div>`; }).join('');
+  const paint = () => {
+    modal.innerHTML = `<div class="dlg"><div class="dlg-h"><span>${esc(def.name)} <small style="font-weight:400;color:__MUTED__">${esc(def.title)}</small></span>
+      <button class="ib" data-cancel>✕</button></div><div class="dlg-b">
+      <div class="tabs">${def.inputs.length ? `<span class="tab ${tab === 'in' ? 'on' : ''}" data-tab="in">Vstupy</span>` : ''}
+        <span class="tab ${tab === 'st' ? 'on' : ''}" data-tab="st">Štýl</span></div>${body()}</div>
+      <div class="dlg-f"><button class="btn" data-default>Predvolené</button><span class="grow" style="flex:1"></span>
+        <button class="btn" data-cancel>Zrušiť</button><button class="btn pri" data-ok>OK</button></div></div>`;
+    modal.querySelectorAll('[data-tab]').forEach(t => t.addEventListener('click', () => { tab = t.dataset.tab; paint(); }));
+    modal.querySelectorAll('[data-in]').forEach(inp => inp.addEventListener('change', () => {
+      const i = def.inputs.find(x => x.k === inp.dataset.in);
+      if (i.type === 'source') s.inputs[i.k] = inp.value;
+      else { const v = Math.min(i.max, Math.max(i.min, +inp.value)); if (Number.isFinite(v)) s.inputs[i.k] = v; inp.value = s.inputs[i.k]; }
+      changed();
+    }));
+    modal.querySelectorAll('[data-pl]').forEach(inp => inp.addEventListener(inp.type === 'color' ? 'input' : 'change', () => {
+      const st = s.plots[inp.dataset.pl], f = inp.dataset.f;
+      st[f] = f === 'visible' ? inp.checked : f === 'color' ? inp.value : +inp.value;
+      changed();
+    }));
+    modal.querySelector('[data-default]').addEventListener('click', () => {
+      const d = KS.normalize({ type: s.type });
+      s.inputs = d.inputs; s.plots = d.plots; changed(); paint();
+    });
+    modal.querySelectorAll('[data-cancel]').forEach(b => b.addEventListener('click', () => {
+      Object.assign(s, JSON.parse(before)); changed(); back ? back() : closeModal();
+    }));
+    modal.querySelector('[data-ok]').addEventListener('click', () => (back ? back() : closeModal()));
+  };
+  paint();
+  modal.classList.add('open');
+}
+
+document.getElementById('fx').onclick = openIndicators;
+document.getElementById('fs').onclick = () => {
+  if (document.fullscreenElement) document.exitFullscreen();
+  else document.documentElement.requestFullscreen().catch(() => {});
+};
+// Another chart on the page changed the indicators: follow it.
+window.addEventListener('storage', e => {
+  if (e.key !== STUDY_KEY || !chart) return;
+  const temp = studies.filter(s => s.temp);
+  studies = loadStudies().filter(s => !s.temp).concat(temp);
+  rebuild();
+});
+// A chart inside a hidden Streamlit tab has zero width; wait until it is visible.
+function start() {
+  if (!window.LightweightCharts || chart) return;
+  const el = document.getElementById('chart');
+  if (el.clientWidth > 0) { build(); return; }
+  const obs = new ResizeObserver(() => { if (el.clientWidth > 0 && !chart) { obs.disconnect(); build(); } });
+  obs.observe(el);
+}
+if (window.LightweightCharts) start(); else window.addEventListener('load', start);
+</script></body></html>
