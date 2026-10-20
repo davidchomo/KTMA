@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="sk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nexus</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M8 1l7 7-7 7-7-7z' fill='%232962ff'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="static/app.css">
+</head>
+<body class="tb-top">
+<div id="app">
+  <nav id="toolbar" class="no-chart">
+    <button class="tbtn" id="bSymbol" title="Symbol"><span class="ic">◆</span><span class="tx" id="symLabel">XAU/USD</span><span class="car">▾</span></button>
+    <button class="tbtn" id="bType" title="Typ grafu"><span class="ic" id="typeIcon">🕯</span><span class="tx" id="typeLabel">Sviečky</span><span class="car">▾</span></button>
+    <button class="tbtn" id="bTf" title="Časový rámec"><span class="ic">⏱</span><span class="tx" id="tfLabel">5m</span><span class="car">▾</span></button>
+    <button class="tbtn" id="bDraw" title="Kreslenie"><span class="ic">✎</span><span class="tx">Kreslenie</span><span class="car">▾</span></button>
+    <button class="tbtn" id="bInd" title="Indikátory a vzory"><span class="ic">ƒx</span><span class="tx">Indikátory</span><span class="car">▾</span></button>
+    <button class="tbtn" id="bIdea" title="Obchodný nápad a labelovanie"><span class="ic">💡</span><span class="tx">Nápad</span><span class="car"></span></button>
+    <button class="tbtn" id="bSettings" title="Nastavenia grafu"><span class="ic">⚙</span><span class="tx">Nastavenia</span><span class="car"></span></button>
+    <button class="tbtn" id="bPanel" title="Poloha panelu"><span class="ic">⇅</span><span class="tx">Panel</span><span class="car">▾</span></button>
+    <button class="tbtn" id="bFull" title="Celá obrazovka (F11)"><span class="ic" id="fullIcon">⛶</span><span class="tx" id="fullLabel">Celá obr.</span><span class="car"></span></button>
+    <span class="tb-gap"></span>
+    <span id="status" class="status" title="Stav dát"><i></i><span id="statusText">…</span></span>
+  </nav>
+  <main id="chartWrap">
+    <div id="chart"></div>
+    <div id="legend" class="no-chart"><div id="ohlc"></div><div id="studies"></div></div>
+    <div id="hint" class="no-chart"></div>
+    <div id="drawbar" class="no-chart"></div>
+    <div id="histBar" class="no-chart"><span id="histText"></span><button class="btn sm" id="backLive">↩ Späť na živý graf</button></div>
+    <button id="showToolbar" class="no-chart" title="Zobraziť panel">☰</button>
+  </main>
+</div>
+<section id="idea" class="no-chart">
+  <header id="ideaHead"><span id="ideaTitle">💡 Obchodný nápad</span><span class="grow"></span>
+    <button class="ib" id="ideaPrev" title="Predchádzajúci">‹</button><button class="ib" id="ideaNext" title="Ďalší">›</button>
+    <button class="ib" id="ideaMin" title="Zbaliť">–</button><button class="ib" id="ideaClose" title="Zavrieť">✕</button></header>
+  <div id="ideaBody"></div>
+</section>
+<div id="pop" class="no-chart"></div>
+<div id="modal" class="no-chart"></div>
+<div id="toast"></div>
+<script src="lib/lightweight-charts-5.2.1.js"></script>
+<script src="static/studies.js"></script>
+<script src="static/ui.js"></script>
+<script src="static/drawings.js"></script>
+<script src="static/app.js"></script>
+</body>
+</html>

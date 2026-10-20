@@ -13,6 +13,7 @@ RUN pip install -r requirements.txt
 COPY ktma ./ktma
 COPY docs ./docs
 COPY static ./static
+COPY web ./web
 COPY label_app.py config.yaml ./
 COPY .streamlit ./.streamlit
 

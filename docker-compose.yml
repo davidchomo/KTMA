@@ -23,3 +23,14 @@ services:
     ports:
       - "127.0.0.1:8501:8501"            # iba lokálne; von ide cez Caddy (HTTPS)
     restart: unless-stopped
+
+  web:                                 # branch2: minimal full-screen chart + trading idea window
+    build: .
+    command: uvicorn web.server:app --host 0.0.0.0 --port 8000 --proxy-headers
+    env_file: .env
+    volumes:
+      - ./data:/app/data
+      - ./config.yaml:/app/config.yaml
+    ports:
+      - "127.0.0.1:8502:8000"
+    restart: unless-stopped

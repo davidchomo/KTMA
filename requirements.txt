@@ -6,3 +6,5 @@ tzdata>=2024.1
 yfinance>=0.2.54
 streamlit>=1.40
 pytest>=8.0
+fastapi>=0.115
+uvicorn>=0.30
