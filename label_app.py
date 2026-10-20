@@ -73,9 +73,35 @@ DEFAULT_LAYERS = ["Čiary", "Dotyky", "Kanál", "EMA 21/50", "Alerty", "Labely",
 PANELS = ["Objem", "RSI", "MACD"]
 
 
+VIEW_DEFAULTS = {"sidebar": True, "header": True, "pills": True, "extras": True,
+                 "form": "vedľa grafu", "height": 700}
+FORM_MODES = ["vedľa grafu", "pod grafom", "skrytý"]
+
+
+def view_settings(key: str) -> dict:
+    """'👁️ Zobrazenie' popover: what is visible and how tall the chart is. Shared by both chart tabs."""
+    v = {**VIEW_DEFAULTS, **st.session_state.get("view", {})}
+    with st.popover("👁️ Zobrazenie", use_container_width=True):
+        v["sidebar"] = st.toggle("Bočný panel (filtre, meno)", v["sidebar"], key=f"{key}_sb")
+        v["header"] = st.toggle("Hlavička alertu", v["header"], key=f"{key}_hd")
+        v["pills"] = st.toggle("Prepínače vrstiev nad grafom", v["pills"], key=f"{key}_pl")
+        v["extras"] = st.toggle("Výsledky a Claude pod grafom", v["extras"], key=f"{key}_ex")
+        v["form"] = st.radio("Formulár na labelovanie", FORM_MODES, index=FORM_MODES.index(v["form"]),
+                             key=f"{key}_fm", horizontal=True)
+        v["height"] = st.slider("Výška grafu (px)", 400, 1400, v["height"], 50, key=f"{key}_ht")
+        st.caption("⛶ v pravom hornom rohu grafu = celá obrazovka (Esc = späť).")
+    st.session_state["view"] = v
+    if not v["sidebar"]:
+        st.markdown("<style>[data-testid='stSidebar'],[data-testid='stSidebarCollapsedControl']"
+                    "{display:none}</style>", unsafe_allow_html=True)
+    return v
+
+
 def layer_picker(key: str, stacked: bool = False) -> set:
     """On/off switches right above the chart; the choice is shared by both chart tabs."""
     saved = set(st.session_state.get("layers_saved", DEFAULT_LAYERS))
+    if not st.session_state.get("view", VIEW_DEFAULTS).get("pills", True):
+        return saved
     overlays = [l for l in LAYERS if l not in PANELS]
     c = [st.container(), st.container()] if stacked else st.columns([5, 2])
     on_chart = c[0].pills("Na grafe", overlays, selection_mode="multi",
@@ -88,7 +114,8 @@ def layer_picker(key: str, stacked: bool = False) -> set:
 
 
 def chart_height(layers: set) -> int:
-    return 430 + 120 * sum(p in layers for p in ("RSI", "MACD"))
+    """Total chart height stays the same when panels are hidden; the price pane gets the space."""
+    return int(st.session_state.get("view", VIEW_DEFAULTS).get("height", 700))
 
 
 def plan_lines(plan: dict) -> list[dict]:
@@ -120,7 +147,8 @@ def chart(cfg, store, alert, blind: bool, before: int, after: int, plan: dict, l
 
     layers = set(layers) | ({"VWAP"} if alert["signal"].startswith("VWAP") else set())
     spec = build_spec(w, layers, alert.get("lines"), focus_i=a_x,
-                      markers=[{"i": a_x, "direction": alert["direction"], "text": "ALERT", "size": 2}],
+                      markers=[{"i": a_x, "direction": alert["direction"], "size": 2,
+                                "text": "LONG?" if alert["direction"] == "bullish" else "SHORT?"}],
                       price_lines=plan_lines(plan), reg_channel=cfg["structure"].get("regression_channel"),
                       rsi_levels=(cfg["indicators"]["rsi"]["overbought"], cfg["indicators"]["rsi"]["oversold"]),
                       label_marks=past_labels(store, alert["symbol"], alert["timeframe"], w, alert["id"]))
@@ -228,9 +256,10 @@ def alert_header(alert: dict):
     feats = alert.get("features") or {}
     d = alert.get("details") or {}
     tf = alert["timeframe"]
-    top = st.columns([6, 1.2, 1.2])
-    top[0].markdown(f"#### {direction_text(alert['direction'])} · {title}")
-    top[2].toggle("⛶ Veľký graf", key="big_chart", help="Graf cez celú šírku, formulár pod ním.")
+    view = st.session_state.get("view", VIEW_DEFAULTS)
+    top = st.columns([6, 1.2])
+    if view["header"]:
+        top[0].markdown(f"#### {direction_text(alert['direction'])} · {title}")
     trend = " ".join(f"{t}{trend_arrow(feats.get(f'{t}__swing_trend'))[:1]}" for t in ("1h", "4h"))
     parts = [f"**{symbol_name(alert['symbol'])}**", tf, local_time(alert["bar_time"]), f"cena **{alert['price']:.2f}**"]
     if alert["rsi"] is not None:
@@ -240,7 +269,8 @@ def alert_header(alert: dict):
     if d.get("adx") is not None:
         parts.append(f"ADX {d['adx']:.0f}")
     parts += [f"trend {trend}", f"#{alert['id']}"]
-    st.markdown(" · ".join(parts))
+    if view["header"]:
+        st.markdown(" · ".join(parts))
 
     with top[1].popover("ℹ️ Popis", use_container_width=True):
         st.markdown(f"**{direction_text(alert['direction'])} · {title}**")
@@ -336,13 +366,15 @@ def page_label(cfg, store, f):
     key = f"a{alert['id']}"
     default_dir = existing.get("label") or ("LONG" if alert["direction"] == "bullish" else "SHORT")
 
-    big = st.session_state.get("big_chart", False)
-    if big:
-        chart_area = st.container()
-        g1, g2, g3 = st.columns(3)
-    else:
+    view = st.session_state.get("view", VIEW_DEFAULTS)
+    big = view["form"] != "vedľa grafu"
+    if view["form"] == "vedľa grafu":
         chart_area, right = st.columns([3, 1])
         g1 = g2 = g3 = right
+    else:
+        chart_area = st.container()
+        holder = st.container() if view["form"] == "pod grafom" else st.expander("🏷️ Labelovať tento alert")
+        g1, g2, g3 = holder.columns(3)
     with g1:
         label = st.radio("Label", list(LABELS), format_func=LABELS.get, key=f"{key}_label",
                          index=list(LABELS).index(default_dir) if default_dir in LABELS else 0)
@@ -376,9 +408,11 @@ def page_label(cfg, store, f):
     with chart_area:
         layers = layer_picker("layers_label", stacked=not big)
         spec, height, df = chart(cfg, store, alert, f["blind"], f["before"], f["after"], plan, layers)
-        render(spec, height + (280 if big else 0),
+        render(spec, height,
                f"alert{alert['id']}-{int(f['blind'])}-{f['before']}-{f['after']}")
-        if not f["blind"]:
+        if not view["extras"]:
+            pass
+        elif not f["blind"]:
             o = store.outcome(alert["id"])
             if o:
                 res = {1: "✅ TP", -1: "❌ SL", 0: "⏱ timeout"}
@@ -391,9 +425,11 @@ def page_label(cfg, store, f):
                 if tr:
                     st.write(f"**Tvoj plán:** {'✅ TP' if tr['result'] == 1 else '❌ SL' if tr['result'] == -1 else '⏱ otvorený'} "
                              f"po {tr['bars']} sviečkach · výsledok **{tr['r_multiple']:+.2f} R**")
-        ask_claude(cfg, store, alert, df, f, existing)
-        with st.expander("Všetky uložené dáta alertu (features, čiary, indikátory)"):
-            st.json({"details": alert["details"], "lines": alert["lines"], "features": alert["features"]}, expanded=False)
+        if view["extras"]:
+            ask_claude(cfg, store, alert, df, f, existing)
+            with st.expander("Všetky uložené dáta alertu (features, čiary, indikátory)"):
+                st.json({"details": alert["details"], "lines": alert["lines"], "features": alert["features"]},
+                        expanded=False)
 
     if save:
         if not f["labeler"]:
@@ -528,6 +564,8 @@ def main():
             st.session_state["current"] = None
             st.rerun()
 
+    with st.columns([8, 1.4])[1]:
+        view_settings("view")
     tabs = st.tabs(["🏷️ Labelovanie", "📡 Živý graf", "➕ Premeškaný vstup", "📊 Štatistiky a EV",
                     "⚙️ Nastavenia a slovník"])
     with tabs[0]:

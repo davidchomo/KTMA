@@ -17,8 +17,8 @@ LIB_CDN = "https://unpkg.com/lightweight-charts@5.2.1/dist/lightweight-charts.st
 
 UP, DOWN = "#26a69a", "#ef5350"
 # Past human labels on the chart: (position, colour, text)
-LABEL_STYLE = {"LONG": ("belowBar", "#00897b", "L"), "SHORT": ("aboveBar", "#d32f2f", "S"),
-               "SKIP": ("aboveBar", "#787b86", "✕"), "UNSURE": ("aboveBar", "#b2b5be", "?")}
+LABEL_STYLE = {"LONG": ("belowBar", "#26a69a", "L"), "SHORT": ("aboveBar", "#ef5350", "S"),
+               "SKIP": ("aboveBar", "#787b86", "✕"), "UNSURE": ("aboveBar", "#787b86", "?")}
 # TradingView's 4-colour MACD histogram: strong/weak green above zero, strong/weak red below.
 MACD_COLORS = {"up_rising": "#26a69a", "up_falling": "#b2dfdb", "down_falling": "#ff5252", "down_rising": "#ffcdd2"}
 
@@ -41,7 +41,8 @@ def _series(times, values) -> list[dict]:
 
 def build_spec(w: pd.DataFrame, layers: set, lines: list[dict] | None = None, focus_i: int | None = None,
                extend: int = 40, markers: list[dict] | None = None, price_lines: list[dict] | None = None,
-               reg_channel: dict | None = None, rsi_levels=(80, 20), label_marks: list[dict] | None = None) -> dict:
+               reg_channel: dict | None = None, rsi_levels=(80, 20), label_marks: list[dict] | None = None,
+               zoom_before: int = 70, zoom_after: int = 40) -> dict:
     """`w` = frame from add_indicators (bars of one timeframe, index 0..n-1)."""
     t = chart_times(w["open_time"])
     n = len(w)
@@ -55,9 +56,9 @@ def build_spec(w: pd.DataFrame, layers: set, lines: list[dict] | None = None, fo
         spec["overlays"] += [{"name": "EMA 21", "color": "#f2a900", "data": _series(t, w.get("ma_21", []))},
                              {"name": "EMA 50", "color": "#2962ff", "data": _series(t, w.get("ma_50", []))}]
     if "EMA 200" in layers and "ma_200" in w:
-        spec["overlays"].append({"name": "EMA 200", "color": "#9c27b0", "data": _series(t, w["ma_200"])})
+        spec["overlays"].append({"name": "EMA 200", "color": "#ce93d8", "data": _series(t, w["ma_200"])})
     if "VWAP" in layers and "vwap" in w:
-        spec["overlays"].append({"name": "VWAP", "color": "#00897b", "style": 2, "data": _series(t, w["vwap"])})
+        spec["overlays"].append({"name": "VWAP", "color": "#4db6ac", "style": 2, "data": _series(t, w["vwap"])})
 
     if "Kanál" in layers and reg_channel and focus + 1 >= reg_channel["period"]:
         xs = np.arange(focus + 1 - reg_channel["period"], focus + 1)
@@ -88,7 +89,7 @@ def build_spec(w: pd.DataFrame, layers: set, lines: list[dict] | None = None, fo
                 xi = int(np.searchsorted(wt, tt))
                 if xi < n and wt[xi] == tt:
                     spec["markers"].append({"time": int(t[xi]), "position": "atPriceMiddle", "price": float(val(xi)),
-                                            "color": color, "shape": "circle", "size": 0.6, "text": ""})
+                                            "color": color + "99", "shape": "circle", "size": 0.3, "text": ""})
         if "Rovnobežky" in layers and ln.get("channel_offset"):
             off = ln["channel_offset"]
             spec["segments"].append({"color": color, "width": 1, "style": 2, "data": [
@@ -112,9 +113,11 @@ def build_spec(w: pd.DataFrame, layers: set, lines: list[dict] | None = None, fo
         if 0 <= i < n:
             style = LABEL_STYLE.get(lab["label"], LABEL_STYLE["UNSURE"])
             spec["markers"].append({"time": int(t[i]), "position": style[0], "color": style[1],
-                                    "shape": "square", "size": 1, "text": style[2]})
+                                    "shape": "circle", "size": 0.5, "text": style[2]})
             notes.setdefault(int(t[i]), []).append(f"🏷️ label: {lab['label']}")
     spec["markers"].sort(key=lambda m: m["time"])
+    # Open zoomed in around the focus bar (older bars stay reachable by dragging left).
+    spec["focus"] = {"from": max(0, focus - zoom_before), "to": min(n - 1, focus + zoom_after) + 3}
     spec["notes"] = {str(k): v for k, v in notes.items()}
 
     if "Objem" in layers:
@@ -138,14 +141,20 @@ def build_spec(w: pd.DataFrame, layers: set, lines: list[dict] | None = None, fo
 
 _TEMPLATE = """<!doctype html><html><head><meta charset="utf-8">
 <style>
-  html, body { margin: 0; padding: 0; background: #ffffff; font-family: -apple-system, system-ui, sans-serif; }
+  html, body { margin: 0; padding: 0; background: #131722; font-family: -apple-system, system-ui, sans-serif; }
   #chart { position: relative; width: 100%; height: __HEIGHT__px; }
-  #legend { position: absolute; left: 8px; top: 6px; z-index: 5; font-size: 12px; color: #131722;
-            pointer-events: none; line-height: 1.5; background: rgba(255,255,255,0.75); padding: 0 4px; }
+  #legend { position: absolute; left: 8px; top: 6px; z-index: 5; font-size: 12px; color: #d1d4dc;
+            pointer-events: none; line-height: 1.5; background: rgba(19,23,34,0.75); padding: 0 4px; }
   #legend b { font-weight: 600; }
   #help { font-size: 11px; color: #787b86; padding: 2px 8px; }
+  #fs { position: absolute; right: 70px; top: 6px; z-index: 6; background: #2a2e39; color: #d1d4dc;
+        border: 1px solid #363a45; border-radius: 4px; font-size: 15px; line-height: 1; padding: 4px 7px;
+        cursor: pointer; }
+  #fs:hover { background: #363a45; }
+  html:fullscreen #chart { height: 100vh !important; }
+  html:fullscreen #help { display: none; }
 </style></head><body>
-<div id="chart"><div id="legend"></div></div>
+<div id="chart"><div id="legend"></div><button id="fs" title="Celá obrazovka (Esc = späť)">⛶</button></div>
 <div id="help">ťahaj graf = posun · koliesko / dva prsty = zoom · ťahaj cenovú stupnicu hore/dole = natiahnuť ·
  dvojklik na stupnicu = späť</div>
 <script src="__LIB_LOCAL__" onerror="var s=document.createElement('script');s.src='__LIB_CDN__';s.onload=start;document.head.appendChild(s);"></script>
@@ -159,12 +168,12 @@ function draw() {
   const el = document.getElementById('chart');
   const chart = LW.createChart(el, {
     autoSize: true,
-    layout: { background: { color: '#ffffff' }, textColor: '#131722', fontSize: 11,
-              panes: { separatorColor: '#e0e3eb', enableResize: true } },
-    grid: { vertLines: { color: '#f0f3fa' }, horzLines: { color: '#f0f3fa' } },
+    layout: { background: { color: '#131722' }, textColor: '#d1d4dc', fontSize: 11,
+              panes: { separatorColor: '#2a2e39', enableResize: true } },
+    grid: { vertLines: { color: '#1e222d' }, horzLines: { color: '#1e222d' } },
     crosshair: { mode: LW.CrosshairMode.Normal },
-    rightPriceScale: { borderColor: '#d1d4dc' },
-    timeScale: { borderColor: '#d1d4dc', timeVisible: true, secondsVisible: false, rightOffset: 5 },
+    rightPriceScale: { borderColor: '#2a2e39', scaleMargins: { top: 0.08, bottom: 0.12 } },
+    timeScale: { borderColor: '#2a2e39', timeVisible: true, secondsVisible: false, rightOffset: 5 },
     handleScale: { axisPressedMouseMove: { time: true, price: true }, mouseWheel: true, pinch: true,
                    axisDoubleClickReset: { time: true, price: true } },
     handleScroll: { mouseWheel: false, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: false },
@@ -176,7 +185,7 @@ function draw() {
   const quiet = { priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false };
   for (const o of SPEC.overlays) {
     const s = chart.addSeries(LW.LineSeries, { ...quiet, color: o.color, lineWidth: 1, lineStyle: o.style || 0,
-                                                 title: '' });
+                                                 title: '', autoscaleInfoProvider: () => null });
     s.setData(o.data);
   }
   for (const g of SPEC.segments) {
@@ -197,10 +206,10 @@ function draw() {
   }
   let pane = 1, rsiSeries = null;
   if (SPEC.panes.rsi) {
-    rsiSeries = chart.addSeries(LW.LineSeries, { color: '#7e57c2', lineWidth: 1, priceLineVisible: false }, pane);
+    rsiSeries = chart.addSeries(LW.LineSeries, { color: '#b39ddb', lineWidth: 1, priceLineVisible: false }, pane);
     rsiSeries.setData(SPEC.panes.rsi.data);
     for (const lvl of SPEC.panes.rsi.levels) {
-      rsiSeries.createPriceLine({ price: lvl, color: '#9598a1', lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: '' });
+      rsiSeries.createPriceLine({ price: lvl, color: '#5d606b', lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: '' });
     }
     pane++;
   }
@@ -216,7 +225,7 @@ function draw() {
   }
   const panes = chart.panes();
   if (panes.length > 1) {
-    panes[0].setStretchFactor(3);
+    panes[0].setStretchFactor(5);
     for (let i = 1; i < panes.length; i++) panes[i].setStretchFactor(1);
   }
 
@@ -245,12 +254,16 @@ function draw() {
     const saved = JSON.parse(window.localStorage.getItem(STORE_KEY) || 'null');
     if (saved && saved.to - saved.from > 5) { ts.setVisibleLogicalRange(saved); restored = true; }
   } catch (e) {}
-  if (!restored) ts.fitContent();
+  if (!restored) { if (SPEC.focus) ts.setVisibleLogicalRange(SPEC.focus); else ts.fitContent(); }
   ts.subscribeVisibleLogicalRangeChange(r => {
     if (!r || el.clientWidth === 0) return;   // never remember the range of a hidden chart
     try { window.localStorage.setItem(STORE_KEY, JSON.stringify(r)); } catch (e) {}
   });
 }
+document.getElementById('fs').onclick = () => {
+  if (document.fullscreenElement) document.exitFullscreen();
+  else document.documentElement.requestFullscreen().catch(() => {});
+};
 // A chart inside a hidden Streamlit tab has zero width; wait until it is visible.
 function start() {
   if (!window.LightweightCharts) return;

@@ -14,5 +14,6 @@ COPY ktma ./ktma
 COPY docs ./docs
 COPY static ./static
 COPY label_app.py config.yaml ./
+COPY .streamlit ./.streamlit
 
 CMD ["python", "-m", "ktma", "scan"]
