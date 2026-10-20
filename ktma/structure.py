@@ -265,6 +265,7 @@ def lines_snapshot(lines: list[Line], i: int, times: np.ndarray) -> list[dict]:
             "slope_per_bar": l.slope, "touches": l.touches, "value_at_alert": l.value(i),
             "channel_offset": l.channel_offset,
             "bars_from_t1": i - l.i1, "ended_here": l.ended_idx == i,
+            "touch_times": [int(times[k]) for k in sorted(set(l.touch_idxs)) if k <= i],
         })
     return out
 

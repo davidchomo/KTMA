@@ -97,3 +97,4 @@ def trend_arrow(v) -> str:
     if v is None:
         return "–"
     return "↑ rastie" if v > 0 else ("↓ klesá" if v < 0 else "↔ do strán")
+

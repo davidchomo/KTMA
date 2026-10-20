@@ -11,21 +11,20 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-import plotly.graph_objects as go
 import streamlit as st
 import yaml
-from plotly.subplots import make_subplots
 
 from ktma.cli import _load_env
 from ktma.config import ROOT, load_config, tf_ms
 from ktma.data import resample
 from ktma.dataset import build_dataset, ev_table
-from ktma.describe import (adx_text, direction_text, rsi_text, signal_text, symbol_name, trend_arrow,
-                           volume_text)
+from ktma.describe import (adx_text, direction_text, rsi_text, signal_text, symbol_name,
+                           trend_arrow, volume_text)
 from ktma.indicators import add_indicators
 from ktma.outcomes import trade_result
 from ktma.storage import Store
 from ktma.structure import StructureEngine, lines_snapshot
+from ktma.tvchart import build_spec, render
 
 _load_env()
 st.set_page_config(page_title="KTMA labelovanie", page_icon="📈", layout="wide")
@@ -67,111 +66,44 @@ def fmt_time(ms: int) -> str:
     return pd.Timestamp(int(ms), unit="ms", tz="UTC").strftime("%Y-%m-%d %H:%M")
 
 
-LAYERS = ["Čiary", "Rovnobežky", "Kanál", "EMA 21/50", "EMA 200", "VWAP",
-          "Alerty", "Objem", "RSI", "MACD"]
-DEFAULT_LAYERS = ["Čiary", "Kanál", "EMA 21/50", "Alerty", "Objem", "RSI", "MACD"]
+LAYERS = ["Čiary", "Dotyky", "Rovnobežky", "Kanál", "EMA 21/50", "EMA 200", "VWAP",
+          "Alerty", "Labely", "Objem", "RSI", "MACD"]
+DEFAULT_LAYERS = ["Čiary", "Dotyky", "Kanál", "EMA 21/50", "Alerty", "Labely", "Objem", "RSI", "MACD"]
 PANELS = ["Objem", "RSI", "MACD"]
 
 
-def layer_picker(key: str) -> set:
+def layer_picker(key: str, stacked: bool = False) -> set:
     """On/off switches right above the chart; the choice is shared by both chart tabs."""
-    default = st.session_state.get("layers_saved", DEFAULT_LAYERS)
-    picked = st.pills("Na grafe (klikni pre zapnutie / vypnutie)", LAYERS, selection_mode="multi",
-                      default=default, key=key)
+    saved = set(st.session_state.get("layers_saved", DEFAULT_LAYERS))
+    overlays = [l for l in LAYERS if l not in PANELS]
+    c = [st.container(), st.container()] if stacked else st.columns([5, 2])
+    on_chart = c[0].pills("Na grafe", overlays, selection_mode="multi",
+                          default=[l for l in overlays if l in saved], key=f"{key}_ov")
+    panels = c[1].pills("Panely pod grafom", PANELS, selection_mode="multi",
+                        default=[l for l in PANELS if l in saved], key=f"{key}_pn")
+    picked = set(on_chart) | set(panels)
     st.session_state["layers_saved"] = list(picked)
-    return set(picked)
+    return picked
 
 
-def base_figure(cfg, w: pd.DataFrame, focus_x: int, lines: list[dict], extend: int = 40,
-                layers=tuple(DEFAULT_LAYERS)):
-    """Candles + indicators + regression channel and trendlines as the scanner saw
-    them at bar `focus_x` of the window `w` (a frame from add_indicators)."""
-    x = np.arange(len(w))
-    labels = [fmt_time(t)[5:] for t in w["open_time"]]
-    panels = [p for p in PANELS if p in layers]
-    row = {p: i + 2 for i, p in enumerate(panels)}
-    heights = {"Objem": 0.12, "RSI": 0.15, "MACD": 0.15}
-    fig = make_subplots(rows=1 + len(panels), cols=1, shared_xaxes=True, vertical_spacing=0.02,
-                        row_heights=[1 - sum(heights[p] for p in panels)] + [heights[p] for p in panels])
-    fig.add_trace(go.Candlestick(x=x, open=w["open"], high=w["high"], low=w["low"], close=w["close"],
-                                 name="cena", text=labels, showlegend=False), row=1, col=1)
-    for p, color, layer in ((21, "#f2a900", "EMA 21/50"), (50, "#3b82f6", "EMA 21/50"), (200, "#a855f7", "EMA 200")):
-        if f"ma_{p}" in w and layer in layers:
-            fig.add_trace(go.Scatter(x=x, y=w[f"ma_{p}"], name=f"EMA {p}", line=dict(width=1, color=color)), row=1, col=1)
-    if "vwap" in w and "VWAP" in layers:
-        fig.add_trace(go.Scatter(x=x, y=w["vwap"], name="VWAP", line=dict(width=1, color="#14b8a6", dash="dot")), row=1, col=1)
-    rc = cfg["structure"].get("regression_channel")
-    if rc and focus_x + 1 >= rc["period"] and "Kanál" in layers:
-        # Straight channel fitted on the last `period` closes up to the focus bar.
-        xs = np.arange(focus_x + 1 - rc["period"], focus_x + 1)
-        b, a0 = np.polyfit(xs, w["close"].to_numpy()[xs], 1)
-        sd = np.std(w["close"].to_numpy()[xs] - (a0 + b * xs))
-        for k, dash in ((rc["std"], "dash"), (0, "dot"), (-rc["std"], "dash")):
-            fig.add_trace(go.Scatter(x=xs[[0, -1]], y=a0 + b * xs[[0, -1]] + k * sd, mode="lines",
-                                     name="regresný kanál", showlegend=k > 0, hoverinfo="skip",
-                                     line=dict(width=1, color="#94a3b8", dash=dash)), row=1, col=1)
-
-    wt = w["open_time"].to_numpy()
-    for ln in (lines or []) if "Čiary" in layers else []:
-        x1 = int(np.searchsorted(wt, ln["t1"]))
-        if x1 >= len(wt) or wt[x1] != ln["t1"]:
-            x1 = focus_x - ln["bars_from_t1"]
-        x_end = min(len(w) - 1 + extend, focus_x + (0 if ln["ended_here"] else extend))
-        xs = np.array([max(x1, 0), x_end])   # clip to the visible window
-        ys = ln["p1"] + ln["slope_per_bar"] * (xs - x1)
-        color = "#ef4444" if ln["kind"] == "resistance" else "#22c55e"
-        name = "rezistencia" if ln["kind"] == "resistance" else "podpora"
-        fig.add_trace(go.Scatter(x=xs, y=ys, mode="lines", line=dict(color=color, width=2), hoverinfo="skip",
-                                 name=f"{name} ({ln['touches']}×)", showlegend=False), row=1, col=1)
-        if ln.get("channel_offset") and "Rovnobežky" in layers:
-            fig.add_trace(go.Scatter(x=xs, y=ys + ln["channel_offset"], mode="lines", showlegend=False,
-                                     hoverinfo="skip", line=dict(color=color, width=1, dash="dot")), row=1, col=1)
-
-    vol_colors = np.where(w["close"] >= w["open"], "#22c55e", "#ef4444")
-    if "Objem" in row:
-        fig.add_trace(go.Bar(x=x, y=w["volume"], marker_color=vol_colors, name="objem", showlegend=False),
-                      row=row["Objem"], col=1)
-    if "RSI" in row:
-        fig.add_trace(go.Scatter(x=x, y=w["rsi"], name="RSI", line=dict(color="#a855f7", width=1)), row=row["RSI"], col=1)
-    r = cfg["indicators"]["rsi"]
-    for lvl in (r["overbought"], r["oversold"]) if "RSI" in row else ():
-        fig.add_hline(y=lvl, line=dict(color="#94a3b8", width=1, dash="dash"), row=row["RSI"], col=1)
-    if "MACD" in row:
-        m = row["MACD"]
-        fig.add_trace(go.Bar(x=x, y=w["macd_hist"], name="MACD hist", marker_color="#94a3b8", showlegend=False), row=m, col=1)
-        fig.add_trace(go.Scatter(x=x, y=w["macd"], name="MACD", line=dict(color="#3b82f6", width=1)), row=m, col=1)
-        fig.add_trace(go.Scatter(x=x, y=w["macd_signal"], name="signál", line=dict(color="#f97316", width=1)), row=m, col=1)
-
-    step = max(1, len(x) // 10)
-    fig.update_xaxes(tickvals=x[::step], ticktext=labels[::step], rangeslider_visible=False)
-    # Drag = pan, wheel = zoom; only the price panel zooms vertically.
-    for r_ in row.values():
-        fig.update_yaxes(fixedrange=True, row=r_, col=1)
-    fig.update_layout(height=480 + 100 * len(panels), margin=dict(l=10, r=60, t=10, b=10), hovermode="x unified",
-                      dragmode="pan", legend=dict(orientation="h", y=1.02, x=0))
-    return fig
+def chart_height(layers: set) -> int:
+    return 430 + 120 * sum(p in layers for p in ("RSI", "MACD"))
 
 
-PLOT_CONFIG = {
-    "scrollZoom": True,
-    "displaylogo": False,
-    "modeBarButtonsToRemove": ["select2d", "lasso2d", "autoScale2d", "toggleSpikelines",
-                               "hoverClosestCartesian", "hoverCompareCartesian"],
-}
+def plan_lines(plan: dict) -> list[dict]:
+    return [{"price": v, "color": c, "title": n} for n, v, c in (
+        ("Vstup", plan.get("entry"), "#2962ff"), ("SL", plan.get("sl"), "#ef5350"),
+        ("TP", plan.get("tp"), "#26a69a"), ("BE", plan.get("be"), "#f9a825")) if v]
 
 
-def show(fig, ui_key: str):
-    """Render with a stable uirevision so zoom/pan survive reruns (e.g. while editing SL/TP)."""
-    fig.update_layout(uirevision=ui_key)
-    st.plotly_chart(fig, use_container_width=True, config=PLOT_CONFIG)
-    st.caption("🖱️ ťahaj = posun · koliesko = zoom · dvojklik = späť na celý graf")
-
-
-def fit_y(fig, w, extra=()):
-    """Y axis follows the candles (+ extra levels), so far-away lines don't squash the chart."""
-    ys = [w["low"].min(), w["high"].max()] + [v for v in extra if v]
-    pad = (max(ys) - min(ys)) * 0.05
-    fig.update_yaxes(range=[min(ys) - pad, max(ys) + pad], row=1, col=1)
+def past_labels(store, symbol: str, tf: str, w: pd.DataFrame, exclude_id: int | None = None) -> list[dict]:
+    """Labels already given to alerts inside the chart window (L / S / ✕ / ?)."""
+    t0, t1 = int(w["open_time"].iloc[0]), int(w["open_time"].iloc[-1])
+    rows = store.conn.execute(
+        "SELECT a.id, a.bar_time, l.label FROM labels l JOIN alerts a ON a.id = l.alert_id "
+        "WHERE a.symbol=? AND a.timeframe=? AND a.bar_time BETWEEN ? AND ?", (symbol, tf, t0, t1)).fetchall()
+    times = w["open_time"].to_numpy()
+    return [{"i": int(np.searchsorted(times, bt)), "label": lab} for aid, bt, lab in rows if aid != exclude_id]
 
 
 def chart(cfg, store, alert, blind: bool, before: int, after: int, plan: dict, layers=DEFAULT_LAYERS):
@@ -186,21 +118,12 @@ def chart(cfg, store, alert, blind: bool, before: int, after: int, plan: dict, l
     a_x = ai - lo - start
 
     layers = set(layers) | ({"VWAP"} if alert["signal"].startswith("VWAP") else set())
-    fig = base_figure(cfg, w, a_x, alert.get("lines"), layers=layers)
-    fig.add_trace(go.Scatter(x=[a_x], y=[alert["price"]], mode="markers", name="alert",
-                             marker=dict(size=14, symbol="triangle-up" if alert["direction"] == "bullish" else "triangle-down",
-                                         color="#22c55e" if alert["direction"] == "bullish" else "#ef4444",
-                                         line=dict(width=1, color="black"))), row=1, col=1)
-    fig.add_vline(x=a_x, line=dict(color="#64748b", width=1, dash="dot"))
-    for name, val, color in (("Vstup", plan.get("entry"), "#0ea5e9"), ("SL", plan.get("sl"), "#ef4444"),
-                             ("TP", plan.get("tp"), "#22c55e"), ("BE", plan.get("be"), "#eab308")):
-        if val:
-            fig.add_shape(type="line", x0=a_x, x1=len(w) - 1, y0=val, y1=val, line=dict(color=color, width=1, dash="dash"),
-                          row=1, col=1)
-            fig.add_annotation(x=len(w) - 1, y=val, text=name, showarrow=False, xanchor="left",
-                               font=dict(color=color, size=10), row=1, col=1)
-    fit_y(fig, w, plan.values())
-    return fig, df
+    spec = build_spec(w, layers, alert.get("lines"), focus_i=a_x,
+                      markers=[{"i": a_x, "direction": alert["direction"], "text": "ALERT", "size": 2}],
+                      price_lines=plan_lines(plan), reg_channel=cfg["structure"].get("regression_channel"),
+                      rsi_levels=(cfg["indicators"]["rsi"]["overbought"], cfg["indicators"]["rsi"]["oversold"]),
+                      label_marks=past_labels(store, alert["symbol"], alert["timeframe"], w, alert["id"]))
+    return spec, chart_height(layers), df
 
 
 def live_view(cfg, store, symbol: str, tf: str, bars: int, only_notified: bool, layers=DEFAULT_LAYERS):
@@ -212,49 +135,47 @@ def live_view(cfg, store, symbol: str, tf: str, bars: int, only_notified: bool, 
     f = add_indicators(raw, cfg)
     k = cfg["structure"]["zigzag_atr"].get(tf, 2.0)
     struct = StructureEngine(cfg["structure"], k).run(f)
-    last = len(f) - 1
-    lines = lines_snapshot(struct["lines"], last, f["open_time"].to_numpy())
+    lines = lines_snapshot(struct["lines"], len(f) - 1, f["open_time"].to_numpy())
     w = f.tail(bars).reset_index(drop=True)
-    fig = base_figure(cfg, w, len(w) - 1, lines, extend=15, layers=layers)
 
     t0 = int(w["open_time"].iloc[0])
     q = "SELECT id, bar_time, signal, direction, price, notify FROM alerts WHERE symbol=? AND timeframe=? AND bar_time>=?"
     if only_notified:
         q += " AND notify=1"
     al = pd.read_sql_query(q, store.conn, params=(symbol, tf, t0))
+    markers = []
     if not al.empty and "Alerty" in layers:
-        al["x"] = np.searchsorted(w["open_time"].to_numpy(), al["bar_time"].to_numpy())
-        for direction, color, sym in (("bullish", "#22c55e", "triangle-up"), ("bearish", "#ef4444", "triangle-down")):
-            d = al[al["direction"] == direction]
-            if d.empty:
-                continue
-            fig.add_trace(go.Scatter(
-                x=d["x"], y=d["price"], mode="markers", name=f"alerty {direction}",
-                text=[f"#{i} {s}" for i, s in zip(d["id"], d["signal"])], hoverinfo="text",
-                marker=dict(size=np.where(d["notify"] == 1, 12, 7), symbol=sym, color=color,
-                            line=dict(width=1, color="black"))), row=1, col=1)
-    fit_y(fig, w)
+        xs = np.searchsorted(w["open_time"].to_numpy(), al["bar_time"].to_numpy())
+        markers = [{"i": int(x), "direction": r.direction, "size": 1 if r.notify else 0.6,
+                    "text": "", "note": f"#{r.id} {signal_text(r.signal)[0]}"}
+                   for x, r in zip(xs, al.itertuples(index=False))]
 
     c = st.columns(4)
     lt = int(raw["open_time"].iloc[-1])
     age = (pd.Timestamp.now(tz="UTC") - pd.Timestamp(lt + tf_ms(tf), unit="ms", tz="UTC")).total_seconds() / 60
-    c[0].metric("Posledná sviečka (UTC)", fmt_time(lt)[5:], f"pred {age:.0f} min", delta_color="off")
+    c[0].metric("Posledná sviečka", local_time(lt), f"pred {age:.0f} min", delta_color="off")
     c[1].metric("Cena", f"{raw['close'].iloc[-1]:.2f}")
-    c[2].metric("RSI", f"{f['rsi'].iloc[-1]:.1f}")
+    c[2].metric("RSI", f"{f['rsi'].iloc[-1]:.0f}", rsi_text(f["rsi"].iloc[-1]), delta_color="off")
     day = int((pd.Timestamp.now(tz="UTC") - pd.Timedelta(hours=24)).value // 1_000_000)
     n24, s24 = store.conn.execute(
         "SELECT COUNT(*), COALESCE(SUM(notify),0) FROM alerts WHERE symbol=? AND bar_time>=?", (symbol, day)).fetchone()
     c[3].metric("Alerty za 24 h", n24, f"{s24} na Telegram", delta_color="off")
-    show(fig, f"live-{symbol}-{tf}-{bars}")
-    st.caption(f"Čiary a kanál presne tak, ako ich skener vidí teraz (aktívne: {len(lines)}). "
-               "Veľké trojuholníky = išlo na Telegram, malé = iba uložené. Obnovuje sa každú minútu. "
-               "Dáta z Yahoo sú oneskorené ~10 min.")
+    spec = build_spec(w, layers, lines, extend=15, markers=markers,
+                      reg_channel=cfg["structure"].get("regression_channel"),
+                      rsi_levels=(cfg["indicators"]["rsi"]["overbought"], cfg["indicators"]["rsi"]["oversold"]),
+                      label_marks=past_labels(store, symbol, tf, w))
+    render(spec, chart_height(layers), f"live-{symbol}-{tf}-{bars}")
+    st.caption(f"Čiary a kanál presne tak, ako ich skener vidí teraz (aktívne čiary: {len(lines)}). "
+               "Šípky = alerty (popis uvidíš hore, keď prejdeš myšou na sviečku). Obnovuje sa každú minútu.")
     if not al.empty:
         recent = al.sort_values("bar_time", ascending=False).head(15).copy()
-        recent["čas"] = recent["bar_time"].map(fmt_time)
+        recent["čas"] = recent["bar_time"].map(local_time)
+        recent["signál"] = recent["signal"].map(lambda x: signal_text(x)[0])
+        recent["smer"] = recent["direction"].map(direction_text)
         recent["označiť"] = "?alert=" + recent["id"].astype(str)
-        st.dataframe(recent[["čas", "signal", "direction", "price", "označiť"]], hide_index=True, use_container_width=True,
-                     column_config={"označiť": st.column_config.LinkColumn("označiť", display_text="otvoriť")})
+        st.dataframe(recent[["čas", "signál", "smer", "price", "označiť"]], hide_index=True, use_container_width=True,
+                     column_config={"označiť": st.column_config.LinkColumn("označiť", display_text="otvoriť"),
+                                    "price": st.column_config.NumberColumn("cena", format="%.2f")})
 
 
 def page_live(cfg, store):
@@ -301,43 +222,50 @@ def local_time(ms: int) -> str:
 
 
 def alert_header(alert: dict):
-    """Plain-language summary of an alert: what happened, how strong, in which context."""
+    """Compact one-liner above the chart; the full plain-language description is in a popup."""
     title, expl = signal_text(alert["signal"])
     feats = alert.get("features") or {}
     d = alert.get("details") or {}
     tf = alert["timeframe"]
-    with st.container(border=True):
-        st.markdown(f"### {direction_text(alert['direction'])} · {title}")
-        st.markdown(f"**{symbol_name(alert['symbol'])}** · sviečka **{tf}** · {local_time(alert['bar_time'])} "
-                    f"(SK čas) · alert #{alert['id']}")
+    top = st.columns([6, 1.2, 1.2])
+    top[0].markdown(f"#### {direction_text(alert['direction'])} · {title}")
+    top[2].toggle("⛶ Veľký graf", key="big_chart", help="Graf cez celú šírku, formulár pod ním.")
+    trend = " ".join(f"{t}{trend_arrow(feats.get(f'{t}__swing_trend'))[:1]}" for t in ("1h", "4h"))
+    parts = [f"**{symbol_name(alert['symbol'])}**", tf, local_time(alert["bar_time"]), f"cena **{alert['price']:.2f}**"]
+    if alert["rsi"] is not None:
+        parts.append(f"RSI {alert['rsi']:.0f}")
+    if alert["volume_ratio"] is not None:
+        parts.append(f"objem {alert['volume_ratio']:.1f}×")
+    if d.get("adx") is not None:
+        parts.append(f"ADX {d['adx']:.0f}")
+    parts += [f"trend {trend}", f"#{alert['id']}"]
+    st.markdown(" · ".join(parts))
+
+    with top[1].popover("ℹ️ Popis", use_container_width=True):
+        st.markdown(f"**{direction_text(alert['direction'])} · {title}**")
+        st.write(f"{symbol_name(alert['symbol'])} · sviečka {tf} · {local_time(alert['bar_time'])} (SK čas)")
         if expl:
-            st.write(expl)
-        c = st.columns(5)
-        c[0].metric("Cena", f"{alert['price']:.2f}")
-        c[0].caption(f"ATR {alert['atr'] or 0:.2f} = bežná veľkosť sviečky")
-        c[1].metric("RSI", f"{alert['rsi']:.0f}" if alert["rsi"] is not None else "–")
-        c[1].caption(rsi_text(alert["rsi"]))
-        c[2].metric("Objem", f"{alert['volume_ratio']:.1f}×" if alert["volume_ratio"] is not None else "–")
-        c[2].caption(volume_text(alert["volume_ratio"]))
-        c[3].metric("ADX", f"{d['adx']:.0f}" if d.get("adx") is not None else "–")
-        c[3].caption(adx_text(d.get("adx")))
-        c[4].metric("Trend 1h / 4h", f"{trend_arrow(feats.get('1h__swing_trend'))[:1]} / "
-                                     f"{trend_arrow(feats.get('4h__swing_trend'))[:1]}")
-        c[4].caption(", ".join(f"{t} {trend_arrow(feats.get(f'{t}__swing_trend'))[2:] or '–'}" for t in ("1h", "4h")))
-        notes = []
+            st.info(expl)
+        rows = [
+            ("Cena", f"{alert['price']:.2f}", f"ATR {alert['atr'] or 0:.2f} = bežná veľkosť sviečky"),
+            ("RSI", f"{alert['rsi']:.0f}" if alert["rsi"] is not None else "–", rsi_text(alert["rsi"])),
+            ("Objem", f"{alert['volume_ratio']:.1f}×" if alert["volume_ratio"] is not None else "–",
+             volume_text(alert["volume_ratio"])),
+            ("ADX", f"{d['adx']:.0f}" if d.get("adx") is not None else "–", adx_text(d.get("adx"))),
+        ] + [(f"Trend {t}", trend_arrow(feats.get(f"{t}__swing_trend")), "podľa swingov (HH/HL vs LH/LL)")
+             for t in ("1h", "4h")]
         if d.get("line"):
             ln = d["line"]
             kind = "rezistencia" if ln["kind"] == "resistance" else "podpora"
-            notes.append(f"📏 Čiara: {kind}, {ln['touches']} dotyky, úroveň {ln['value']:.2f}")
+            rows.append(("Čiara", f"{ln['value']:.2f}", f"{kind}, {ln['touches']} dotyky"))
         sup, res = feats.get(f"{tf}__sup_dist_atr"), feats.get(f"{tf}__res_dist_atr")
         if sup is not None:
-            notes.append(f"Najbližšia podpora {sup:.1f} ATR pod cenou")
+            rows.append(("Podpora", f"{sup:.1f} ATR", "pod cenou"))
         if res is not None:
-            notes.append(f"najbližšia rezistencia {res:.1f} ATR nad cenou")
+            rows.append(("Rezistencia", f"{res:.1f} ATR", "nad cenou"))
+        st.table(pd.DataFrame(rows, columns=["", "hodnota", "význam"]).set_index(""))
         if d.get("candidate_only"):
-            notes.append("ℹ️ iba uložený kandidát (nešiel na Telegram)")
-        if notes:
-            st.caption(" · ".join(notes))
+            st.caption("ℹ️ iba uložený kandidát (nešiel na Telegram)")
 
 
 def page_label(cfg, store, f):
@@ -363,8 +291,14 @@ def page_label(cfg, store, f):
     key = f"a{alert['id']}"
     default_dir = existing.get("label") or ("LONG" if alert["direction"] == "bullish" else "SHORT")
 
-    left, right = st.columns([3, 1])
-    with right:
+    big = st.session_state.get("big_chart", False)
+    if big:
+        chart_area = st.container()
+        g1, g2, g3 = st.columns(3)
+    else:
+        chart_area, right = st.columns([3, 1])
+        g1 = g2 = g3 = right
+    with g1:
         label = st.radio("Label", list(LABELS), format_func=LABELS.get, key=f"{key}_label",
                          index=list(LABELS).index(default_dir) if default_dir in LABELS else 0)
         correct_opts = list(CORRECT)
@@ -372,6 +306,7 @@ def page_label(cfg, store, f):
         correct = st.radio("Bol signál správny? (TRUE/FALSE)", correct_opts, index=correct_default,
                            key=f"{key}_correct", horizontal=True)
         conf = st.slider("Istota", 1, 3, existing.get("confidence") or 2, key=f"{key}_conf")
+    with g2:
         side = -1 if label == "SHORT" else 1
         entry = st.number_input("Vstup (entry)", value=float(existing.get("entry") or alert["price"]),
                                 format="%.2f", key=f"{key}_entry")
@@ -384,6 +319,7 @@ def page_label(cfg, store, f):
         risk = abs(entry - sl)
         rr = abs(tp - entry) / risk if risk else 0
         st.caption(f"Riziko {risk:.2f} ({risk / atr if atr else 0:.1f} ATR) · R:R = 1:{rr:.2f}")
+    with g3:
         lq = st.selectbox("Trendové čiary na grafe", list(LINES_Q), key=f"{key}_lq",
                           index=list(LINES_Q.values()).index(existing.get("lines_quality")) if existing.get("lines_quality") in LINES_Q.values() else 0)
         note = st.text_area("Poznámka (prečo)", value=existing.get("note") or "", key=f"{key}_note", height=80)
@@ -392,10 +328,11 @@ def page_label(cfg, store, f):
         skip = b2.button("⏭ Preskočiť", use_container_width=True)
 
     plan = {"entry": entry, "sl": sl, "tp": tp, "be": be or None} if label in ("LONG", "SHORT") else {}
-    with left:
-        layers = layer_picker("layers_label")
-        fig, df = chart(cfg, store, alert, f["blind"], f["before"], f["after"], plan, layers)
-        show(fig, f"alert{alert['id']}-{f['blind']}-{f['before']}-{f['after']}")
+    with chart_area:
+        layers = layer_picker("layers_label", stacked=not big)
+        spec, height, df = chart(cfg, store, alert, f["blind"], f["before"], f["after"], plan, layers)
+        render(spec, height + (280 if big else 0),
+               f"alert{alert['id']}-{int(f['blind'])}-{f['before']}-{f['after']}")
         if not f["blind"]:
             o = store.outcome(alert["id"])
             if o:

@@ -69,7 +69,7 @@ def main(argv=None):
     if args.cmd == "label-ui":
         app = Path(__file__).resolve().parent.parent / "label_app.py"
         cmd = [sys.executable, "-m", "streamlit", "run", str(app), "--server.port", args.port,
-               "--server.headless", "true"]
+               "--server.headless", "true", "--server.enableStaticServing", "true"]
         sys.exit(subprocess.call(cmd))
 
     if args.cmd == "test-telegram":

@@ -14,7 +14,7 @@ services:
     build: .
     command: >
       python -m streamlit run label_app.py
-      --server.port 8501 --server.address 0.0.0.0 --server.headless true
+      --server.port 8501 --server.address 0.0.0.0 --server.headless true --server.enableStaticServing true
       --browser.gatherUsageStats false
     env_file: .env
     volumes:

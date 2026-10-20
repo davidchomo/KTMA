@@ -6,6 +6,7 @@ COPY requirements.txt .
 RUN pip install -r requirements.txt
 COPY ktma ./ktma
 COPY docs ./docs
+COPY static ./static
 COPY label_app.py config.yaml ./
 
 CMD ["python", "-m", "ktma", "scan"]
