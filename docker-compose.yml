@@ -1,0 +1,25 @@
+# KTMA na VPS:  docker compose up -d --build
+# Prvé naplnenie histórie:  docker compose run --rm scanner python -m ktma backfill
+services:
+  scanner:
+    build: .
+    command: python -m ktma scan
+    env_file: .env
+    volumes:
+      - ./data:/app/data
+      - ./config.yaml:/app/config.yaml   # nastavenia zdieľané s appkou (záložka ⚙️)
+    restart: unless-stopped
+
+  label-ui:
+    build: .
+    command: >
+      python -m streamlit run label_app.py
+      --server.port 8501 --server.address 0.0.0.0 --server.headless true
+      --browser.gatherUsageStats false
+    env_file: .env
+    volumes:
+      - ./data:/app/data
+      - ./config.yaml:/app/config.yaml
+    ports:
+      - "127.0.0.1:8501:8501"            # iba lokálne; von ide cez Caddy (HTTPS)
+    restart: unless-stopped

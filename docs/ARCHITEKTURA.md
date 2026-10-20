@@ -252,9 +252,9 @@ pochopenie aj na úpravy. Triple-barrier a purged CV sú ~50 riadkov každé, na
 
 | Fáza | Obsah | Výsledok |
 |---|---|---|
-| **0** | schválenie tejto architektúry | – |
-| **1 – MVP** | ingest GC=F 1m (yfinance), resampler, indikátory, pravidlá, trendové čiary a kanály, SQLite, Telegram, backfill, outcomes, testy | alerty chodia a ukladajú sa |
-| **2 – Labelovanie** | Streamlit UI s grafom a čiarami, labely + SL/TP + premeškané vstupy, export datasetu | kamarát označí prvých 300–500 alertov |
+| **0** ✅ | schválenie tejto architektúry | – |
+| **1 – MVP** ✅ | ingest GC=F 1m (yfinance), resampler, indikátory, pravidlá, trendové čiary a kanály, SQLite, Telegram, backfill, outcomes, testy | alerty chodia a ukladajú sa |
+| **2 – Labelovanie** ✅ | Streamlit UI s grafom a čiarami, labely + SL/TP + premeškané vstupy, export datasetu | kamarát označí prvých 300–500 alertov |
 | **3 – Model** | logreg / LightGBM / TabPFN, purged CV, report, skóre v alertoch | alert s pravdepodobnosťou „dobrý vstup“ |
 | **4 – Rozšírenie** | striebro, OANDA real-time, história z Dukascopy/Databento, makro features, RunPod | lepší model |
 
@@ -266,7 +266,7 @@ pochopenie aj na úpravy. Triple-barrier a purged CV sú ~50 riadkov každé, na
 |---|---|---|
 | Živé dáta | **yfinance** `GC=F` | zadarmo, skutočný objem; CME dáta sú však oneskorené ≥ 10 min, takže 1m alerty prídu ~10 sviečok neskoro. Na zber dát a labelovanie to nevadí; na živé 1m reakcie neskôr prepnúť na OANDA (zdroj je vymeniteľný) |
 | Timeframy | **1m, 5m, 15m** (+ 1h, 4h ako kontext) | 1m s prísnejšími filtrami |
-| Kde to beží | **VPS** | systemd alebo Docker, Streamlit za heslom alebo Tailscale |
+| Kde to beží | **VPS** (Docker) | `docker compose` (skener + appka), appka za existujúcim Caddy na `ktma.mirasolen.eu` s heslom |
 | Labely | `LONG / SHORT / NEVSTUPOVAŤ / NEVIEM` + istota 1–3 + **vstup, SL, TP** | presnejší label (R:R) |
 | Notifikácie | **Telegram** | bot token + chat id v `.env` |
 | Trendové čiary | **áno, automaticky a nonstop**, nemenia sa spätne | modul štruktúry trhu (§5, RESEARCH.md §10) |

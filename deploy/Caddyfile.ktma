@@ -1,0 +1,16 @@
+# Pridaj do Caddyfile kontajnera valheim-caddy a potom:
+#   docker exec valheim-caddy caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+#   docker exec valheim-caddy caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile   (bez výpadku)
+# DNS: A záznam ktma.mirasolen.eu -> IP VPS. HTTPS certifikát vybaví Caddy sám.
+# Heslo:  docker exec valheim-caddy caddy hash-password --plaintext 'TVOJE_HESLO'
+
+ktma.mirasolen.eu {
+	basic_auth {
+		kamarat <SEM_VLOZ_HASH_Z_hash-password>
+	}
+	# Ak Caddy beží s network_mode: host:
+	reverse_proxy 127.0.0.1:8501
+	# Ak Caddy beží v bridge sieti: docker network connect ktma_default valheim-caddy
+	# a použi namiesto toho:
+	# reverse_proxy label-ui:8501
+}

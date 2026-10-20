@@ -126,3 +126,8 @@ summary.json
 # company-crypto-tickers-tabs.csv
 # sectors_summary.csv
 # summary-export.csv
+
+# KTMA runtime data
+data/
+models/
+config.yaml.bak

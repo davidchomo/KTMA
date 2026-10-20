@@ -1,67 +1,101 @@
 # KTMA – konfigurácia skenera technických signálov
-# Všetky časy sú v UTC.
+# Všetky časy sú v UTC. Podrobnosti v docs/ARCHITEKTURA.md a docs/RESEARCH.md.
 
 data:
-  # yfinance  – zlato/striebro futures (GC=F, SI=F), akcie, ETF. Zadarmo, bez API kľúča.
-  #             Limity Yahoo: 1m ~7 dní, 5m/15m/30m ~60 dní, 1h ~730 dní histórie.
-  #             4h sa skladá z 1h sviečok.
-  # ccxt      – krypto burzy (napr. PAXG/USDT = tokenizované zlato, obchoduje sa 24/7).
+  # yfinance  – zlato/striebro futures (GC=F, SI=F). Zadarmo, skutočný objem, CME dáta oneskorené ≥ 10 min.
+  #             História: 1m ~7 dní, 5m/15m ~60 dní, 1h ~2 roky. Skener ukladá každú 1m sviečku,
+  #             takže si históriu budujete sami.
   # synthetic – vymyslené dáta na offline test (python -m ktma demo).
   provider: yfinance
-  exchange: binance          # iba pre provider: ccxt
 
 symbols:
-  - GC=F                     # zlato (COMEX futures) – má skutočný objem
+  - GC=F                     # zlato (COMEX futures)
   # - SI=F                   # striebro – odkomentuj, keď ho budete chcieť sledovať
-  # Alternatívy: GLD / SLV (ETF), alebo s provider: ccxt -> PAXG/USDT, XAUT/USDT
 
-timeframes: [5m, 15m, 1h, 4h, 1d]
+alert_timeframes: [1m, 5m, 15m]      # na týchto TF vznikajú alerty
+context_timeframes: [1h, 4h]         # tieto sa počítajú iba ako kontext do features
 
-history_bars: 500            # koľko sviečok sťahovať na jeden timeframe pri skenovaní
-poll_seconds: 60             # ako často skener kontroluje nové sviečky
-db_path: data/ktma.sqlite    # sem sa ukladá všetko (sviečky, alerty, labely)
+window_bars: 2000            # koľko posledných sviečok sa pri živom skene prepočítava (warm-up čiar a indikátorov)
+poll_seconds: 60
+db_path: data/ktma.sqlite
+notify_max_age_bars: 15      # starší alert (napr. po výpadku) sa uloží, ale nenotifikuje
 
 indicators:
   rsi:
     period: 14
     overbought: 80
     oversold: 20
-  macd:
-    fast: 12
-    slow: 26
-    signal: 9
+    candidate_levels: [[70, 30], [75, 25]]   # ukladajú sa do DB bez notifikácie (porovnanie prahov)
+  macd: {fast: 12, slow: 26, signal: 9}
   ma:
     type: ema                # ema | sma
     periods: [9, 21, 50, 200]
-    crosses: [[9, 21], [50, 200]]   # páry (rýchla, pomalá) na sledovanie prekríženia
+    crosses: [[9, 21], [50, 200]]
   volume:
     period: 20
-    spike_ratio: 2.0         # objem >= 2x priemer posledných 20 sviečok = volume spike
+    spike_ratio: 2.0         # objem >= 2x priemer predch. 20 sviečok
   atr_period: 14
+  adx_period: 14
+  bollinger: {period: 20, std: 2.0}
+  donchian: [20, 55]
+  vwap:                      # VWAP ukotvený na CME seansu (nová seansa o 17:00 Chicago)
+    tz: America/Chicago
+    session_start_hour: 17
+    bands: [1.0, 2.0]        # pásma ± 1σ a ± 2σ
+
+structure:                   # trendové čiary a kanály (docs/RESEARCH.md §10)
+  zigzag_atr:                # swing sa potvrdí po otočení o k × ATR
+    1m: 3.0
+    5m: 2.0
+    15m: 2.0
+    1h: 1.5
+    4h: 1.5
+  pivots_lookback: 6         # s koľkými predch. pivotmi skúšať spojiť nový pivot
+  touch_atr: 0.25            # dotyk = do 0.25 ATR od čiary
+  break_atr: 0.10            # prerazenie = zatvorenie za čiarou o > 0.1 ATR
+  max_slope_atr: 0.2         # max. sklon čiary v ATR za sviečku
+  max_distance_atr: 12       # čiara ďalej ako 12 ATR od ceny zanikne (už nie je relevantná)
+  max_line_age_bars: 600     # čiara bez nového dotyku zanikne
+  max_lines_per_side: 2
+  touch_cooldown_bars: 5     # min. odstup dvoch alertov „dotyk“ na tej istej čiare
+  regression_channel: {period: 100, std: 2.0}
 
 signals:
-  rsi_zone: true             # RSI vstúpi nad 80 / pod 20 (a odíde z nich)
-  rsi_zone_exit: true        # hlásiť aj návrat z pásma (80 -> pod 80, 20 -> nad 20)
-  macd_cross: true           # MACD prekríži signálnu čiaru
-  macd_zero_cross: false     # MACD prekríži nulu
-  ma_cross: true             # prekríženia MA podľa indicators.ma.crosses
-  price_ma_cross: [200]      # cena prekríži tieto MA
+  rsi_zone: true
+  rsi_zone_exit: true
+  macd_cross: true
+  macd_zero_cross: false
+  ma_cross: true
+  price_ma_cross: [200]
   volume_spike: true
-  # Filter: ostatné signály sa hlásia iba ak volume_ratio >= tejto hodnoty (0 = vypnuté).
-  # Signál sa uloží do DB vždy (pre trénovanie), filter ovplyvňuje iba notifikácie.
-  min_volume_ratio: 0
+  trendline_break: true
+  trendline_touch: true
+  channel_break: true        # regresný kanál ± 2σ
+  donchian_break: true
+  vwap_cross: true           # cena prekríži VWAP
+  vwap_band_touch: true      # cena sa dotkne pásma ± 2σ
+
+notify_filters:              # ovplyvňujú iba notifikácie; do DB sa ukladá všetko
+  min_volume_ratio: 0        # napr. 1.5 = hlás iba s potvrdením objemu (0 = vypnuté)
+  min_volume_ratio_1m: 1.5   # prísnejšie na 1m
+  rsi_max_adx: 0             # napr. 30 = RSI extrém nehlásiť pri silnom trende (0 = vypnuté)
+  min_line_touches: 3        # prerazenie/dotyk čiary hlásiť iba ak má čiara aspoň toľko dotykov
+  donchian_notify: [55]      # Donchian prerazenia na notifikáciu (20 sa iba ukladá)
+  only_on:                   # na týchto TF notifikovať iba signály začínajúce týmito predponami
+    1m: [RSI_ABOVE_80, RSI_BELOW_20, TL_BREAK, TL_TOUCH, MA_50_200, VWAP_UPPER, VWAP_LOWER]
+  exclude: [VOLUME_SPIKE]    # tieto sa nikdy nenotifikujú samostatne (objem je v každej správe)
+  cooldown_bars: 10          # ten istý signál na tom istom TF najskôr po 10 sviečkach
 
 outcomes:
-  # Čo sa stalo po signáli – pomocný údaj pre kamaráta a automatické labely.
-  horizons: [5, 10, 20]      # výnos po N sviečkach
-  take_profit_atr: 2.0       # triple-barrier: TP = 2x ATR
-  stop_loss_atr: 1.0         #                 SL = 1x ATR
-  max_bars: 20               #                 timeout po 20 sviečkach
+  horizons: [5, 10, 20]      # výnos po N sviečkach (v ATR)
+  take_profit_atr: 2.0       # triple-barrier
+  stop_loss_atr: 1.0
+  max_bars: 20
+  gap_atr: 6.0               # medzera medzi sviečkami > 6 ATR = podozrenie na roll futures
 
 notify:
   console: true
-  telegram: false            # potrebuje env TELEGRAM_BOT_TOKEN a TELEGRAM_CHAT_ID
-  discord: false             # potrebuje env DISCORD_WEBHOOK_URL
+  telegram: false            # zapni a nastav TELEGRAM_BOT_TOKEN a TELEGRAM_CHAT_ID v .env
 
 model:
-  path: models/model.joblib  # ak súbor existuje, skener pridá ku každému alertu skóre modelu
+  path: models/model.joblib  # fáza 3: ak súbor existuje, skener pridá ku každému alertu skóre
