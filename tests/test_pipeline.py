@@ -1,3 +1,5 @@
+import os
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -312,3 +314,46 @@ def test_hitchhiker_drive_consolidation_break():
            "sessions": [{"name": "LONDON", "tz": "Europe/London", "open": "08:00"}]}
     ev = hitchhiker(df, "1m", cfg)
     assert [(e["signal"], e["i"]) for e in ev] == [("HITCHHIKER_LONG_LONDON", 16)]
+
+
+def test_claude_assistant_runs_text_only(tmp_path, monkeypatch, cfg):
+    import json as _json
+    import stat
+
+    from ktma.assistant import AssistantError, ClaudeAssistant, build_context
+
+    log = tmp_path / "call.json"
+    fake = tmp_path / "claude"
+    fake.write_text(
+        "#!/usr/bin/env python3\n"
+        "import json, os, sys\n"
+        f"open({str(log)!r}, 'w').write(json.dumps({{'argv': sys.argv[1:], 'stdin': sys.stdin.read(),"
+        " 'env': sorted(os.environ), 'cwd': os.getcwd()}))\n"
+        "print(json.dumps({'type': 'result', 'is_error': False, 'result': 'Vstup je riskantny.'}))\n")
+    fake.chmod(fake.stat().st_mode | stat.S_IEXEC)
+    monkeypatch.setenv("PATH", f"{tmp_path}:{os.environ['PATH']}")
+    monkeypatch.setenv("CLAUDE_CODE_OAUTH_TOKEN", "tok")
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "SECRET")
+
+    candles = SyntheticProvider(days=1, end_ms=END).fetch("XAUUSD", "5m")
+    bar = int(candles["open_time"].iloc[100])
+    alert = {"id": 7, "symbol": "XAUUSD", "timeframe": "5m", "bar_time": bar, "signal": "RSI_BELOW_20",
+             "direction": "bullish", "price": 4000.0, "atr": 3.0, "details": {"rsi": 18.0}, "lines": [], "features": {}}
+    blind_ctx = build_context(alert, candles, None, None, blind=True)
+    assert "NASLEPO" in blind_ctx and "Sviečky po alerte" not in blind_ctx
+    ctx = build_context(alert, candles, None, {"label": "LONG", "note": "x"}, blind=False)
+    assert "Sviečky po alerte" in ctx and "RSI kleslo pod 20" in ctx
+
+    a = ClaudeAssistant({"assistant": {"model": "sonnet"}})
+    assert a.ask(ctx, [("prvá otázka", "prvá odpoveď")], "Je to dobrý vstup?") == "Vstup je riskantny."
+    call = _json.loads(log.read_text())
+    argv = call["argv"]
+    assert argv[argv.index("--tools") + 1] == "" and "--restricted" in argv and "-p" in argv
+    assert not any("dangerously" in x for x in argv)
+    assert "TELEGRAM_BOT_TOKEN" not in call["env"] and "CLAUDE_CODE_OAUTH_TOKEN" in call["env"]
+    assert "<data>" in call["stdin"] and "Je to dobrý vstup?" in call["stdin"] and "prvá odpoveď" in call["stdin"]
+    assert call["cwd"] != os.getcwd()
+
+    monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN")
+    with pytest.raises(AssistantError):
+        a.ask(ctx, [], "x")

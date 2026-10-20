@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pandas as pd
@@ -58,6 +58,10 @@ CREATE TABLE IF NOT EXISTS manual_marks (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     symbol TEXT, timeframe TEXT, bar_time INTEGER, direction TEXT,
     entry REAL, stop_loss REAL, take_profit REAL, labeler TEXT, note TEXT, created_at TEXT
+);
+CREATE TABLE IF NOT EXISTS assistant_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    alert_id INTEGER, labeler TEXT, question TEXT, answer TEXT, model TEXT, created_at TEXT
 );
 CREATE TABLE IF NOT EXISTS scan_state (
     symbol TEXT, timeframe TEXT, last_bar_time INTEGER,
@@ -222,6 +226,22 @@ class Store:
             [mark.get(c) for c in cols],
         )
         self.conn.commit()
+
+    # ---- assistant -----------------------------------------------------
+    def save_assistant(self, alert_id: int, labeler: str, question: str, answer: str, model: str):
+        self.conn.execute(
+            "INSERT INTO assistant_log (alert_id, labeler, question, answer, model, created_at) VALUES (?,?,?,?,?,?)",
+            (alert_id, labeler, question, answer, model, utcnow_iso()))
+        self.conn.commit()
+
+    def assistant_history(self, alert_id: int) -> list[tuple[str, str]]:
+        rows = self.conn.execute(
+            "SELECT question, answer FROM assistant_log WHERE alert_id=? ORDER BY id", (alert_id,)).fetchall()
+        return [(q, a) for q, a in rows]
+
+    def assistant_count_last_hour(self) -> int:
+        since = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat(timespec="seconds")
+        return self.conn.execute("SELECT COUNT(*) FROM assistant_log WHERE created_at >= ?", (since,)).fetchone()[0]
 
     # ---- scan state ----------------------------------------------------
     def get_state(self, symbol: str, timeframe: str) -> int | None:

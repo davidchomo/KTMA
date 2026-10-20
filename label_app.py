@@ -14,6 +14,7 @@ import pandas as pd
 import streamlit as st
 import yaml
 
+from ktma.assistant import AssistantError, ClaudeAssistant, build_context
 from ktma.cli import _load_env
 from ktma.config import ROOT, load_config, tf_ms
 from ktma.data import resample
@@ -270,6 +271,48 @@ def alert_header(alert: dict):
             st.caption("ℹ️ iba uložený kandidát (nešiel na Telegram)")
 
 
+QUICK_QUESTIONS = ["Je to dobrý vstup? Prečo áno / nie?", "Kam by si dal SL a TP a prečo?",
+                   "Čo hovoria trendové čiary a vyšší timeframe?", "Aké je tu najväčšie riziko?"]
+
+
+def ask_claude(cfg, store, alert: dict, candles_df: pd.DataFrame, f: dict, label: dict | None):
+    """Text-only Q&A about this alert with the owner's Claude Code login (see ktma/assistant.py)."""
+    history = store.assistant_history(alert["id"])
+    with st.expander(f"💬 Opýtaj sa Clauda ({len(history)})", expanded=bool(history)):
+        assistant = ClaudeAssistant(cfg)
+        ok, why = assistant.status()
+        if not ok:
+            st.info(f"{why} Návod je v README v časti „Opýtaj sa Clauda“.")
+            return
+        for q, a in history:
+            st.chat_message("user").write(q)
+            st.chat_message("assistant").write(a)
+        qcols = st.columns(len(QUICK_QUESTIONS))
+        quick = next((q for c, q in zip(qcols, QUICK_QUESTIONS)
+                      if c.button(q, key=f"q{alert['id']}{q}", use_container_width=True)), None)
+        with st.form(f"ask{alert['id']}", clear_on_submit=True):
+            typed = st.text_area("Tvoja otázka", height=70, max_chars=1000,
+                                 placeholder="napr. Prečo tu nebrať LONG, keď je RSI pod 20?")
+            sent = st.form_submit_button("Opýtať sa")
+        question = quick or (typed.strip() if sent else "")
+        if not question:
+            return
+        if store.assistant_count_last_hour() >= assistant.max_per_hour:
+            st.warning(f"Limit {assistant.max_per_hour} otázok za hodinu je vyčerpaný, skús neskôr.")
+            return
+        a_cfg = cfg.get("assistant") or {}
+        context = build_context(alert, candles_df, None if f["blind"] else store.outcome(alert["id"]), label,
+                                f["blind"], a_cfg.get("context_candles_before", 60), a_cfg.get("context_candles_after", 30))
+        with st.spinner("Claude premýšľa…"):
+            try:
+                answer = assistant.ask(context, history[-6:], question)
+            except AssistantError as e:
+                st.error(f"Claude nedokázal odpovedať: {e}")
+                return
+        store.save_assistant(alert["id"], f["labeler"] or "?", question, answer, assistant.model)
+        st.rerun()
+
+
 def page_label(cfg, store, f):
     qp = st.query_params.get("alert")
     queue = alert_queue(store, f)
@@ -348,6 +391,7 @@ def page_label(cfg, store, f):
                 if tr:
                     st.write(f"**Tvoj plán:** {'✅ TP' if tr['result'] == 1 else '❌ SL' if tr['result'] == -1 else '⏱ otvorený'} "
                              f"po {tr['bars']} sviečkach · výsledok **{tr['r_multiple']:+.2f} R**")
+        ask_claude(cfg, store, alert, df, f, existing)
         with st.expander("Všetky uložené dáta alertu (features, čiary, indikátory)"):
             st.json({"details": alert["details"], "lines": alert["lines"], "features": alert["features"]}, expanded=False)
 

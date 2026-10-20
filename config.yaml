@@ -126,5 +126,13 @@ notify:
   console: true
   telegram: false            # zapni a nastav TELEGRAM_BOT_TOKEN a TELEGRAM_CHAT_ID v .env
 
+assistant:                   # 💬 Opýtaj sa Clauda (v appke pri každom alerte)
+  enabled: true
+  model: sonnet              # sonnet | opus | haiku (alias Claude Code)
+  timeout_seconds: 180
+  max_questions_per_hour: 30 # ochrana predplatného
+  context_candles_before: 60
+  context_candles_after: 30
+
 model:
   path: models/model.joblib  # fáza 3: ak súbor existuje, skener pridá ku každému alertu skóre

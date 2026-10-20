@@ -83,6 +83,23 @@ docker compose run --rm scanner python -m ktma backfill
 docker compose up -d
 ```
 
+### 💬 Opýtaj sa Clauda (voliteľné)
+V appke je pri každom alerte panel, kde sa dá Clauda pýtať na konkrétny alert („je to dobrý vstup?“, „kam SL/TP?“).
+Používa váš Claude Code s predplatným, ale **iba na text**: všetky nástroje sú vypnuté (`--tools ""`, `--restricted`),
+takže Claude nemôže spúšťať príkazy ani čítať súbory na serveri. Vidí iba dáta alertu, ktoré mu appka pošle.
+Počet otázok je obmedzený (`assistant.max_questions_per_hour` v `config.yaml`).
+
+1. Vytvor token (Claude Code je už v Docker image, netreba ho inštalovať na server):
+   ```bash
+   docker compose run --rm label-ui claude setup-token
+   ```
+   Otvor vypísaný odkaz v prehliadači, prihlás sa, skopíruj kód späť do terminálu. Vypíše sa token.
+2. Vlož ho do `.env`: `CLAUDE_CODE_OAUTH_TOKEN=...`
+3. `docker compose up -d` (alebo `--build` po aktualizácii).
+
+Token platí rok a vie iba posielať otázky modelu. Používanie predplatného pre druhú osobu si over v podmienkach
+svojho plánu.
+
 ### 4. Údržba
 ```bash
 docker compose run --rm scanner python -m ktma stats     # počty sviečok, alertov, labelov
@@ -111,6 +128,7 @@ ktma/structure.py   ATR ZigZag swingy, trendové čiary, paralelné kanály (bez
 ktma/signals.py     pravidlá alertov + filtre notifikácií
 ktma/setups.py      stratégie: Holy Grail, Opening Range Breakout, Hitchhiker
 ktma/tvchart.py     graf v štýle TradingView (Lightweight Charts)
+ktma/assistant.py   💬 Opýtaj sa Clauda (Claude Code bez nástrojov)
 ktma/features.py    snapshot features zo všetkých TF (zarovnané podľa uzavretia sviečky)
 ktma/outcomes.py    triple-barrier, MFE/MAE, trend-scanning, výsledok plánu (R)
 ktma/scanner.py     celý pipeline (živý sken aj backfill)
