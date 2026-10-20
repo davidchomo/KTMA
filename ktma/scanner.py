@@ -17,9 +17,10 @@ from .features import FEATURE_VERSION, build_snapshot, derive_features
 from .indicators import add_indicators
 from .outcomes import compute_outcome
 from .setups import detect_setups
+from .confluence import confluence_events
 from .signals import detect, should_notify
 from .storage import Store
-from .structure import StructureEngine, line_record, lines_snapshot
+from .structure import StructureEngine, levels_snapshot, line_record, lines_snapshot
 
 log = logging.getLogger(__name__)
 
@@ -28,7 +29,7 @@ NATIVE_BOOTSTRAP = ["5m", "15m", "1h"]
 
 
 def rules_hash(cfg: dict) -> str:
-    rules = {k: cfg.get(k) for k in ("indicators", "structure", "signals", "setups")}
+    rules = {k: cfg.get(k) for k in ("indicators", "structure", "signals", "setups", "confluence")}
     return hashlib.sha1(json.dumps(rules, sort_keys=True).encode()).hexdigest()[:10]
 
 
@@ -123,6 +124,8 @@ class Scanner:
             times = f["open_time"].to_numpy()
             last_done = self.store.get_state(symbol, tf)
             events = detect(f, self.cfg) + struct["events"] + detect_setups(f, tf, self.cfg)
+            if (self.cfg.get("confluence") or {}).get("enabled"):
+                events += confluence_events(events, self.cfg["confluence"], tf)
             events.sort(key=lambda e: (e["i"], e["signal"]))
             max_age = self.cfg.get("notify_max_age_bars", 15)
             for ev in events:
@@ -133,6 +136,9 @@ class Scanner:
                 row = f.iloc[i]
                 alert = self._make_alert(symbol, tf, ev, row, bar_time, frames, feats, struct, times, live)
                 alert["notify"] = should_notify(ev, row, tf, self.cfg) and not self._in_cooldown(alert)
+                if ev["signal"].startswith("CONFLUENCE") and self.cfg["confluence"].get("require_htf_trend") \
+                        and not alert["details"]["confluence"].get("htf"):
+                    alert["notify"] = False
                 alert_id = self.store.insert_alert(alert)
                 if alert_id is None:
                     continue
@@ -167,6 +173,18 @@ class Scanner:
         details.update({c: _r(row[c]) for c in row.index if c.startswith("ma_")})
         if "line" in ev:
             details["line"] = {k: (round(v, 6) if isinstance(v, float) else v) for k, v in ev["line"].items()}
+        if "level" in ev:
+            details["level"] = {k: (round(v, 6) if isinstance(v, float) else v) for k, v in ev["level"].items()}
+        details["levels"] = levels_snapshot(struct["levels"], ev["i"], times, float(row["close"]),
+                                            (self.cfg["structure"].get("levels") or {}).get("min_touches", 2))
+        features = build_snapshot(frames, tf, bar_time, feats)
+        fams = (ev.get("confluence") or {}).get("families", [])
+        want = 1 if ev["direction"] == "bullish" else -1
+        htf = [f"{t} {'↑' if want > 0 else '↓'}" for t in ("1h", "4h")
+               if features.get(f"{t}__swing_trend") is not None and features[f"{t}__swing_trend"] * want > 0]
+        details["confluence"] = {"families": fams, "htf": htf}
+        features["conf__families"] = len(fams)
+        features["conf__htf_agree"] = len(htf)
         if ev.get("extra"):
             details["setup"] = {k: (round(v, 6) if isinstance(v, float) else v) for k, v in ev["extra"].items()}
         details["candidate_only"] = bool(ev.get("candidate"))
@@ -176,7 +194,7 @@ class Scanner:
             "price": float(row["close"]), "rsi": _r(row["rsi"]),
             "volume_ratio": _r(row["volume_ratio"]), "atr": _r(row["atr"]),
             "details": details,
-            "features": build_snapshot(frames, tf, bar_time, feats),
+            "features": features,
             "lines": lines_snapshot(struct["lines"], ev["i"], times),
             "feature_version": FEATURE_VERSION, "rules_hash": self.rules_hash,
             "source": "live" if live else "backfill",

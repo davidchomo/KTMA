@@ -19,12 +19,12 @@ from ktma.cli import _load_env
 from ktma.config import ROOT, load_config, tf_ms
 from ktma.data import resample
 from ktma.dataset import build_dataset, ev_table
-from ktma.describe import (adx_text, direction_text, rsi_text, setup_text, signal_text, symbol_name,
+from ktma.describe import (adx_text, confluence_text, direction_text, rsi_text, setup_text, signal_text, symbol_name,
                            trend_arrow, volume_text)
 from ktma.indicators import add_indicators
 from ktma.outcomes import trade_result
 from ktma.storage import Store
-from ktma.structure import StructureEngine, lines_snapshot
+from ktma.structure import StructureEngine, levels_snapshot, lines_snapshot
 from ktma.tvchart import CHART_TYPES, SCALES, STYLE_DEFAULTS, THEMES, build_spec, render, style_indicators
 
 _load_env()
@@ -67,9 +67,9 @@ def fmt_time(ms: int) -> str:
     return pd.Timestamp(int(ms), unit="ms", tz="UTC").strftime("%Y-%m-%d %H:%M")
 
 
-LAYERS = ["Čiary", "Dotyky", "Rovnobežky", "Kanál", "EMA", "EMA dlhá", "VWAP",
+LAYERS = ["Čiary", "S/R", "Dotyky", "Rovnobežky", "Kanál", "EMA", "EMA dlhá", "VWAP",
           "Alerty", "Labely", "Objem", "RSI", "MACD"]
-DEFAULT_LAYERS = ["Čiary", "Dotyky", "Kanál", "EMA", "Alerty", "Labely", "Objem", "RSI", "MACD"]
+DEFAULT_LAYERS = ["Čiary", "S/R", "Dotyky", "Kanál", "EMA", "Alerty", "Labely", "Objem", "RSI", "MACD"]
 PANELS = ["Objem", "RSI", "MACD"]
 
 
@@ -229,7 +229,8 @@ def chart(cfg, store, alert, blind: bool, before: int, after: int, plan: dict, l
                       markers=[{"i": a_x, "direction": alert["direction"], "size": 2,
                                 "text": "LONG?" if alert["direction"] == "bullish" else "SHORT?"}],
                       price_lines=plan_lines(plan), reg_channel=cfg["structure"].get("regression_channel"),
-                      style=chart_style(), label_marks=past_labels(store, alert["symbol"], alert["timeframe"], w, alert["id"]))
+                      style=chart_style(), label_marks=past_labels(store, alert["symbol"], alert["timeframe"], w, alert["id"]),
+                      levels=(alert.get("details") or {}).get("levels"))
     return spec, chart_height(layers), df
 
 
@@ -243,6 +244,8 @@ def live_view(cfg, store, symbol: str, tf: str, bars: int, only_notified: bool, 
     k = cfg["structure"]["zigzag_atr"].get(tf, 2.0)
     struct = StructureEngine(cfg["structure"], k).run(f)
     lines = lines_snapshot(struct["lines"], len(f) - 1, f["open_time"].to_numpy())
+    levels = levels_snapshot(struct["levels"], len(f) - 1, f["open_time"].to_numpy(), float(f["close"].iloc[-1]),
+                             (cfg["structure"].get("levels") or {}).get("min_touches", 2))
     w = f.tail(bars).reset_index(drop=True)
 
     t0 = int(w["open_time"].iloc[0])
@@ -254,7 +257,8 @@ def live_view(cfg, store, symbol: str, tf: str, bars: int, only_notified: bool, 
     if not al.empty and "Alerty" in layers:
         xs = np.searchsorted(w["open_time"].to_numpy(), al["bar_time"].to_numpy())
         markers = [{"i": int(x), "direction": r.direction, "size": 1 if r.notify else 0.6,
-                    "text": "", "note": f"#{r.id} {signal_text(r.signal)[0]}"}
+                    "text": "🧩" if r.signal.startswith("CONFLUENCE") else "",
+                    "note": f"#{r.id} {signal_text(r.signal)[0]}"}
                    for x, r in zip(xs, al.itertuples(index=False))]
 
     c = st.columns(4)
@@ -269,7 +273,7 @@ def live_view(cfg, store, symbol: str, tf: str, bars: int, only_notified: bool, 
     c[3].metric("Alerty za 24 h", n24, f"{s24} na Telegram", delta_color="off")
     spec = build_spec(w, layers, lines, extend=15, markers=markers,
                       reg_channel=cfg["structure"].get("regression_channel"),
-                      style=chart_style(), label_marks=past_labels(store, symbol, tf, w))
+                      style=chart_style(), label_marks=past_labels(store, symbol, tf, w), levels=levels)
     render(spec, chart_height(layers), f"live-{symbol}-{tf}-{bars}")
     st.caption(f"Čiary a kanál presne tak, ako ich skener vidí teraz (aktívne čiary: {len(lines)}). "
                "Šípky = alerty (popis uvidíš hore, keď prejdeš myšou na sviečku). Obnovuje sa každú minútu.")
@@ -345,6 +349,9 @@ def alert_header(alert: dict):
         parts.append(f"objem {alert['volume_ratio']:.1f}×")
     if d.get("adx") is not None:
         parts.append(f"ADX {d['adx']:.0f}")
+    n_conf = len((d.get("confluence") or {}).get("families", []))
+    if n_conf >= 2:
+        parts.append(f"🧩 {n_conf} stratégie súhlasia")
     parts += [f"trend {trend}", f"#{alert['id']}"]
     if view["header"]:
         st.markdown(" · ".join(parts))
@@ -366,6 +373,10 @@ def alert_header(alert: dict):
             ln = d["line"]
             kind = "rezistencia" if ln["kind"] == "resistance" else "podpora"
             rows.append(("Čiara", f"{ln['value']:.2f}", f"{kind}, {ln['touches']} dotyky"))
+        if d.get("level"):
+            rows.append(("Úroveň", f"{d['level']['price']:.2f}", f"horizontálna, {d['level']['touches']} dotyky"))
+        if confluence_text(d.get("confluence")):
+            rows.append(("🧩 Súlad", "", confluence_text(d.get("confluence"))))
         if setup_text(d.get("setup")):
             rows.append(("Setup", "", setup_text(d.get("setup"))))
         sup, res = feats.get(f"{tf}__sup_dist_atr"), feats.get(f"{tf}__res_dist_atr")

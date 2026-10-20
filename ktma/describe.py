@@ -34,6 +34,14 @@ _SIGNALS = [
     (r"TL_BREAK_DOWN", "Prerazenie podpory (trendovej čiary)", "Cena zatvorila pod čiarou, ktorá ju doteraz držala."),
     (r"TL_TOUCH_RESISTANCE", "Odraz od rezistencie", "Cena sa dotkla čiary zhora a odrazila sa dole."),
     (r"TL_TOUCH_SUPPORT", "Odraz od podpory", "Cena sa dotkla čiary zdola a odrazila sa hore."),
+    (r"SR_BREAK_UP", "Prerazenie horizontálnej rezistencie", "Cena zatvorila nad úrovňou, kde sa viackrát otočila. "
+     "Rezistencia sa môže stať podporou."),
+    (r"SR_BREAK_DOWN", "Prerazenie horizontálnej podpory", "Cena zatvorila pod úrovňou, kde sa viackrát otočila. "
+     "Podpora sa môže stať rezistenciou."),
+    (r"SR_BOUNCE_SUPPORT", "Odraz od horizontálnej podpory", "Cena sa dotkla úrovne zdola nahor a odrazila sa."),
+    (r"SR_BOUNCE_RESISTANCE", "Odraz od horizontálnej rezistencie", "Cena sa dotkla úrovne a odrazila sa dole."),
+    (r"CONFLUENCE_LONG", "🧩 Súlad stratégií LONG", "Viac rôznych stratégií naraz ukazuje hore."),
+    (r"CONFLUENCE_SHORT", "🧩 Súlad stratégií SHORT", "Viac rôznych stratégií naraz ukazuje dole."),
     (r"CHANNEL_BREAK_UP", "Výbeh nad regresný kanál", "Cena vybehla nad horný okraj trendového kanála."),
     (r"CHANNEL_BREAK_DOWN", "Výbeh pod regresný kanál", "Cena vybehla pod dolný okraj trendového kanála."),
     (r"HOLY_GRAIL_LONG", "Holy Grail LONG", "Silný rastový trend (ADX > 30), cena sa vrátila k EMA 20 a teraz prerazila "
@@ -106,6 +114,23 @@ def trend_arrow(v) -> str:
         return "–"
     return "↑ rastie" if v > 0 else ("↓ klesá" if v < 0 else "↔ do strán")
 
+
+
+FAMILY_NAMES = {"RSI": "RSI", "MACD": "MACD", "EMA": "EMA", "VOL": "objem", "VWAP": "VWAP", "TL": "trendová čiara",
+                "SR": "S/R úroveň", "CHANNEL": "kanál", "DONCHIAN": "Donchian", "HOLY_GRAIL": "Holy Grail",
+                "ORB": "ORB", "HITCHHIKER": "Hitchhiker"}
+
+
+def confluence_text(conf: dict | None) -> str | None:
+    """'3 stratégie: RSI · trendová čiara · VWAP' (+ higher-timeframe trend)."""
+    if not conf or not conf.get("families"):
+        return None
+    names = " · ".join(FAMILY_NAMES.get(f, f) for f in conf["families"])
+    txt = f"{len(conf['families'])} stratégie: {names}" if len(conf["families"]) < 5 \
+        else f"{len(conf['families'])} stratégií: {names}"
+    if conf.get("htf"):
+        txt += " · trend " + ", ".join(conf["htf"])
+    return txt
 
 
 def setup_text(setup: dict | None) -> str | None:

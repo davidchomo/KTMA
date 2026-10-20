@@ -49,9 +49,26 @@ class Line:
     end_reason: str | None = None
     last_touch_alert_idx: int = -10**9
     touch_idxs: list = field(default_factory=list)
+    touch_conf: list = field(default_factory=list)   # bar on which each touch became known
 
     def value(self, i: float) -> float:
         return self.p1 + self.slope * (i - self.i1)
+
+
+@dataclass
+class Level:
+    """Horizontal support/resistance: swing highs/lows clustered at one price.
+    Its role (support or resistance) is decided by where price is, so it flips after a break."""
+    price: float
+    touches: int
+    created_idx: int
+    last_touch_idx: int
+    touch_idxs: list = field(default_factory=list)
+    touch_prices: list = field(default_factory=list)
+    touch_conf: list = field(default_factory=list)
+    ended_idx: int | None = None
+    end_reason: str | None = None
+    last_alert_idx: int = -10**9
 
 
 def zigzag(high: np.ndarray, low: np.ndarray, atr: np.ndarray, k: float) -> list[Pivot]:
@@ -97,6 +114,15 @@ class StructureEngine:
         self.max_dist = scfg.get("max_distance_atr", 12)
         self.max_lines = scfg["max_lines_per_side"]
         self.cooldown = scfg["touch_cooldown_bars"]
+        lv = scfg.get("levels") or {}
+        self.levels_on = lv.get("enabled", True)
+        self.lv_merge = lv.get("merge_atr", 0.4)
+        self.lv_min = lv.get("min_touches", 2)
+        self.lv_break = lv.get("break_atr", 0.15)
+        self.lv_touch = lv.get("touch_atr", 0.25)
+        self.lv_dist = lv.get("max_distance_atr", 15)
+        self.lv_age = lv.get("max_age_bars", 1500)
+        self.lv_max = lv.get("max_levels", 8)
 
     def run(self, df: pd.DataFrame) -> dict:
         """`df` needs high, low, close, atr. Returns pivots, all lines, events
@@ -116,9 +142,12 @@ class StructureEngine:
         active: list[Line] = []
         all_lines: list[Line] = []
         events: list[dict] = []
+        levels: list[Level] = []
+        all_levels: list[Level] = []
         state = {k: np.full(n, np.nan) for k in (
             "sup_val", "sup_slope", "sup_touches", "sup_age", "sup_chan",
-            "res_val", "res_slope", "res_touches", "res_age", "res_chan", "swing_trend")}
+            "res_val", "res_slope", "res_touches", "res_age", "res_chan", "swing_trend",
+            "lvl_sup_val", "lvl_sup_touches", "lvl_res_val", "lvl_res_touches")}
 
         for i in range(n):
             a = atr[i]
@@ -148,6 +177,10 @@ class StructureEngine:
                         line.last_touch_alert_idx = i
                         events.append(self._event("TL_TOUCH_SUPPORT", "bullish", i, line, v, a))
 
+            # 1b) Horizontal levels vs. this bar: break (role flips), bounce, expiry.
+            if self.levels_on and i > 0:
+                self._levels_bar(levels, events, i, high, low, close, a)
+
             # 2) Newly confirmed pivots: strengthen lines, create new ones.
             for p in by_confirm.get(i, []):
                 kind = RESISTANCE if p.kind == "H" else SUPPORT
@@ -156,6 +189,7 @@ class StructureEngine:
                             and p.idx not in line.touch_idxs and p.idx > line.i2:
                         line.touches += 1
                         line.touch_idxs.append(p.idx)
+                        line.touch_conf.append(i)
                         line.last_touch_idx = p.idx
                         line.score = self._score(line.touches, line.i2 - line.i1)
                 cand = self._best_candidate(p, known[p.kind][-self.lookback:], kind, high, low, close, atr, i)
@@ -166,16 +200,78 @@ class StructureEngine:
                     for weak in side[: max(0, len(side) - self.max_lines)]:
                         self._end(weak, i, "replaced", active)
                 known[p.kind].append(p)
+                if self.levels_on:
+                    self._levels_pivot(levels, all_levels, p, i, close[i], a)
 
             # 3) Per-bar state (after this bar closed) for features.
             self._record_state(state, i, close[i], active)
+            self._record_levels(state, i, close[i], levels)
             hs, ls = known["H"], known["L"]
             if len(hs) >= 2 and len(ls) >= 2:
                 up = hs[-1].price > hs[-2].price and ls[-1].price > ls[-2].price
                 down = hs[-1].price < hs[-2].price and ls[-1].price < ls[-2].price
                 state["swing_trend"][i] = 1.0 if up else (-1.0 if down else 0.0)
 
-        return {"pivots": pivots, "lines": all_lines, "events": events, "state": state}
+        return {"pivots": pivots, "lines": all_lines, "levels": all_levels, "events": events, "state": state}
+
+    # ---- horizontal levels -------------------------------------------
+    def _levels_bar(self, levels, events, i, high, low, close, a):
+        prev = close[i - 1]
+        for lv in list(levels):
+            L = lv.price
+            if abs(close[i] - L) > self.lv_dist * a:
+                self._end(lv, i, "far", levels)
+                continue
+            if i - lv.last_touch_idx > self.lv_age:
+                self._end(lv, i, "expired", levels)
+                continue
+            if lv.created_idx >= i or lv.touches < self.lv_min or i - lv.last_alert_idx < self.cooldown:
+                continue
+            brk, tch = self.lv_break * a, self.lv_touch * a
+            info = {"price": L, "touches": lv.touches, "age_bars": i - lv.touch_idxs[0]}
+            if prev <= L and close[i] > L + brk:
+                lv.last_alert_idx = i
+                events.append({"i": i, "signal": "SR_BREAK_UP", "direction": "bullish", "level": info})
+            elif prev >= L and close[i] < L - brk:
+                lv.last_alert_idx = i
+                events.append({"i": i, "signal": "SR_BREAK_DOWN", "direction": "bearish", "level": info})
+            elif prev > L and low[i] <= L + tch and close[i] > L:
+                lv.last_alert_idx = i
+                events.append({"i": i, "signal": "SR_BOUNCE_SUPPORT", "direction": "bullish", "level": info})
+            elif prev < L and high[i] >= L - tch and close[i] < L:
+                lv.last_alert_idx = i
+                events.append({"i": i, "signal": "SR_BOUNCE_RESISTANCE", "direction": "bearish", "level": info})
+
+    def _levels_pivot(self, levels, all_levels, p: Pivot, i, c, a):
+        near = [lv for lv in levels if abs(lv.price - p.price) <= self.lv_merge * a]
+        if near:
+            lv = min(near, key=lambda x: abs(x.price - p.price))
+            if p.idx not in lv.touch_idxs:
+                lv.touches += 1
+                lv.touch_idxs.append(p.idx)
+                lv.touch_prices.append(p.price)
+                lv.touch_conf.append(i)
+                lv.last_touch_idx = p.idx
+                lv.price = float(np.mean(lv.touch_prices))
+            return
+        lv = Level(p.price, 1, i, p.idx, [p.idx], [p.price], [i])
+        levels.append(lv)
+        all_levels.append(lv)
+        if len(levels) > self.lv_max:
+            # Keep the strongest / nearest levels; drop the weakest far one.
+            worst = max(levels, key=lambda x: (abs(x.price - c) / a) - 3 * x.touches)
+            self._end(worst, i, "replaced", levels)
+
+    def _record_levels(self, state, i, c, levels):
+        valid = [lv for lv in levels if lv.touches >= self.lv_min]
+        below = [lv for lv in valid if lv.price <= c]
+        above = [lv for lv in valid if lv.price > c]
+        if below:
+            s = max(below, key=lambda x: x.price)
+            state["lvl_sup_val"][i], state["lvl_sup_touches"][i] = s.price, s.touches
+        if above:
+            r = min(above, key=lambda x: x.price)
+            state["lvl_res_val"][i], state["lvl_res_touches"][i] = r.price, r.touches
 
     # ------------------------------------------------------------------
     @staticmethod
@@ -183,7 +279,7 @@ class StructureEngine:
         return touches * 10.0 + length / 50.0
 
     @staticmethod
-    def _end(line: Line, i: int, reason: str, active: list[Line]):
+    def _end(line, i: int, reason: str, active: list):
         line.ended_idx = i
         line.end_reason = reason
         active.remove(line)
@@ -217,6 +313,7 @@ class StructureEngine:
                         score=self._score(touches, p.idx - q.idx),
                         touch_idxs=[r.idx for r in prior if q.idx <= r.idx <= p.idx
                                     and abs(r.price - (q.price + slope * (r.idx - q.idx))) <= self.touch * a] + [p.idx])
+            line.touch_conf = [i] * len(line.touch_idxs)
             if best is None or line.score > best.score:
                 best = line
         return best
@@ -262,11 +359,28 @@ def lines_snapshot(lines: list[Line], i: int, times: np.ndarray) -> list[dict]:
             continue
         out.append({
             "kind": l.kind, "t1": int(times[l.i1]), "p1": l.p1, "t2": int(times[l.i2]), "p2": l.p2,
-            "slope_per_bar": l.slope, "touches": l.touches, "value_at_alert": l.value(i),
+            "slope_per_bar": l.slope, "touches": sum(1 for c in l.touch_conf if c <= i) or l.touches,
+            "value_at_alert": l.value(i),
             "channel_offset": l.channel_offset,
             "bars_from_t1": i - l.i1, "ended_here": l.ended_idx == i,
-            "touch_times": [int(times[k]) for k in sorted(set(l.touch_idxs)) if k <= i],
+            "touch_times": sorted({int(times[k]) for k, c in zip(l.touch_idxs, l.touch_conf) if c <= i}),
         })
+    return out
+
+
+def levels_snapshot(levels: list[Level], i: int, times: np.ndarray, close: float, min_touches: int = 2) -> list[dict]:
+    """Valid horizontal levels at the close of bar `i`, with their current role."""
+    out = []
+    for lv in levels:
+        if lv.created_idx > i or (lv.ended_idx is not None and lv.ended_idx < i):
+            continue
+        touches = sum(1 for c in lv.touch_conf if c <= i)
+        if touches < min_touches:
+            continue
+        prices = [pr for c, pr in zip(lv.touch_conf, lv.touch_prices) if c <= i]
+        out.append({"price": float(np.mean(prices)), "touches": touches,
+                    "role": "support" if np.mean(prices) <= close else "resistance",
+                    "since": int(times[lv.touch_idxs[0]])})
     return out
 
 

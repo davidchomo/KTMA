@@ -107,7 +107,11 @@ def should_notify(event: dict, row: pd.Series, timeframe: str, cfg: dict) -> boo
     if sig.startswith("DONCHIAN_BREAK"):
         if int(sig.rsplit("_", 1)[1]) not in (f.get("donchian_notify") or []):
             return False
+    if f.get("mode") == "confluence" and not sig.startswith(("CONFLUENCE", "HOLY_GRAIL", "ORB_", "HITCHHIKER")):
+        return False
     if sig.startswith("TL_") and event.get("line", {}).get("touches", 0) < f.get("min_line_touches", 0):
+        return False
+    if sig.startswith("SR_") and event.get("level", {}).get("touches", 0) < f.get("min_level_touches", 0):
         return False
     if sig.startswith("RSI_") and f.get("rsi_max_adx") and pd.notna(row.get("adx")) \
             and row["adx"] > f["rsi_max_adx"]:

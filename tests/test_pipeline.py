@@ -62,11 +62,12 @@ def test_structure_no_lookahead(cfg, m5):
     full = eng.run(f)
     m = len(f) * 2 // 3
     part = eng.run(f.iloc[:m].reset_index(drop=True))
-    key = lambda e: (e["i"], e["signal"], round(e["line"]["value"], 6))
+    key = lambda e: (e["i"], e["signal"], round(e["line"]["value"] if "line" in e else e["level"]["price"], 6))
     assert [key(e) for e in part["events"]] == [key(e) for e in full["events"] if e["i"] < m]
     for k, arr in part["state"].items():
         np.testing.assert_allclose(arr, full["state"][k][:m], equal_nan=True)
     assert any(e["signal"].startswith("TL_BREAK") for e in full["events"])
+    assert any(e["signal"].startswith("SR_") for e in full["events"])
 
 
 def test_signals_and_features_no_lookahead(cfg, m5):
@@ -357,3 +358,21 @@ def test_claude_assistant_runs_text_only(tmp_path, monkeypatch, cfg):
     monkeypatch.delenv("CLAUDE_CODE_OAUTH_TOKEN")
     with pytest.raises(AssistantError):
         a.ask(ctx, [], "x")
+
+
+def test_confluence_needs_distinct_families_in_window():
+    from ktma.confluence import confluence_events
+
+    ev = [{"i": 10, "signal": "RSI_BELOW_20", "direction": "bullish"},
+          {"i": 11, "signal": "RSI_EXIT_BELOW_20", "direction": "bullish"},   # same family as above
+          {"i": 11, "signal": "TL_TOUCH_SUPPORT", "direction": "bullish"},
+          {"i": 12, "signal": "VWAP_CROSS_UP", "direction": "bullish"},
+          {"i": 12, "signal": "MACD_BEAR_CROSS", "direction": "bearish"},
+          {"i": 12, "signal": "RSI_ABOVE_70", "direction": "bullish", "candidate": True},
+          {"i": 30, "signal": "MACD_BULL_CROSS", "direction": "bullish"}]
+    out = confluence_events(ev, {"window_bars": 3, "min_families": 3})
+    assert [(e["i"], e["signal"], e["confluence"]["families"]) for e in out] == \
+        [(12, "CONFLUENCE_LONG", ["RSI", "TL", "VWAP"])]
+    assert ev[3]["confluence"]["families"] == ["RSI", "TL", "VWAP"]
+    assert ev[6]["confluence"]["families"] == ["MACD"]          # far away, alone
+    assert confluence_events(ev, {"window_bars": 3, "min_families": {"1m": 4, "5m": 3}}, "1m") == []

@@ -84,7 +84,8 @@ def _series(times, values) -> list[dict]:
 def build_spec(w: pd.DataFrame, layers: set, lines: list[dict] | None = None, focus_i: int | None = None,
                extend: int = 40, markers: list[dict] | None = None, price_lines: list[dict] | None = None,
                reg_channel: dict | None = None, label_marks: list[dict] | None = None,
-               zoom_before: int = 70, zoom_after: int = 40, style: dict | None = None) -> dict:
+               zoom_before: int = 70, zoom_after: int = 40, style: dict | None = None,
+               levels: list[dict] | None = None) -> dict:
     """`w` = frame from add_indicators + style_indicators (bars of one timeframe, index 0..n-1)."""
     st = {**STYLE_DEFAULTS, **(style or {})}
     up_c, down_c = st["up"], st["down"]
@@ -132,7 +133,11 @@ def build_spec(w: pd.DataFrame, layers: set, lines: list[dict] | None = None, fo
             continue
         val = lambda x: ln["p1"] + ln["slope_per_bar"] * (x - x1)  # noqa: E731
         color = down_c if ln["kind"] == "resistance" else up_c
-        spec["segments"].append({"color": color, "width": st["trendline_width"], "style": 0, "data": [
+        # Strong lines (3+ touches) solid and thick, weak ones (2 touches) thin and dashed.
+        strong = ln.get("touches", 2) >= 3
+        spec["segments"].append({"color": color if strong else color + "aa",
+                                 "width": st["trendline_width"] + (1 if ln.get("touches", 2) >= 4 else 0) if strong else 1,
+                                 "style": 0 if strong else 2, "data": [
             {"time": int(t[x_start]), "value": float(val(x_start))}, {"time": int(t[x_end]), "value": float(val(x_end))}]})
         if "Dotyky" in layers:
             # Swing points the line was built from / touched (what the scanner "saw").
@@ -146,6 +151,13 @@ def build_spec(w: pd.DataFrame, layers: set, lines: list[dict] | None = None, fo
             spec["segments"].append({"color": color, "width": 1, "style": 2, "data": [
                 {"time": int(t[x_start]), "value": float(val(x_start) + off)},
                 {"time": int(t[x_end]), "value": float(val(x_end) + off)}]})
+
+    if "S/R" in layers:
+        for lv in levels or []:
+            sup = lv["role"] == "support"
+            spec["priceLines"].append({"price": lv["price"], "color": (up_c if sup else down_c) + "cc",
+                                       "title": f"{'S' if sup else 'R'}{lv['touches']}",
+                                       "width": 2 if lv["touches"] >= 3 else 1, "style": 1})
 
     notes: dict[int, list[str]] = {}
     for m in markers or []:
@@ -258,8 +270,8 @@ function draw() {
   }
   if (SPEC.markers.length) LW.createSeriesMarkers(candles, SPEC.markers);
   for (const p of SPEC.priceLines) {
-    candles.createPriceLine({ price: p.price, color: p.color, lineWidth: 1, lineStyle: 2,
-                              axisLabelVisible: true, title: p.title });
+    candles.createPriceLine({ price: p.price, color: p.color, lineWidth: p.width || 1,
+                              lineStyle: p.style === undefined ? 2 : p.style, axisLabelVisible: true, title: p.title });
   }
   if (SPEC.volume) {
     const v = chart.addSeries(LW.HistogramSeries, { priceFormat: { type: 'volume' }, priceScaleId: 'vol',

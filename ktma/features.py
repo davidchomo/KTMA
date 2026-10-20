@@ -12,7 +12,7 @@ import pandas as pd
 
 from .config import tf_ms
 
-FEATURE_VERSION = 1
+FEATURE_VERSION = 2
 
 
 def derive_features(f: pd.DataFrame, cfg: dict) -> pd.DataFrame:
@@ -62,6 +62,10 @@ def derive_features(f: pd.DataFrame, cfg: dict) -> pd.DataFrame:
         chan = (f["sup_chan"] - f["sup_val"]).replace(0, np.nan)
         out["sup_chan_pos"] = (c - f["sup_val"]) / chan
         out["swing_trend"] = f["swing_trend"]
+    if "lvl_sup_val" in f:
+        out["lvl_sup_dist_atr"] = (c - f["lvl_sup_val"]) / a
+        out["lvl_res_dist_atr"] = (f["lvl_res_val"] - c) / a
+        out["lvl_sup_touches"], out["lvl_res_touches"] = f["lvl_sup_touches"], f["lvl_res_touches"]
     return out.replace([np.inf, -np.inf], np.nan)
 
 
