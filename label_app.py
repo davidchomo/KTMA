@@ -43,6 +43,11 @@ CSS = """<style>
 .nx-rrv { font-size: 24px; font-weight: 700; line-height: 1.2; }
 .nx-brand { font-size: 22px; font-weight: 700; letter-spacing: .06em; color: #d1d4dc; }
 .nx-brand b { color: #2962ff; }
+[data-testid='stPopoverBody'] { max-height: 86vh; overflow-y: auto; }
+.st-key-nx_ticket_fab { position: fixed; right: 120px; bottom: 24px; z-index: 1000; width: auto !important; }
+.st-key-nx_ticket_fab button { border-radius: 28px; padding: 10px 18px; font-size: 16px; font-weight: 600;
+                                background: #26a69a; color: #fff; border: none; box-shadow: 0 6px 20px rgba(0,0,0,.45); }
+.st-key-nx_ticket_fab button:hover { background: #1f8f84; color: #fff; }
 .st-key-nx_chat_fab { position: fixed; right: 28px; bottom: 24px; z-index: 1000; width: auto !important; }
 .st-key-nx_chat_fab button { border-radius: 28px; padding: 10px 18px; font-size: 20px; background: #2962ff;
                               color: #fff; border: none; box-shadow: 0 6px 20px rgba(0,0,0,.45); }
@@ -93,7 +98,7 @@ DEFAULT_LAYERS = ["Čiary", "S/R", "Dotyky", "Kanál", "EMA", "Alerty", "Labely"
 PANELS = ["Objem", "RSI", "MACD"]
 
 
-VIEW_DEFAULTS = {"sidebar": True, "header": True, "extras": True,
+VIEW_DEFAULTS = {"sidebar": True, "header": True, "extras": True, "before": 150, "after": 60,
                  "form": "vedľa grafu", "height": 700}
 FORM_MODES = ["vedľa grafu", "pod grafom", "skrytý"]
 
@@ -295,7 +300,8 @@ def live_view(cfg, store, symbol: str, tf: str, bars: int, only_notified: bool, 
     spec = build_spec(w, layers, lines, extend=15, markers=markers,
                       reg_channel=cfg["structure"].get("regression_channel"),
                       style=chart_style(), label_marks=past_labels(store, symbol, tf, w), levels=levels)
-    render(spec, chart_height(layers), f"live-{symbol}-{tf}-{bars}")
+    chart_panel(store, spec, chart_height(layers), f"live-{symbol}-{tf}-{bars}", st.session_state.get("labeler", ""),
+                symbol, tf, "chart-live")
     st.caption(f"Čiary a kanál presne tak, ako ich skener vidí teraz (aktívne čiary: {len(lines)}). "
                "Šípky = alerty (popis uvidíš hore, keď prejdeš myšou na sviečku). Obnovuje sa každú minútu.")
     if not al.empty:
@@ -352,6 +358,14 @@ def local_time(ms: int) -> str:
     return pd.Timestamp(int(ms), unit="ms", tz="UTC").tz_convert("Europe/Bratislava").strftime("%d.%m. %H:%M")
 
 
+# Focus (full-screen) labeling: hide app chrome, the chart takes the whole window.
+FOCUS_CSS = """<style>
+[data-testid='stSidebar'], [data-testid='stSidebarCollapsedControl'], [data-testid='stHeader'],
+[role='tablist'], .nx-cards { display: none !important; }
+.block-container { padding-top: .6rem !important; padding-bottom: 0 !important; max-width: 100% !important; }
+</style>"""
+
+
 def cards_html(cards: list[tuple[str, str, str]]) -> str:
     """Row of small metric cards: (label, value, hint)."""
     items = "".join(
@@ -367,7 +381,10 @@ def alert_header(alert: dict):
     d = alert.get("details") or {}
     tf = alert["timeframe"]
     view = st.session_state.get("view", VIEW_DEFAULTS)
-    top = st.columns([6, 1.2])
+    top = st.columns([6, 1.2, 1.3])
+    top[2].toggle("⛶ Focus", key="focus_mode",
+                  help="Režim labelovania na celú obrazovku: graf cez celé okno, formulár ako vyskakovacie okno. "
+                       "Stlač F11 pre celú obrazovku prehliadača.")
     with top[1].popover("ℹ️ Popis", use_container_width=True):
         st.markdown(f"**{direction_text(alert['direction'])} · {title}**")
         st.write(f"{symbol_name(alert['symbol'])} · sviečka {tf} · {local_time(alert['bar_time'])} (SK čas)")
@@ -488,9 +505,17 @@ def page_label(cfg, store, f):
     existing = store.label_for(alert["id"], f["labeler"]) or {}
     key = f"a{alert['id']}"
     default_dir = existing.get("label") or ("LONG" if alert["direction"] == "bullish" else "SHORT")
+    apply_pending_plan(alert, key, default_dir)
 
     view = st.session_state.get("view", VIEW_DEFAULTS)
-    if view["form"] == "vedľa grafu":
+    focus = st.session_state.get("focus_mode", False)
+    if focus:
+        st.markdown(FOCUS_CSS, unsafe_allow_html=True)
+        chart_area = st.container()
+        with st.container(key="nx_ticket_fab"):
+            ticket = st.popover("🏷️ Labelovať", help="Formulár na labelovanie (Ctrl+Enter = uložiť a ďalší)")
+        g1 = g2 = g3 = ticket
+    elif view["form"] == "vedľa grafu":
         chart_area, right = st.columns([3, 1])
         g1 = g2 = g3 = right.container(border=True)
     else:
@@ -500,9 +525,15 @@ def page_label(cfg, store, f):
 
     # ---- trade ticket: 1 decision · 2 plan with R:R · 3 rating -------------------------
     with g1:
+        if focus and not f["labeler"]:      # the sidebar (with the name field) is hidden in focus mode
+            name = st.text_input("Tvoje meno", key="labeler_focus", placeholder="bez mena sa label neuloží")
+            if name:
+                st.session_state["labeler"] = f["labeler"] = name
         st.markdown("**1 · Rozhodnutie**")
-        label = st.segmented_control("Rozhodnutie", list(LABELS), format_func=LABEL_CHIPS.get, default=default_dir,
-                                     key=f"{key}_label", label_visibility="collapsed") or default_dir
+        label = st.segmented_control("Rozhodnutie", list(LABELS), format_func=LABEL_CHIPS.get,
+                                     key=f"{key}_label", label_visibility="collapsed",
+                                     **({} if f"{key}_label" in st.session_state else {"default": default_dir})) \
+            or default_dir
     plan: dict = {}
     entry = sl = tp = be = None
     with g2:
@@ -516,13 +547,15 @@ def page_label(cfg, store, f):
                          help=f"SL {sug.get('sl_reason', '')}, TP {sug.get('tp_reason', '')}") and sug:
                 st.session_state[k_e], st.session_state[k_sl], st.session_state[k_tp] = sug["entry"], sug["sl"], sug["tp"]
             same_side = existing.get("label") == label
-            entry = st.number_input("Vstup", value=float(existing.get("entry") if same_side and existing.get("entry")
-                                                         else sug.get("entry", alert["price"])), format="%.2f", key=k_e)
-            c = st.columns(2)
-            sl = c[0].number_input("SL", value=float(existing.get("stop_loss") if same_side and existing.get("stop_loss")
-                                                     else sug.get("sl", entry - side * atr)), format="%.2f", key=k_sl)
-            tp = c[1].number_input("TP", value=float(existing.get("take_profit") if same_side and existing.get("take_profit")
-                                                     else sug.get("tp", entry + side * 2 * atr)), format="%.2f", key=k_tp)
+            wide = focus or view["form"] != "vedľa grafu"
+            c = st.columns(3) if wide else [st.container()] + st.columns(2)
+            entry = num_input(c[0], "Vstup", k_e, existing.get("entry") if same_side and existing.get("entry")
+                              else sug.get("entry", alert["price"]))
+            sl = num_input(c[1], "SL", k_sl, existing.get("stop_loss") if same_side and existing.get("stop_loss")
+                           else sug.get("sl", entry - side * atr))
+            tp = num_input(c[2], "TP", k_tp, existing.get("take_profit") if same_side and existing.get("take_profit")
+                           else sug.get("tp", entry + side * 2 * atr))
+            st.caption("Tip: v grafe tlačidlá E / SL / TP (Alt+E / Alt+S / Alt+P) a klik na cenu.")
             risk, reward = abs(entry - sl), abs(tp - entry)
             rr = reward / risk if risk else 0
             wrong = side * (tp - entry) <= 0 or side * (entry - sl) <= 0
@@ -533,11 +566,12 @@ def page_label(cfg, store, f):
             st.caption("Pri NEVSTUPOVAŤ / NEVIEM sa plán nevypĺňa.")
     with g3:
         st.markdown("**3 · Hodnotenie**")
-        correct_label = st.segmented_control(
+        rc = st.columns([3, 2]) if (focus or view["form"] != "vedľa grafu") else [st.container(), st.container()]
+        correct_label = rc[0].segmented_control(
             "Bol signál správny?", list(CORRECT), key=f"{key}_correct",
             default={1: "✔ správny", 0: "✘ nesprávny"}.get(existing.get("correct"), "? neviem"))
-        conf = st.segmented_control("Istota", [1, 2, 3], format_func=lambda x: "★" * x,
-                                    default=existing.get("confidence") or 2, key=f"{key}_conf") or 2
+        conf = rc[1].segmented_control("Istota", [1, 2, 3], format_func=lambda x: "★" * x,
+                                       default=existing.get("confidence") or 2, key=f"{key}_conf") or 2
         with st.expander("Viac: BE, čiary, poznámka", expanded=bool(existing.get("note"))):
             if plan:
                 be = st.number_input("BE – posun SL na vstup pri cene (0 = nie)",
@@ -557,8 +591,10 @@ def page_label(cfg, store, f):
     with chart_area:
         layers = active_layers()
         spec, height, df = chart(cfg, store, alert, f["blind"], f["before"], f["after"], plan, layers)
-        render(spec, height, f"alert{alert['id']}-{int(f['blind'])}-{f['before']}-{f['after']}")
-        if view["extras"]:
+        drawings = chart_panel(store, spec, max(height, 820) if focus else height,
+                               f"alert{alert['id']}-{int(f['blind'])}-{f['before']}-{f['after']}", f["labeler"],
+                               alert["symbol"], alert["timeframe"], "chart-label", alert["id"])
+        if view["extras"] and not focus:
             t_res, t_data = st.tabs(["📈 Výsledok", "🧾 Dáta"])
             with t_res:
                 outcome_block(cfg, store, alert, df, plan, f["blind"])
@@ -581,6 +617,7 @@ def page_label(cfg, store, f):
             "entry": entry if plan else None, "stop_loss": sl if plan else None,
             "take_profit": tp if plan else None, "break_even": (be or None) if plan else None,
             "lines_quality": LINES_Q[lq], "note": note or None, "saw_future": int(not f["blind"]),
+            "drawings": drawings or None,
         })
         st.toast("Uložené ✅")
     if save or skip:
@@ -589,6 +626,54 @@ def page_label(cfg, store, f):
         st.session_state["current"] = int(rest["id"].iloc[0]) if not rest.empty else None
         st.query_params.clear()
         st.rerun()
+
+
+def draw_pref_key(labeler: str, symbol: str, tf: str) -> str:
+    return f"draw:{(labeler or '').strip().lower() or 'default'}:{symbol}:{tf}"
+
+
+def num_input(container, label: str, key: str, default) -> float:
+    """number_input that takes its value from session state when the chart already set it (no default clash)."""
+    if key in st.session_state:
+        return container.number_input(label, key=key, format="%.2f")
+    return container.number_input(label, value=float(default), key=key, format="%.2f")
+
+
+def chart_panel(store, spec, height: int, range_key: str, labeler: str, symbol: str, tf: str, component_key: str,
+                alert_id: int | None = None) -> list:
+    """Chart with this person's drawings. The chart's last message (kept by Streamlit under `component_key`) is
+    handled *before* rendering, so the chart is never handed drawings older than what it just sent."""
+    dkey = draw_pref_key(labeler, symbol, tf)
+    drawings = handle_chart_event(store, st.session_state.get(component_key), dkey, store.get_pref(dkey) or [],
+                                  alert_id)
+    render(spec, height, range_key, draw_key=f"{symbol}-{tf}", drawings=drawings, component_key=component_key)
+    return drawings
+
+
+def handle_chart_event(store, event, dkey: str, drawings: list, alert_id: int | None) -> list:
+    """Messages from the chart: new drawings are saved for this person/symbol/TF; Entry/SL/TP clicks fill the form."""
+    if not event or event.get("seq") in st.session_state.setdefault("chart_seq_seen", set()):
+        return drawings
+    st.session_state["chart_seq_seen"].add(event.get("seq"))
+    if event.get("kind") == "drawings":
+        drawings = event.get("drawings") or []
+        store.set_pref(dkey, drawings)
+    elif event.get("kind") == "plan" and alert_id is not None:
+        st.session_state["pending_plan"] = {"alert": alert_id, "field": event["field"], "price": event["price"]}
+        st.rerun()
+    return drawings
+
+
+def apply_pending_plan(alert: dict, key: str, default_dir: str):
+    """Put an Entry/SL/TP clicked in the chart into the form before its widgets are created."""
+    pend = st.session_state.pop("pending_plan", None)
+    if not pend or pend["alert"] != alert["id"]:
+        return
+    lab = st.session_state.get(f"{key}_label") or default_dir
+    if lab not in ("LONG", "SHORT"):            # a plan only makes sense for a trade
+        lab = "LONG" if alert["direction"] == "bullish" else "SHORT"
+        st.session_state[f"{key}_label"] = lab
+    st.session_state[f"{key}_{lab}_{pend['field']}"] = float(pend["price"])
 
 
 def rr_html(rr: float, risk: float, atr: float, wrong: bool) -> str:
@@ -734,6 +819,7 @@ def main():
     store = get_store(db)
 
     st.markdown(CSS, unsafe_allow_html=True)
+    load_prefs(store, st.session_state.get("labeler", ""))   # before any widget, so saved values apply
     with st.sidebar:
         st.markdown('<div class="nx-brand">◆ <b>NEXUS</b></div>', unsafe_allow_html=True)
         st.caption("zlato · alerty · labelovanie")
@@ -755,14 +841,21 @@ def main():
         with st.expander("🕯️ Okno grafu"):
             f["blind"] = st.checkbox("Naslepo (skryť, čo bolo potom)", False,
                                      help="Uvidíš iba to, čo bolo známe v čase alertu. Do labelu sa uloží saw_future=0.")
-            f["before"] = st.slider("Sviečok pred alertom", 30, 400, 150)
-            f["after"] = st.slider("Sviečok po alerte", 0, 200, 60)
+            v = {**VIEW_DEFAULTS, **st.session_state.get("view", {})}
+            c = st.columns(2)
+            f["before"] = v["before"] = int(c[0].number_input("Sviečok pred", 10, 5000, int(v["before"]), 10,
+                                                              key="view_before"))
+            f["after"] = v["after"] = int(c[1].number_input("Sviečok po", 0, 2000, int(v["after"]), 10,
+                                                            key="view_after"))
+            st.session_state["view"] = v
+            st.caption("Uloží sa cez 🎨 Graf → 💾 Uložiť ako moje.")
         if st.button("⏭ Ďalší alert podľa filtrov", use_container_width=True):
             st.session_state["current"] = None
             st.rerun()
         recent_labels(store, labeler)
 
-    load_prefs(store, labeler)
+    if st.session_state.get("prefs_loaded_for") != _pref_key(labeler):
+        st.rerun()                      # name changed: reload with this person's saved settings
     top = st.columns([6, 1.3, 1.5, 1.2])
     with top[1].popover("🗂 Vrstvy", use_container_width=True):
         layer_picker("layers_top")

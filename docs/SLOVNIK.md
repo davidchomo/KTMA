@@ -51,6 +51,7 @@
 | **Resistance / rezistencia** | čiara nad cenou (cez maximá) |
 | **Dotyky (touches)** | koľko pivotov leží na čiare; 3+ = silnejšia čiara |
 | **S/R úroveň** | horizontálna podpora/rezistencia: viac swingov na rovnakej cene. Na stupnici „S2“ = podpora s 2 dotykmi, „R3“ = rezistencia s 3. Po prerazení sa rola otočí |
+| **OB** – order block | posledná protismerná sviečka/zóna pred silným pohybom; cena sa k nej často vracia. *Bull OB* (pod cenou) = dopyt, *Bear OB* (nad cenou) = ponuka. Nakresli v grafe **Alt+B**, uloží sa s labelom |
 | **🧩 Súlad** | koľko rôznych stratégií (RSI, MACD, EMA, VWAP, čiary, S/R, kanál, Donchian, setupy) súhlasí so smerom alertu |
 | **Silná / slabá čiara** | plná hrubá = 3+ dotyky, tenká prerušovaná = 2 dotyky |
 | **Paralelný kanál** | trendová čiara + rovnobežka cez opačný extrém (bodkovaná v grafe) |
@@ -109,8 +110,19 @@
 - **💾 Uložiť ako moje** uloží graf, zobrazenie aj vrstvy pod tvojím menom. Načítajú sa vždy, keď zadáš meno.
 - **⛶** v rohu grafu = celá obrazovka, Esc = späť.
 - **🗂 Vrstvy:** čo je na grafe (čiary, S/R, dotyky, kanál, EMA, VWAP, alerty, labely) a ktoré panely sú pod ním.
+- **⛶ Focus** (vedľa „Popis“) = režim labelovania na celú obrazovku: graf cez celé okno, formulár ako
+  vyskakovacie okno **🏷️ Labelovať** vpravo dole. Pre úplnú celú obrazovku stlač ešte **F11**.
 - **💬** vpravo dole = chat s Claudom k aktuálnemu alertu.
 - Klávesy: **Ctrl+Enter** = uložiť a ďalší, **Ctrl+Shift+Enter** = preskočiť.
+- **Kreslenie v grafe** (lišta vľavo v grafe; najprv klikni do grafu, potom skratka):
+  - **Alt+T** trendová čiara (2 kliky), **Alt+H** horizontála (1 klik), **Alt+B** order block (2 protiľahlé rohy;
+    box sa predĺži doprava, pod cenou = *Bull OB*, nad cenou = *Bear OB*).
+  - Farba a hrúbka čiary sú hneď pod nástrojmi, **Ctrl+Z** = späť, 🗑 = zmazať všetko, **Esc** = zrušiť nástroj.
+  - Kresby sa ukladajú pod tvojím menom pre daný symbol a timeframe a **uložia sa aj s labelom** (stĺpec
+    `drawings`), takže neskôr vieme, čo si na grafe videl.
+- **Plán klikom do grafu:** **Alt+E** vstup, **Alt+S** stop loss, **Alt+P** take profit, potom klik na cenu.
+  Hodnota sa prepíše vo formulári (pri NEVSTUPOVAŤ/NEVIEM sa label prepne na LONG/SHORT podľa alertu) a R:R
+  aj zóny v grafe sa prepočítajú.
 
 ## ⚙️ Čo robiť v nastaveniach
 

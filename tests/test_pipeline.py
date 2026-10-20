@@ -390,3 +390,15 @@ def test_suggest_plan_uses_levels_then_atr():
     assert suggest_plan("bullish", 100.0, 0, {}, []) is None
     tight = suggest_plan("bullish", 100.0, 1.0, {"levels": [{"price": 99.9}]}, [])
     assert tight["sl"] == 99.2 and "blízko" in tight["sl_reason"]
+
+
+def test_label_keeps_chart_drawings(tmp_path):
+    store = Store(tmp_path / "d.sqlite")
+    drawn = [{"type": "trend", "t1": 1, "p1": 2500.0, "t2": 5, "p2": 2510.0, "color": "#f9a825", "width": 2},
+             {"type": "ob", "t1": 2, "t2": 3, "p1": 2495.0, "p2": 2492.0, "extend": True, "side": "bull", "width": 1}]
+    store.set_pref("draw:tester:XAUUSD:1m", drawn)
+    assert store.get_pref("draw:tester:XAUUSD:1m") == drawn
+    store.save_label({"alert_id": 1, "labeler": "tester", "label": "LONG", "drawings": drawn})
+    import json
+    assert json.loads(store.label_for(1, "tester")["drawings"]) == drawn
+    assert "drawings" in store.labels().columns

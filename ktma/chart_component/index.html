@@ -1,0 +1,325 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<!-- Nexus chart: Streamlit custom component (two-way) around TradingView Lightweight Charts (Apache-2.0).
+     Python sends {spec, height, rangeKey, drawings}; the chart sends back drawings and Entry/SL/TP clicks. -->
+<style>
+  :root { --bg: #131722; --text: #d1d4dc; --legend: rgba(19,23,34,.75); --button: #2a2e39; --border: #2a2e39; }
+  html, body { margin: 0; padding: 0; background: var(--bg); font-family: -apple-system, system-ui, sans-serif; }
+  #chart { position: relative; width: 100%; height: 600px; }
+  #legend { position: absolute; left: 44px; top: 6px; z-index: 5; font-size: 12px; color: var(--text);
+            pointer-events: none; line-height: 1.5; background: var(--legend); padding: 0 4px; }
+  #legend b { font-weight: 600; }
+  #help { font-size: 11px; color: #787b86; padding: 2px 8px; height: 18px; overflow: hidden; }
+  .btn { width: 30px; height: 28px; padding: 0; font-size: 13px; cursor: pointer; background: var(--button);
+         color: var(--text); border: 1px solid var(--border); border-radius: 4px; }
+  .btn:hover { filter: brightness(1.25); }
+  .btn.on { background: #2962ff; color: #fff; border-color: #2962ff; }
+  #fs { position: absolute; right: 70px; top: 6px; z-index: 6; }
+  #tools { position: absolute; left: 6px; top: 6px; z-index: 6; display: flex; flex-direction: column; gap: 4px; }
+  #tools .sep { height: 4px; }
+  #t-color { padding: 2px; }
+  #t-width { font-size: 11px; }
+  #t-entry { color: #2962ff; font-weight: 700; } #t-sl { color: #ef5350; font-weight: 700; font-size: 11px; }
+  #t-tp { color: #26a69a; font-weight: 700; font-size: 11px; }
+  #hint { position: absolute; left: 44px; top: 28px; z-index: 6; font-size: 12px; color: var(--text);
+          background: var(--legend); padding: 3px 8px; border-radius: 4px; display: none; }
+  html:fullscreen #chart { height: 100vh !important; }
+  html:fullscreen #help { display: none; }
+</style></head>
+<body>
+<div id="chart">
+  <div id="legend"></div>
+  <button id="fs" class="btn" title="Celá obrazovka (Esc = späť)">⛶</button>
+  <div id="tools">
+    <button id="t-trend" class="btn" title="Trendová čiara (Alt+T): klikni na začiatok a koniec">╱</button>
+    <button id="t-hline" class="btn" title="Horizontálna čiara (Alt+H): klikni na cenu">―</button>
+    <button id="t-ob" class="btn" title="Order block (Alt+B): klikni na dva protiľahlé rohy sviečky/zóny; box sa predĺži doprava. Pod cenou = bull OB, nad cenou = bear OB">▭</button>
+    <input id="t-color" class="btn" type="color" title="Farba kresby">
+    <select id="t-width" class="btn" title="Hrúbka čiary"><option>1</option><option>2</option><option>3</option><option>4</option></select>
+    <button id="t-undo" class="btn" title="Späť (Ctrl+Z)">↶</button>
+    <button id="t-clear" class="btn" title="Zmazať všetky kresby na tomto grafe">🗑</button>
+    <div class="sep"></div>
+    <button id="t-entry" class="btn" title="Nastaviť VSTUP klikom do grafu (Alt+E)">E</button>
+    <button id="t-sl" class="btn" title="Nastaviť STOP LOSS klikom do grafu (Alt+S)">SL</button>
+    <button id="t-tp" class="btn" title="Nastaviť TAKE PROFIT klikom do grafu (Alt+P)">TP</button>
+  </div>
+  <div id="hint"></div>
+</div>
+<div id="help">ťahaj = posun · koliesko = zoom · ťahaj stupnicu = natiahnuť · kresli: Alt+T čiara, Alt+H horizontála, Alt+B order block,
+  Ctrl+Z späť · plán: Alt+E vstup, Alt+S SL, Alt+P TP · Esc zrušiť</div>
+
+<script src="lightweight-charts-5.2.1.js"></script>
+<script>
+// ---- Streamlit component protocol (no build step needed) ---------------------------------------
+const send = (type, data) => window.parent.postMessage(Object.assign({ isStreamlitMessage: true, type }, data), '*');
+const setValue = v => send('streamlit:setComponentValue', { value: v, dataType: 'json' });
+const setHeight = h => send('streamlit:setFrameHeight', { height: h });
+let seq = Date.now();                      // unique per message so Python can ignore repeats
+
+const LW = window.LightweightCharts;
+const el = document.getElementById('chart');
+const hint = document.getElementById('hint');
+let chart = null, main = null, args = null, lastSpecKey = null, lastRangeKey = null, savedRange = null;
+let drawings = [], drawObjs = [], tool = null, p1 = null, preview = null;
+
+window.addEventListener('message', ev => {
+  if (ev.data && ev.data.type === 'streamlit:render') onRender(ev.data.args);
+});
+send('streamlit:componentReady', { apiVersion: 1 });
+
+function onRender(a) {
+  args = a;
+  const h = a.height || 600;
+  el.style.height = h + 'px';
+  setHeight(h + 22);
+  const C = a.spec.style.colors;
+  const root = document.documentElement.style;
+  root.setProperty('--bg', C.bg); root.setProperty('--text', C.text); root.setProperty('--legend', C.legend);
+  root.setProperty('--button', C.button); root.setProperty('--border', C.border);
+  const specKey = JSON.stringify(a.spec);
+  if (specKey !== lastSpecKey) {
+    if (chart && a.rangeKey === lastRangeKey) savedRange = chart.timeScale().getVisibleLogicalRange();
+    else savedRange = null;
+    lastSpecKey = specKey; lastRangeKey = a.rangeKey;
+    build(a.spec);
+  }
+  const incoming = a.drawings || [];
+  if (JSON.stringify(incoming) !== JSON.stringify(drawings)) { drawings = incoming.slice(); paintDrawings(); }
+}
+
+// ---- chart -------------------------------------------------------------------------------------
+function build(SPEC) {
+  if (chart) { chart.remove(); chart = null; drawObjs = []; preview = null; }
+  const ST = SPEC.style, C = ST.colors;
+  chart = LW.createChart(el, {
+    autoSize: true,
+    layout: { background: { color: C.bg }, textColor: C.text, fontSize: 11,
+              panes: { separatorColor: C.border, enableResize: true } },
+    grid: { vertLines: { color: C.grid, visible: ST.grid }, horzLines: { color: C.grid, visible: ST.grid } },
+    crosshair: { mode: LW.CrosshairMode.Normal },
+    rightPriceScale: { borderColor: C.border, scaleMargins: { top: 0.08, bottom: 0.12 }, mode: ST.scaleMode },
+    timeScale: { borderColor: C.border, timeVisible: true, secondsVisible: false, rightOffset: 8 },
+    handleScale: { axisPressedMouseMove: { time: true, price: true }, mouseWheel: true, pinch: true,
+                   axisDoubleClickReset: { time: true, price: true } },
+    handleScroll: { mouseWheel: false, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: false },
+  });
+  if (ST.series === 'line') {
+    main = chart.addSeries(LW.LineSeries, { color: ST.up, lineWidth: Math.max(2, ST.line_width) });
+    main.setData(SPEC.candles.map(c => ({ time: c.time, value: c.close })));
+  } else if (ST.series === 'bar') {
+    main = chart.addSeries(LW.BarSeries, { upColor: ST.up, downColor: ST.down, thinBars: false });
+    main.setData(SPEC.candles);
+  } else {
+    main = chart.addSeries(LW.CandlestickSeries, { upColor: ST.up, downColor: ST.down, borderVisible: false,
+                                                    wickUpColor: ST.up, wickDownColor: ST.down });
+    main.setData(SPEC.candles);
+  }
+  const byTime = new Map(SPEC.candles.map(c => [c.time, c]));
+  const quiet = { priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false,
+                  autoscaleInfoProvider: () => null };
+  for (const o of SPEC.overlays) {
+    chart.addSeries(LW.LineSeries, { ...quiet, color: o.color, lineWidth: ST.line_width, lineStyle: o.style || 0 })
+         .setData(o.data);
+  }
+  for (const g of SPEC.segments) {
+    chart.addSeries(LW.LineSeries, { ...quiet, color: g.color, lineWidth: g.width, lineStyle: g.style }).setData(g.data);
+  }
+  if (SPEC.position) {
+    const P = SPEC.position;
+    const zone = (value, color) => chart.addSeries(LW.BaselineSeries, { ...quiet,
+        baseValue: { type: 'price', price: P.entry },
+        topFillColor1: color, topFillColor2: color, bottomFillColor1: color, bottomFillColor2: color,
+        topLineColor: 'rgba(0,0,0,0)', bottomLineColor: 'rgba(0,0,0,0)', lineWidth: 1 })
+      .setData(P.times.map(t => ({ time: t, value })));
+    zone(P.tp, P.profit); zone(P.sl, P.loss);
+  }
+  if (SPEC.markers.length) LW.createSeriesMarkers(main, SPEC.markers);
+  for (const p of SPEC.priceLines) {
+    main.createPriceLine({ price: p.price, color: p.color, lineWidth: p.width || 1,
+                           lineStyle: p.style === undefined ? 2 : p.style, axisLabelVisible: true, title: p.title });
+  }
+  if (SPEC.volume) {
+    const v = chart.addSeries(LW.HistogramSeries, { priceFormat: { type: 'volume' }, priceScaleId: 'vol',
+                                                    priceLineVisible: false, lastValueVisible: false });
+    v.priceScale().applyOptions({ scaleMargins: { top: 0.82, bottom: 0 } });
+    v.setData(SPEC.volume);
+  }
+  let pane = 1;
+  if (SPEC.panes.rsi) {
+    const r = chart.addSeries(LW.LineSeries, { color: ST.rsi_color, lineWidth: ST.line_width, priceLineVisible: false }, pane);
+    r.setData(SPEC.panes.rsi.data);
+    for (const lvl of SPEC.panes.rsi.levels)
+      r.createPriceLine({ price: lvl, color: '#5d606b', lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: '' });
+    pane++;
+  }
+  if (SPEC.panes.macd) {
+    chart.addSeries(LW.HistogramSeries, { priceLineVisible: false, lastValueVisible: false }, pane).setData(SPEC.panes.macd.hist);
+    chart.addSeries(LW.LineSeries, { color: ST.macd_line_color, lineWidth: ST.line_width, priceLineVisible: false,
+                                     lastValueVisible: false }, pane).setData(SPEC.panes.macd.macd);
+    chart.addSeries(LW.LineSeries, { color: ST.macd_signal_color, lineWidth: ST.line_width, priceLineVisible: false,
+                                     lastValueVisible: false }, pane).setData(SPEC.panes.macd.signal);
+  }
+  const panes = chart.panes();
+  if (panes.length > 1) { panes[0].setStretchFactor(5); for (let i = 1; i < panes.length; i++) panes[i].setStretchFactor(1); }
+
+  // legend
+  const legend = document.getElementById('legend');
+  const fmt = x => (x === undefined ? '–' : x.toFixed(2));
+  const esc = x => String(x).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+  const last = SPEC.candles[SPEC.candles.length - 1];
+  const show = d => {
+    if (!d) { legend.innerHTML = ''; return; }
+    const col = d.close >= d.open ? ST.up : ST.down;
+    const notes = (SPEC.notes || {})[String(d.time)] || [];
+    legend.innerHTML = `O <b style="color:${col}">${fmt(d.open)}</b> H <b style="color:${col}">${fmt(d.high)}</b> ` +
+                       `L <b style="color:${col}">${fmt(d.low)}</b> C <b style="color:${col}">${fmt(d.close)}</b>` +
+                       notes.map(x => `<br>${esc(x)}`).join('');
+  };
+  show(last);
+  chart.subscribeCrosshairMove(p => { show((p && p.time !== undefined && byTime.get(p.time)) || last); onMove(p); });
+
+  const ts = chart.timeScale();
+  if (savedRange) ts.setVisibleLogicalRange(savedRange);
+  else if (SPEC.focus) ts.setVisibleLogicalRange(SPEC.focus);
+  else ts.fitContent();
+  paintDrawings();
+}
+
+// ---- drawing + plan tools ----------------------------------------------------------------------
+const colorEl = document.getElementById('t-color'), widthEl = document.getElementById('t-width');
+try {
+  const pref = JSON.parse(localStorage.getItem('nexus-draw-style') || '{"color":"#f9a825","width":2}');
+  colorEl.value = pref.color; widthEl.value = String(pref.width);
+} catch (e) { colorEl.value = '#f9a825'; widthEl.value = '2'; }
+const savePref = () => { try { localStorage.setItem('nexus-draw-style',
+  JSON.stringify({ color: colorEl.value, width: +widthEl.value })); } catch (e) {} };
+colorEl.oninput = savePref; widthEl.onchange = savePref;
+
+const quietDraw = { priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false,
+                    autoscaleInfoProvider: () => null };
+function paintDrawings() {
+  if (!chart) return;
+  drawObjs.forEach(o => o.series ? chart.removeSeries(o.series)
+                                 : o.prim ? main.detachPrimitive(o.prim) : main.removePriceLine(o.line));
+  drawObjs = [];
+  for (const d of drawings) {
+    if (d.type === 'trend') {
+      const s = chart.addSeries(LW.LineSeries, { ...quietDraw, color: d.color, lineWidth: d.width });
+      try { s.setData([{ time: d.t1, value: d.p1 }, { time: d.t2, value: d.p2 }]); drawObjs.push({ series: s }); }
+      catch (e) { chart.removeSeries(s); }      // drawn on another window/timeframe range
+    } else if (d.type === 'hline') {
+      drawObjs.push({ line: main.createPriceLine({ price: d.p1, color: d.color, lineWidth: d.width, lineStyle: 0,
+                                                   axisLabelVisible: true, title: '' }) });
+    } else if (d.type === 'ob') {
+      const prim = new BoxPrimitive(d); main.attachPrimitive(prim); drawObjs.push({ prim });
+    }
+  }
+}
+
+// Order block: a box from (t1, p1) to (t2, p2), extended to the right edge, coloured by side.
+class BoxPrimitive {
+  constructor(d) { this.d = d; const self = this; this.view = { zOrder: () => 'bottom', renderer: () => self }; }
+  attached({ chart, series, requestUpdate }) { this.chart = chart; this.series = series; this.requestUpdate = requestUpdate; }
+  detached() { this.chart = null; }
+  update(d) { this.d = d; if (this.requestUpdate) this.requestUpdate(); }
+  paneViews() { return [this.view]; }
+  updateAllViews() {}
+  draw(target) {
+    const d = this.d; if (!this.chart || !d) return;
+    const ts = this.chart.timeScale();
+    const x1 = ts.timeToCoordinate(d.t1), y1 = this.series.priceToCoordinate(d.p1), y2 = this.series.priceToCoordinate(d.p2);
+    if (x1 == null || y1 == null || y2 == null) return;
+    const col = obColor(d);
+    target.useBitmapCoordinateSpace(({ context: ctx, bitmapSize, horizontalPixelRatio: hr, verticalPixelRatio: vr }) => {
+      const x = Math.round(x1 * hr), w = (d.t2 != null && !d.extend ? (ts.timeToCoordinate(d.t2) ?? x1) * hr : bitmapSize.width) - x;
+      const y = Math.round(Math.min(y1, y2) * vr), h = Math.max(1, Math.round(Math.abs(y2 - y1) * vr));
+      ctx.fillStyle = col + '2e'; ctx.fillRect(x, y, w, h);
+      ctx.strokeStyle = col; ctx.lineWidth = Math.max(1, (d.width || 1) * hr); ctx.strokeRect(x, y, w, h);
+      ctx.fillStyle = col; ctx.font = `${Math.round(10 * vr)}px sans-serif`; ctx.textBaseline = 'top';
+      ctx.fillText(d.side === 'bull' ? 'Bull OB' : 'Bear OB', x + 4 * hr, y + 2 * vr);
+    });
+  }
+}
+function obColor(d) { const ST = args.spec.style; return (d.side === 'bull' ? ST.up : ST.down).slice(0, 7); }
+function lastClose() { const b = main.data().at(-1) || {}; return b.close ?? b.value; }
+function pushDrawings() { paintDrawings(); setValue({ kind: 'drawings', drawings, seq: ++seq }); }
+const LABELS = { trend: 'Trendová čiara: klikni na začiatok', hline: 'Horizontála: klikni na cenu',
+                 ob: 'Order block: klikni na prvý roh (napr. high/low sviečky)',
+                 entry: 'VSTUP: klikni na cenu', sl: 'STOP LOSS: klikni na cenu', tp: 'TAKE PROFIT: klikni na cenu' };
+function setTool(t) {
+  tool = t; p1 = null;
+  if (preview) { preview.series ? chart.removeSeries(preview.series) : main.detachPrimitive(preview.prim); preview = null; }
+  for (const id of ['trend', 'hline', 'ob', 'entry', 'sl', 'tp'])
+    document.getElementById('t-' + id).classList.toggle('on', t === id);
+  hint.style.display = t ? 'block' : 'none';
+  hint.textContent = t ? LABELS[t] + ' (Esc = zrušiť)' : '';
+}
+function point(param) {
+  if (!param || !param.point || !chart) return null;
+  const time = param.time !== undefined ? param.time : chart.timeScale().coordinateToTime(param.point.x);
+  const price = main.coordinateToPrice(param.point.y);
+  return price == null ? null : { time, price: Math.round(price * 100) / 100 };
+}
+function onClick(param) {
+  if (!tool) return;
+  const p = point(param);
+  if (!p) return;
+  if (tool === 'entry' || tool === 'sl' || tool === 'tp') {
+    setValue({ kind: 'plan', field: tool, price: p.price, seq: ++seq }); setTool(null); return;
+  }
+  const style = { color: colorEl.value, width: +widthEl.value };
+  if (tool === 'hline') { drawings.push({ type: 'hline', p1: p.price, ...style }); pushDrawings(); setTool(null); return; }
+  if (p.time == null) return;
+  if (!p1) { p1 = p; hint.textContent = (tool === 'ob' ? 'Order block: klikni na protiľahlý roh'
+                                                        : 'Trendová čiara: klikni na koniec') + ' (Esc = zrušiť)'; return; }
+  if (tool === 'ob') { drawings.push(obFrom(p1, p, style)); setTool(null); pushDrawings(); return; }
+  if (p.time === p1.time) return;
+  const [a, b] = p.time > p1.time ? [p1, p] : [p, p1];
+  drawings.push({ type: 'trend', t1: a.time, p1: a.price, t2: b.time, p2: b.price, ...style });
+  setTool(null); pushDrawings();
+}
+function obFrom(a, b, style) {
+  const top = Math.max(a.price, b.price), bottom = Math.min(a.price, b.price);
+  return { type: 'ob', t1: Math.min(a.time, b.time), t2: Math.max(a.time, b.time), p1: top, p2: bottom, extend: true,
+           side: (top + bottom) / 2 <= lastClose() ? 'bull' : 'bear', width: style.width };
+}
+// Own click handler: LWC's subscribeClick drops clicks that follow a crosshair move with a preview drawn.
+el.addEventListener('click', e => {
+  if (!tool || !chart || e.target.closest('#tools, #fs')) return;
+  const r = el.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top;
+  if (x > chart.timeScale().width() || y > chart.panes()[0].getHeight()) return;
+  onClick({ point: { x, y } });
+});
+function onMove(param) {
+  if ((tool !== 'trend' && tool !== 'ob') || !p1) return;
+  const p = point(param);
+  if (!p || p.time == null) return;
+  if (tool === 'ob') {
+    const d = obFrom(p1, p, { width: +widthEl.value });
+    if (!preview) { preview = { prim: new BoxPrimitive(d) }; main.attachPrimitive(preview.prim); }
+    else preview.prim.update(d);
+    return;
+  }
+  if (p.time === p1.time) return;
+  if (!preview) preview = { series: chart.addSeries(LW.LineSeries, { ...quietDraw, color: colorEl.value,
+                                                                     lineWidth: +widthEl.value, lineStyle: 2 }) };
+  const [a, b] = p.time > p1.time ? [p1, p] : [p, p1];
+  preview.series.setData([{ time: a.time, value: a.price }, { time: b.time, value: b.price }]);
+}
+for (const id of ['trend', 'hline', 'ob', 'entry', 'sl', 'tp'])
+  document.getElementById('t-' + id).onclick = () => setTool(tool === id ? null : id);
+document.getElementById('t-undo').onclick = () => { if (drawings.length) { drawings.pop(); pushDrawings(); } };
+document.getElementById('t-clear').onclick = () => {
+  if (drawings.length && confirm('Zmazať všetky kresby na tomto grafe?')) { drawings = []; pushDrawings(); } };
+document.addEventListener('keydown', e => {
+  const k = { KeyT: 'trend', KeyH: 'hline', KeyB: 'ob', KeyE: 'entry', KeyS: 'sl', KeyP: 'tp' }[e.code];
+  if (e.altKey && k) { e.preventDefault(); setTool(k); }
+  else if (e.key === 'Escape') setTool(null);
+  else if ((e.ctrlKey || e.metaKey) && e.code === 'KeyZ' && drawings.length) { e.preventDefault(); drawings.pop(); pushDrawings(); }
+});
+document.getElementById('fs').onclick = () => {
+  if (document.fullscreenElement) document.exitFullscreen();
+  else document.documentElement.requestFullscreen().catch(() => {});
+};
+</script>
+</body></html>

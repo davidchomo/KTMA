@@ -1,19 +1,18 @@
 """TradingView-style chart for the label UI, built on TradingView Lightweight
-Charts (Apache-2.0, vendored in static/). Drag the price axis to stretch it,
-wheel/pinch to zoom, double-click an axis to reset, like on TradingView.
+Charts (Apache-2.0, vendored in ktma/chart_component/). Drag the price axis to
+stretch it, wheel/pinch to zoom, double-click an axis to reset, draw trendlines
+(Alt+T) and set Entry/SL/TP by clicking (Alt+E/S/P), like on TradingView.
 
 `build_spec` turns an indicator frame into plain JSON; `render` draws it.
 """
 
 from __future__ import annotations
 
-import json
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
-LIB_LOCAL = "/app/static/lightweight-charts-5.2.1.js"   # served by Streamlit static serving
-LIB_CDN = "https://unpkg.com/lightweight-charts@5.2.1/dist/lightweight-charts.standalone.production.js"
 
 UP, DOWN = "#26a69a", "#ef5350"
 
@@ -225,176 +224,20 @@ def build_spec(w: pd.DataFrame, layers: set, lines: list[dict] | None = None, fo
     return spec
 
 
-_TEMPLATE = """<!doctype html><html><head><meta charset="utf-8">
-<style>
-  html, body { margin: 0; padding: 0; background: __BG__; font-family: -apple-system, system-ui, sans-serif; }
-  #chart { position: relative; width: 100%; height: __HEIGHT__px; }
-  #legend { position: absolute; left: 8px; top: 6px; z-index: 5; font-size: 12px; color: __TEXT__;
-            pointer-events: none; line-height: 1.5; background: __LEGEND__; padding: 0 4px; }
-  #legend b { font-weight: 600; }
-  #help { font-size: 11px; color: #787b86; padding: 2px 8px; }
-  #fs { position: absolute; right: 70px; top: 6px; z-index: 6; background: __BUTTON__; color: __TEXT__;
-        border: 1px solid __BORDER__; border-radius: 4px; font-size: 15px; line-height: 1; padding: 4px 7px;
-        cursor: pointer; }
-  #fs:hover { opacity: 0.8; }
-  html:fullscreen #chart { height: 100vh !important; }
-  html:fullscreen #help { display: none; }
-</style></head><body>
-<div id="chart"><div id="legend"></div><button id="fs" title="Celá obrazovka (Esc = späť)">⛶</button></div>
-<div id="help">ťahaj graf = posun · koliesko / dva prsty = zoom · ťahaj cenovú stupnicu hore/dole = natiahnuť ·
- dvojklik na stupnicu = späť</div>
-<script src="__LIB_LOCAL__" onerror="var s=document.createElement('script');s.src='__LIB_CDN__';s.onload=start;document.head.appendChild(s);"></script>
-<script>
-const SPEC = __SPEC__;
-const STORE_KEY = "ktma-range-__KEY__";
-function draw() {
-  if (!window.LightweightCharts || window.__drawn) return;
-  window.__drawn = true;
-  const LW = LightweightCharts;
-  const ST = SPEC.style, C = ST.colors;
-  const el = document.getElementById('chart');
-  const chart = LW.createChart(el, {
-    autoSize: true,
-    layout: { background: { color: C.bg }, textColor: C.text, fontSize: 11,
-              panes: { separatorColor: C.border, enableResize: true } },
-    grid: { vertLines: { color: C.grid, visible: ST.grid }, horzLines: { color: C.grid, visible: ST.grid } },
-    crosshair: { mode: LW.CrosshairMode.Normal },
-    rightPriceScale: { borderColor: C.border, scaleMargins: { top: 0.08, bottom: 0.12 }, mode: ST.scaleMode },
-    timeScale: { borderColor: C.border, timeVisible: true, secondsVisible: false, rightOffset: 5 },
-    handleScale: { axisPressedMouseMove: { time: true, price: true }, mouseWheel: true, pinch: true,
-                   axisDoubleClickReset: { time: true, price: true } },
-    handleScroll: { mouseWheel: false, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: false },
-  });
-  let candles;
-  if (ST.series === 'line') {
-    candles = chart.addSeries(LW.LineSeries, { color: ST.up, lineWidth: Math.max(2, ST.line_width) });
-    candles.setData(SPEC.candles.map(c => ({ time: c.time, value: c.close })));
-  } else if (ST.series === 'bar') {
-    candles = chart.addSeries(LW.BarSeries, { upColor: ST.up, downColor: ST.down, thinBars: false });
-    candles.setData(SPEC.candles);
-  } else {
-    candles = chart.addSeries(LW.CandlestickSeries, { upColor: ST.up, downColor: ST.down, borderVisible: false,
-                                                       wickUpColor: ST.up, wickDownColor: ST.down });
-    candles.setData(SPEC.candles);
-  }
-  const byTime = new Map(SPEC.candles.map(c => [c.time, c]));
-  const quiet = { priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false };
-  for (const o of SPEC.overlays) {
-    const s = chart.addSeries(LW.LineSeries, { ...quiet, color: o.color, lineWidth: ST.line_width, lineStyle: o.style || 0,
-                                                 title: '', autoscaleInfoProvider: () => null });
-    s.setData(o.data);
-  }
-  for (const g of SPEC.segments) {
-    const s = chart.addSeries(LW.LineSeries, { ...quiet, color: g.color, lineWidth: g.width, lineStyle: g.style,
-                                                 autoscaleInfoProvider: () => null });
-    s.setData(g.data);
-  }
-  if (SPEC.position) {
-    const P = SPEC.position;
-    const zone = (value, color) => {
-      const z = chart.addSeries(LW.BaselineSeries, {
-        baseValue: { type: 'price', price: P.entry },
-        topFillColor1: color, topFillColor2: color, bottomFillColor1: color, bottomFillColor2: color,
-        topLineColor: 'rgba(0,0,0,0)', bottomLineColor: 'rgba(0,0,0,0)', lineWidth: 1,
-        priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false,
-        autoscaleInfoProvider: () => null });
-      z.setData(P.times.map(t => ({ time: t, value: value })));
-    };
-    zone(P.tp, P.profit);
-    zone(P.sl, P.loss);
-  }
-  if (SPEC.markers.length) LW.createSeriesMarkers(candles, SPEC.markers);
-  for (const p of SPEC.priceLines) {
-    candles.createPriceLine({ price: p.price, color: p.color, lineWidth: p.width || 1,
-                              lineStyle: p.style === undefined ? 2 : p.style, axisLabelVisible: true, title: p.title });
-  }
-  if (SPEC.volume) {
-    const v = chart.addSeries(LW.HistogramSeries, { priceFormat: { type: 'volume' }, priceScaleId: 'vol',
-                                                     priceLineVisible: false, lastValueVisible: false });
-    v.priceScale().applyOptions({ scaleMargins: { top: 0.82, bottom: 0 } });
-    v.setData(SPEC.volume);
-  }
-  let pane = 1, rsiSeries = null;
-  if (SPEC.panes.rsi) {
-    rsiSeries = chart.addSeries(LW.LineSeries, { color: ST.rsi_color, lineWidth: ST.line_width, priceLineVisible: false }, pane);
-    rsiSeries.setData(SPEC.panes.rsi.data);
-    for (const lvl of SPEC.panes.rsi.levels) {
-      rsiSeries.createPriceLine({ price: lvl, color: '#5d606b', lineWidth: 1, lineStyle: 2, axisLabelVisible: true, title: '' });
-    }
-    pane++;
-  }
-  if (SPEC.panes.macd) {
-    const h = chart.addSeries(LW.HistogramSeries, { priceLineVisible: false, lastValueVisible: false }, pane);
-    h.setData(SPEC.panes.macd.hist);
-    const m = chart.addSeries(LW.LineSeries, { color: ST.macd_line_color, lineWidth: ST.line_width, priceLineVisible: false,
-                                               lastValueVisible: false }, pane);
-    m.setData(SPEC.panes.macd.macd);
-    const s = chart.addSeries(LW.LineSeries, { color: ST.macd_signal_color, lineWidth: ST.line_width, priceLineVisible: false,
-                                               lastValueVisible: false }, pane);
-    s.setData(SPEC.panes.macd.signal);
-  }
-  const panes = chart.panes();
-  if (panes.length > 1) {
-    panes[0].setStretchFactor(5);
-    for (let i = 1; i < panes.length; i++) panes[i].setStretchFactor(1);
-  }
-
-  // OHLC legend like on TradingView
-  const legend = document.getElementById('legend');
-  const fmt = x => (x === undefined ? '–' : x.toFixed(2));
-  const esc = x => String(x).replace(/[&<>]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;'}[c]));
-  const show = d => {
-    if (!d) { legend.innerHTML = ''; return; }
-    const col = d.close >= d.open ? ST.up : ST.down;
-    const notes = (SPEC.notes || {})[String(d.time)] || [];
-    legend.innerHTML = `O <b style="color:${col}">${fmt(d.open)}</b> H <b style="color:${col}">${fmt(d.high)}</b> ` +
-                       `L <b style="color:${col}">${fmt(d.low)}</b> C <b style="color:${col}">${fmt(d.close)}</b>` +
-                       notes.map(x => `<br>${esc(x)}`).join('');
-  };
-  show(SPEC.candles[SPEC.candles.length - 1]);
-  chart.subscribeCrosshairMove(p => {
-    const d = p && p.time !== undefined ? byTime.get(p.time) : null;
-    show(d || SPEC.candles[SPEC.candles.length - 1]);
-  });
-
-  // Keep zoom/scroll across Streamlit reruns (e.g. while editing SL/TP).
-  const ts = chart.timeScale();
-  let restored = false;
-  try {
-    const saved = JSON.parse(window.localStorage.getItem(STORE_KEY) || 'null');
-    if (saved && saved.to - saved.from > 5) { ts.setVisibleLogicalRange(saved); restored = true; }
-  } catch (e) {}
-  if (!restored) { if (SPEC.focus) ts.setVisibleLogicalRange(SPEC.focus); else ts.fitContent(); }
-  ts.subscribeVisibleLogicalRangeChange(r => {
-    if (!r || el.clientWidth === 0) return;   // never remember the range of a hidden chart
-    try { window.localStorage.setItem(STORE_KEY, JSON.stringify(r)); } catch (e) {}
-  });
-}
-document.getElementById('fs').onclick = () => {
-  if (document.fullscreenElement) document.exitFullscreen();
-  else document.documentElement.requestFullscreen().catch(() => {});
-};
-// A chart inside a hidden Streamlit tab has zero width; wait until it is visible.
-function start() {
-  if (!window.LightweightCharts) return;
-  const el = document.getElementById('chart');
-  if (el.clientWidth > 0) { draw(); return; }
-  const obs = new ResizeObserver(() => { if (el.clientWidth > 0) { obs.disconnect(); draw(); } });
-  obs.observe(el);
-}
-if (window.LightweightCharts) start(); else window.addEventListener('load', start);
-</script></body></html>"""
+_COMPONENT = None
 
 
-def render(spec: dict, height: int, key: str):
+def render(spec: dict, height: int, key: str, draw_key: str = "default", drawings: list | None = None,
+           component_key: str | None = None):
+    """Draw the chart (two-way Streamlit component in ktma/chart_component).
+
+    Returns the last message from the chart or None:
+    {"kind": "drawings", "drawings": [...], "seq": n} or {"kind": "plan", "field": "entry|sl|tp", "price": p, "seq": n}.
+    `key` identifies the view (zoom is kept while it stays the same)."""
+    global _COMPONENT
     import streamlit.components.v1 as components
 
-    colors = spec.get("style", {}).get("colors", THEMES["Tmavé"])
-    html = (_TEMPLATE.replace("__HEIGHT__", str(height))
-            .replace("__BG__", colors["bg"]).replace("__TEXT__", colors["text"])
-            .replace("__LEGEND__", colors["legend"]).replace("__BUTTON__", colors["button"])
-            .replace("__BORDER__", colors["border"])
-            .replace("__LIB_LOCAL__", LIB_LOCAL).replace("__LIB_CDN__", LIB_CDN)
-            .replace("__KEY__", "".join(ch for ch in key if ch.isalnum() or ch in "-_"))
-            .replace("__SPEC__", json.dumps(spec, separators=(",", ":")).replace("</", "<\\/")))
-    components.html(html, height=height + 24)
+    if _COMPONENT is None:
+        _COMPONENT = components.declare_component("nexus_chart", path=str(Path(__file__).parent / "chart_component"))
+    return _COMPONENT(spec=spec, height=int(height), rangeKey=key, drawKey=draw_key, drawings=drawings or [],
+                      key=component_key or f"chart-{draw_key}", default=None)

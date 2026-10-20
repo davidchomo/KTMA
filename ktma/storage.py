@@ -52,6 +52,7 @@ CREATE TABLE IF NOT EXISTS labels (
     entry REAL, stop_loss REAL, take_profit REAL, break_even REAL,
     lines_quality TEXT,             -- GOOD | BAD | MISSING | NULL
     note TEXT, saw_future INTEGER, created_at TEXT,
+    drawings TEXT,                  -- JSON: what the labeler drew on the chart (trend, horizontal, order block)
     UNIQUE (alert_id, labeler)
 );
 CREATE TABLE IF NOT EXISTS manual_marks (
@@ -91,7 +92,14 @@ class Store:
         self.conn.execute("PRAGMA journal_mode=WAL")
         self.conn.execute("PRAGMA synchronous=NORMAL")
         self.conn.executescript(SCHEMA)
+        self._migrate()
         self.conn.commit()
+
+    def _migrate(self):
+        """Add columns introduced after a database was created."""
+        cols = {r[1] for r in self.conn.execute("PRAGMA table_info(labels)")}
+        if "drawings" not in cols:
+            self.conn.execute("ALTER TABLE labels ADD COLUMN drawings TEXT")
 
     def close(self):
         self.conn.close()
@@ -203,8 +211,10 @@ class Store:
     # ---- labels --------------------------------------------------------
     def save_label(self, label: dict):
         cols = ["alert_id", "labeler", "label", "correct", "confidence", "entry", "stop_loss",
-                "take_profit", "break_even", "lines_quality", "note", "saw_future", "created_at"]
+                "take_profit", "break_even", "lines_quality", "note", "saw_future", "created_at", "drawings"]
         label = {**label, "created_at": utcnow_iso()}
+        if label.get("drawings") is not None and not isinstance(label["drawings"], str):
+            label["drawings"] = json.dumps(label["drawings"])
         self.conn.execute(
             f"INSERT OR REPLACE INTO labels ({','.join(cols)}) VALUES ({','.join('?' * len(cols))})",
             [label.get(c) for c in cols],
@@ -247,11 +257,11 @@ class Store:
         return self.conn.execute("SELECT COUNT(*) FROM assistant_log WHERE created_at >= ?", (since,)).fetchone()[0]
 
     # ---- UI preferences (chart style, view, layers) per labeler -------
-    def get_pref(self, key: str) -> dict | None:
+    def get_pref(self, key: str) -> dict | list | None:
         row = self.conn.execute("SELECT value FROM prefs WHERE key=?", (key,)).fetchone()
         return json.loads(row[0]) if row else None
 
-    def set_pref(self, key: str, value: dict):
+    def set_pref(self, key: str, value: dict | list):
         self.conn.execute("INSERT OR REPLACE INTO prefs VALUES (?,?,?)", (key, json.dumps(value), utcnow_iso()))
         self.conn.commit()
 
