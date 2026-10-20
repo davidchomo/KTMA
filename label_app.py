@@ -23,6 +23,7 @@ from ktma.dataset import build_dataset, ev_table
 from ktma.indicators import add_indicators
 from ktma.outcomes import trade_result
 from ktma.storage import Store
+from ktma.structure import StructureEngine, lines_snapshot
 
 _load_env()
 st.set_page_config(page_title="KTMA labelovanie", page_icon="📈", layout="wide")
@@ -64,19 +65,11 @@ def fmt_time(ms: int) -> str:
     return pd.Timestamp(int(ms), unit="ms", tz="UTC").strftime("%Y-%m-%d %H:%M")
 
 
-def chart(cfg, store, alert, blind: bool, before: int, after: int, plan: dict):
-    df = candles(store, alert["symbol"], alert["timeframe"])
-    times = df["open_time"].to_numpy()
-    ai = int(np.searchsorted(times, alert["bar_time"]))
-    lo = max(0, ai - before - 300)              # extra bars to warm up indicators
-    hi = ai + 1 if blind else min(len(df), ai + after + 1)
-    w = add_indicators(df.iloc[lo:hi].reset_index(drop=True), cfg)
-    start = ai - lo - before if ai - lo - before > 0 else 0
-    w = w.iloc[start:].reset_index(drop=True)
+def base_figure(cfg, w: pd.DataFrame, focus_x: int, lines: list[dict], extend: int = 40):
+    """Candles + indicators + regression channel and trendlines as the scanner saw
+    them at bar `focus_x` of the window `w` (a frame from add_indicators)."""
     x = np.arange(len(w))
-    a_x = ai - lo - start
     labels = [fmt_time(t)[5:] for t in w["open_time"]]
-
     fig = make_subplots(rows=4, cols=1, shared_xaxes=True, vertical_spacing=0.02,
                         row_heights=[0.58, 0.12, 0.15, 0.15])
     fig.add_trace(go.Candlestick(x=x, open=w["open"], high=w["high"], low=w["low"], close=w["close"],
@@ -87,45 +80,30 @@ def chart(cfg, store, alert, blind: bool, before: int, after: int, plan: dict):
     if "vwap" in w:
         fig.add_trace(go.Scatter(x=x, y=w["vwap"], name="VWAP", line=dict(width=1, color="#14b8a6", dash="dot")), row=1, col=1)
     rc = cfg["structure"].get("regression_channel")
-    if rc and a_x + 1 >= rc["period"]:
-        # Straight channel fitted on the last `period` closes up to the alert bar (what the scanner saw).
-        xs = np.arange(a_x + 1 - rc["period"], a_x + 1)
+    if rc and focus_x + 1 >= rc["period"]:
+        # Straight channel fitted on the last `period` closes up to the focus bar.
+        xs = np.arange(focus_x + 1 - rc["period"], focus_x + 1)
         b, a0 = np.polyfit(xs, w["close"].to_numpy()[xs], 1)
         sd = np.std(w["close"].to_numpy()[xs] - (a0 + b * xs))
         for k, dash in ((rc["std"], "dash"), (0, "dot"), (-rc["std"], "dash")):
             fig.add_trace(go.Scatter(x=xs[[0, -1]], y=a0 + b * xs[[0, -1]] + k * sd, mode="lines",
-                                     name="regresný kanál", showlegend=k > 0,
+                                     name="regresný kanál", showlegend=k > 0, hoverinfo="skip",
                                      line=dict(width=1, color="#94a3b8", dash=dash)), row=1, col=1)
 
-    # Trendlines exactly as the scanner knew them at alert time.
     wt = w["open_time"].to_numpy()
-    for ln in alert.get("lines") or []:
+    for ln in lines or []:
         x1 = int(np.searchsorted(wt, ln["t1"]))
         if x1 >= len(wt) or wt[x1] != ln["t1"]:
-            x1 = a_x - ln["bars_from_t1"]
-        x_end = min(len(w) - 1, a_x + (0 if ln["ended_here"] else 40))
+            x1 = focus_x - ln["bars_from_t1"]
+        x_end = min(len(w) - 1 + extend, focus_x + (0 if ln["ended_here"] else extend))
         xs = np.array([max(x1, 0), x_end])   # clip to the visible window
         ys = ln["p1"] + ln["slope_per_bar"] * (xs - x1)
         color = "#ef4444" if ln["kind"] == "resistance" else "#22c55e"
-        fig.add_trace(go.Scatter(x=xs, y=ys, mode="lines", line=dict(color=color, width=2),
+        fig.add_trace(go.Scatter(x=xs, y=ys, mode="lines", line=dict(color=color, width=2), hoverinfo="skip",
                                  name=f"{ln['kind']} ({ln['touches']}×)"), row=1, col=1)
         if ln.get("channel_offset"):
             fig.add_trace(go.Scatter(x=xs, y=ys + ln["channel_offset"], mode="lines", showlegend=False,
-                                     line=dict(color=color, width=1, dash="dot")), row=1, col=1)
-
-    marker_y = alert["price"]
-    fig.add_trace(go.Scatter(x=[a_x], y=[marker_y], mode="markers", name="alert",
-                             marker=dict(size=14, symbol="triangle-up" if alert["direction"] == "bullish" else "triangle-down",
-                                         color="#22c55e" if alert["direction"] == "bullish" else "#ef4444",
-                                         line=dict(width=1, color="black"))), row=1, col=1)
-    fig.add_vline(x=a_x, line=dict(color="#64748b", width=1, dash="dot"))
-    for name, val, color in (("Vstup", plan.get("entry"), "#0ea5e9"), ("SL", plan.get("sl"), "#ef4444"),
-                             ("TP", plan.get("tp"), "#22c55e"), ("BE", plan.get("be"), "#eab308")):
-        if val:
-            fig.add_shape(type="line", x0=a_x, x1=len(w) - 1, y0=val, y1=val, line=dict(color=color, width=1, dash="dash"),
-                          row=1, col=1)
-            fig.add_annotation(x=len(w) - 1, y=val, text=name, showarrow=False, xanchor="left",
-                               font=dict(color=color, size=10), row=1, col=1)
+                                     hoverinfo="skip", line=dict(color=color, width=1, dash="dot")), row=1, col=1)
 
     vol_colors = np.where(w["close"] >= w["open"], "#22c55e", "#ef4444")
     fig.add_trace(go.Bar(x=x, y=w["volume"], marker_color=vol_colors, name="objem", showlegend=False), row=2, col=1)
@@ -137,15 +115,134 @@ def chart(cfg, store, alert, blind: bool, before: int, after: int, plan: dict):
     fig.add_trace(go.Scatter(x=x, y=w["macd"], name="MACD", line=dict(color="#3b82f6", width=1)), row=4, col=1)
     fig.add_trace(go.Scatter(x=x, y=w["macd_signal"], name="signál", line=dict(color="#f97316", width=1)), row=4, col=1)
 
-    # Y axis follows the candles (+ trade plan), so far-away lines don't squash the chart.
-    ys = [w["low"].min(), w["high"].max()] + [v for v in plan.values() if v]
-    pad = (max(ys) - min(ys)) * 0.05
-    fig.update_yaxes(range=[min(ys) - pad, max(ys) + pad], row=1, col=1)
     step = max(1, len(x) // 10)
     fig.update_xaxes(tickvals=x[::step], ticktext=labels[::step], rangeslider_visible=False)
+    # Drag = pan, wheel = zoom; only the price panel zooms vertically.
+    for row in (2, 3, 4):
+        fig.update_yaxes(fixedrange=True, row=row, col=1)
     fig.update_layout(height=780, margin=dict(l=10, r=60, t=10, b=10), hovermode="x unified",
-                      legend=dict(orientation="h", y=1.02, x=0))
+                      dragmode="pan", legend=dict(orientation="h", y=1.02, x=0))
+    return fig
+
+
+PLOT_CONFIG = {
+    "scrollZoom": True,
+    "displaylogo": False,
+    "modeBarButtonsToRemove": ["select2d", "lasso2d", "autoScale2d", "toggleSpikelines",
+                               "hoverClosestCartesian", "hoverCompareCartesian"],
+}
+
+
+def show(fig, ui_key: str):
+    """Render with a stable uirevision so zoom/pan survive reruns (e.g. while editing SL/TP)."""
+    fig.update_layout(uirevision=ui_key)
+    st.plotly_chart(fig, use_container_width=True, config=PLOT_CONFIG)
+    st.caption("🖱️ ťahaj = posun · koliesko = zoom · dvojklik = späť na celý graf")
+
+
+def fit_y(fig, w, extra=()):
+    """Y axis follows the candles (+ extra levels), so far-away lines don't squash the chart."""
+    ys = [w["low"].min(), w["high"].max()] + [v for v in extra if v]
+    pad = (max(ys) - min(ys)) * 0.05
+    fig.update_yaxes(range=[min(ys) - pad, max(ys) + pad], row=1, col=1)
+
+
+def chart(cfg, store, alert, blind: bool, before: int, after: int, plan: dict):
+    df = candles(store, alert["symbol"], alert["timeframe"])
+    times = df["open_time"].to_numpy()
+    ai = int(np.searchsorted(times, alert["bar_time"]))
+    lo = max(0, ai - before - 300)              # extra bars to warm up indicators
+    hi = ai + 1 if blind else min(len(df), ai + after + 1)
+    w = add_indicators(df.iloc[lo:hi].reset_index(drop=True), cfg)
+    start = ai - lo - before if ai - lo - before > 0 else 0
+    w = w.iloc[start:].reset_index(drop=True)
+    a_x = ai - lo - start
+
+    fig = base_figure(cfg, w, a_x, alert.get("lines"))
+    fig.add_trace(go.Scatter(x=[a_x], y=[alert["price"]], mode="markers", name="alert",
+                             marker=dict(size=14, symbol="triangle-up" if alert["direction"] == "bullish" else "triangle-down",
+                                         color="#22c55e" if alert["direction"] == "bullish" else "#ef4444",
+                                         line=dict(width=1, color="black"))), row=1, col=1)
+    fig.add_vline(x=a_x, line=dict(color="#64748b", width=1, dash="dot"))
+    for name, val, color in (("Vstup", plan.get("entry"), "#0ea5e9"), ("SL", plan.get("sl"), "#ef4444"),
+                             ("TP", plan.get("tp"), "#22c55e"), ("BE", plan.get("be"), "#eab308")):
+        if val:
+            fig.add_shape(type="line", x0=a_x, x1=len(w) - 1, y0=val, y1=val, line=dict(color=color, width=1, dash="dash"),
+                          row=1, col=1)
+            fig.add_annotation(x=len(w) - 1, y=val, text=name, showarrow=False, xanchor="left",
+                               font=dict(color=color, size=10), row=1, col=1)
+    fit_y(fig, w, plan.values())
     return fig, df
+
+
+def live_view(cfg, store, symbol: str, tf: str, bars: int, only_notified: bool):
+    """Current chart with the trendlines the scanner sees right now and recent alerts."""
+    raw = candles(store, symbol, tf).tail(cfg["window_bars"]).reset_index(drop=True)
+    if len(raw) < 60:
+        st.info("Zatiaľ málo dát. Spusti backfill alebo počkaj na skener.")
+        return
+    f = add_indicators(raw, cfg)
+    k = cfg["structure"]["zigzag_atr"].get(tf, 2.0)
+    struct = StructureEngine(cfg["structure"], k).run(f)
+    last = len(f) - 1
+    lines = lines_snapshot(struct["lines"], last, f["open_time"].to_numpy())
+    w = f.tail(bars).reset_index(drop=True)
+    fig = base_figure(cfg, w, len(w) - 1, lines, extend=15)
+
+    t0 = int(w["open_time"].iloc[0])
+    q = "SELECT id, bar_time, signal, direction, price, notify FROM alerts WHERE symbol=? AND timeframe=? AND bar_time>=?"
+    if only_notified:
+        q += " AND notify=1"
+    al = pd.read_sql_query(q, store.conn, params=(symbol, tf, t0))
+    if not al.empty:
+        al["x"] = np.searchsorted(w["open_time"].to_numpy(), al["bar_time"].to_numpy())
+        for direction, color, sym in (("bullish", "#22c55e", "triangle-up"), ("bearish", "#ef4444", "triangle-down")):
+            d = al[al["direction"] == direction]
+            if d.empty:
+                continue
+            fig.add_trace(go.Scatter(
+                x=d["x"], y=d["price"], mode="markers", name=f"alerty {direction}",
+                text=[f"#{i} {s}" for i, s in zip(d["id"], d["signal"])], hoverinfo="text",
+                marker=dict(size=np.where(d["notify"] == 1, 12, 7), symbol=sym, color=color,
+                            line=dict(width=1, color="black"))), row=1, col=1)
+    fit_y(fig, w)
+
+    c = st.columns(4)
+    lt = int(raw["open_time"].iloc[-1])
+    age = (pd.Timestamp.now(tz="UTC") - pd.Timestamp(lt + tf_ms(tf), unit="ms", tz="UTC")).total_seconds() / 60
+    c[0].metric("Posledná sviečka (UTC)", fmt_time(lt)[5:], f"pred {age:.0f} min", delta_color="off")
+    c[1].metric("Cena", f"{raw['close'].iloc[-1]:.2f}")
+    c[2].metric("RSI", f"{f['rsi'].iloc[-1]:.1f}")
+    day = int((pd.Timestamp.now(tz="UTC") - pd.Timedelta(hours=24)).value // 1_000_000)
+    n24, s24 = store.conn.execute(
+        "SELECT COUNT(*), COALESCE(SUM(notify),0) FROM alerts WHERE symbol=? AND bar_time>=?", (symbol, day)).fetchone()
+    c[3].metric("Alerty za 24 h", n24, f"{s24} na Telegram", delta_color="off")
+    show(fig, f"live-{symbol}-{tf}-{bars}")
+    st.caption(f"Čiary a kanál presne tak, ako ich skener vidí teraz (aktívne: {len(lines)}). "
+               "Veľké trojuholníky = išlo na Telegram, malé = iba uložené. Obnovuje sa každú minútu. "
+               "Dáta z Yahoo sú oneskorené ~10 min.")
+    if not al.empty:
+        recent = al.sort_values("bar_time", ascending=False).head(15).copy()
+        recent["čas"] = recent["bar_time"].map(fmt_time)
+        recent["označiť"] = "?alert=" + recent["id"].astype(str)
+        st.dataframe(recent[["čas", "signal", "direction", "price", "označiť"]], hide_index=True, use_container_width=True,
+                     column_config={"označiť": st.column_config.LinkColumn("označiť", display_text="otvoriť")})
+
+
+def page_live(cfg, store):
+    syms = cfg["symbols"]
+    c = st.columns([1, 1, 2, 2])
+    symbol = c[0].selectbox("Symbol", syms, key="live_sym")
+    tf = c[1].selectbox("Timeframe", cfg["alert_timeframes"], index=min(1, len(cfg["alert_timeframes"]) - 1),
+                        key="live_tf")
+    bars = c[2].slider("Sviečok", 60, 600, 200, key="live_bars")
+    only_notified = c[3].checkbox("Iba alerty z Telegramu", True, key="live_notified")
+
+    @st.fragment(run_every="60s")
+    def _refresh():
+        live_view(cfg, store, symbol, tf, bars, only_notified)
+
+    _refresh()
 
 
 def alert_queue(store, f) -> pd.DataFrame:
@@ -231,7 +328,7 @@ def page_label(cfg, store, f):
     plan = {"entry": entry, "sl": sl, "tp": tp, "be": be or None} if label in ("LONG", "SHORT") else {}
     with left:
         fig, df = chart(cfg, store, alert, f["blind"], f["before"], f["after"], plan)
-        st.plotly_chart(fig, use_container_width=True)
+        show(fig, f"alert{alert['id']}-{f['blind']}-{f['before']}-{f['after']}")
         if not f["blind"]:
             o = store.outcome(alert["id"])
             if o:
@@ -381,14 +478,17 @@ def main():
             st.session_state["current"] = None
             st.rerun()
 
-    tabs = st.tabs(["🏷️ Labelovanie", "➕ Premeškaný vstup", "📊 Štatistiky a EV", "⚙️ Nastavenia a slovník"])
+    tabs = st.tabs(["🏷️ Labelovanie", "📡 Živý graf", "➕ Premeškaný vstup", "📊 Štatistiky a EV",
+                    "⚙️ Nastavenia a slovník"])
     with tabs[0]:
         page_label(cfg, store, f)
     with tabs[1]:
-        page_manual(cfg, store, f)
+        page_live(cfg, store)
     with tabs[2]:
-        page_stats(cfg, store)
+        page_manual(cfg, store, f)
     with tabs[3]:
+        page_stats(cfg, store)
+    with tabs[4]:
         page_settings(cfg)
 
 
