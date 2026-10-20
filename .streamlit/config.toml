@@ -1,10 +1,10 @@
-# Dark theme matching the TradingView-style chart
+# Yellow app background; dark text so it stays readable (the chart keeps its own theme)
 [theme]
-base = "dark"
+base = "light"
 primaryColor = "#2962ff"
-backgroundColor = "#131722"
-secondaryBackgroundColor = "#1e222d"
-textColor = "#d1d4dc"
+backgroundColor = "#ffeb3b"
+secondaryBackgroundColor = "#fff59d"
+textColor = "#131722"
 
 [server]
 enableStaticServing = true

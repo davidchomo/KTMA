@@ -41,7 +41,7 @@ CSS = """<style>
 .nx-rr { display: flex; flex-direction: column; background: #1e222d; border: 1px solid #2a2e39; border-radius: 8px;
          padding: 6px 10px; margin: 4px 0 6px; }
 .nx-rrv { font-size: 24px; font-weight: 700; line-height: 1.2; }
-.nx-brand { font-size: 22px; font-weight: 700; letter-spacing: .06em; color: #d1d4dc; }
+.nx-brand { font-size: 22px; font-weight: 700; letter-spacing: .06em; color: #131722; }
 .nx-brand b { color: #2962ff; }
 .st-key-nx_chat_fab { position: fixed; right: 28px; bottom: 24px; z-index: 1000; width: auto !important; }
 .st-key-nx_chat_fab button { border-radius: 28px; padding: 10px 18px; font-size: 20px; background: #2962ff;
