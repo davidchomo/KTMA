@@ -102,6 +102,48 @@ const idxByTime = new Map(T.map((t, i) => [t, i]));
 const ok = v => v !== null && v !== undefined && !Number.isNaN(v);
 const toSeries = arr => arr.slice(WARM).map((v, i) => [T[i], v]).filter(([, v]) => ok(v)).map(([time, value]) => ({ time, value }));
 let chart = null, rows = [];
+const SESS = (D.s || D.t.map(x => Math.floor(x / 86400))).slice(WARM);
+// White lines (e.g. the VWAP mean) would vanish on the light theme: draw them dark there.
+const ink = c => (SPEC.style.theme === 'Svetlé' && /^#fff(fff)?$/i.test(c) ? '#131722' : c);
+
+// Filled zones between two price lines (Lightweight Charts has no built-in band fill), drawn under the candles.
+// bands: [{top, bot, color}] with values aligned to T; a new VWAP session starts a new polygon.
+class BandFill {
+  constructor(bands) { this.bands = bands; this.p = null; }
+  attached(p) { this.p = p; }
+  detached() { this.p = null; }
+  updateAllViews() {}
+  paneViews() { return [{ zOrder: () => 'bottom', renderer: () => ({ draw: target => this.draw(target) }) }]; }
+  draw(target) {
+    if (!this.p) return;
+    const ts = this.p.chart.timeScale(), series = this.p.series;
+    target.useBitmapCoordinateSpace(({ context: ctx, horizontalPixelRatio: hr, verticalPixelRatio: vr }) => {
+      for (const b of this.bands) {
+        ctx.fillStyle = b.color;
+        let seg = [];
+        const flush = () => {
+          if (seg.length > 1) {
+            ctx.beginPath();
+            seg.forEach(([x, y], i) => (i ? ctx.lineTo(x * hr, y * vr) : ctx.moveTo(x * hr, y * vr)));
+            for (let i = seg.length - 1; i >= 0; i--) ctx.lineTo(seg[i][0] * hr, seg[i][2] * vr);
+            ctx.closePath();
+            ctx.fill();
+          }
+          seg = [];
+        };
+        for (let i = 0; i < T.length; i++) {
+          if (i && SESS[i] !== SESS[i - 1]) flush();
+          const x = ts.timeToCoordinate(T[i]);
+          const y1 = ok(b.top[i]) ? series.priceToCoordinate(b.top[i]) : null;
+          const y2 = ok(b.bot[i]) ? series.priceToCoordinate(b.bot[i]) : null;
+          if (x === null || y1 === null || y2 === null) { flush(); continue; }
+          seg.push([x, y1, y2]);
+        }
+        flush();
+      }
+    });
+  }
+}
 
 function build(keepRange) {
   const LW = LightweightCharts;
@@ -170,11 +212,23 @@ function build(keepRange) {
     const p = def.pane === true ? pane++ : 0;
     const line = (k, extra) => {
       const st = s.plots[k];
-      const ser = chart.addSeries(LW.LineSeries, { ...quiet, color: st.color, lineWidth: st.width, lineStyle: st.style,
-                                                   visible: st.visible, ...(extra || {}) }, p);
-      ser.setData(toSeries(r[k]));
+      const opts = { ...quiet, color: ink(st.color), lineWidth: st.width, lineStyle: st.style, visible: st.visible, ...(extra || {}) };
       row.values[k] = r[k].slice(WARM);
-      return ser;
+      if (s.type !== 'vwap') {
+        const ser = chart.addSeries(LW.LineSeries, opts, p);
+        ser.setData(toSeries(r[k]));
+        return ser;
+      }
+      // VWAP restarts every session: one line per session, so there is a gap instead of a vertical jump.
+      let first = null, i0 = 0;
+      for (let i = 1; i <= T.length; i++) {
+        if (i < T.length && SESS[i] === SESS[i0]) continue;
+        const data = [];
+        for (let j = i0; j < i; j++) if (ok(row.values[k][j])) data.push({ time: T[j], value: row.values[k][j] });
+        if (data.length) { const ser = chart.addSeries(LW.LineSeries, opts, p); ser.setData(data); first = first || ser; }
+        i0 = i;
+      }
+      return first;
     };
     if (s.type === 'volume') {
       const up = s.plots.up.color + '80', dn = s.plots.down.color + '80';
@@ -200,6 +254,19 @@ function build(keepRange) {
       if (pl.kind !== 'line' || !(pl.k in r)) continue;
       const ser = line(pl.k, def.pane ? { priceLineVisible: false } : { autoscaleInfoProvider: () => null });
       first = first || ser;
+    }
+    if (s.type === 'vwap') {
+      // red zones above the mean, grey around it, green below; the outer zone is a bit stronger
+      const a = Math.max(0, Math.min(100, s.inputs.opacity)) / 100, on = n => s.inputs[`b${n}`] > 0;
+      const hex = (c, k) => c.slice(0, 7) + Math.round(Math.min(1, a * k) * 255).toString(16).padStart(2, '0');
+      const bands = [];
+      const zone = (top, bot, fill, k) => {
+        if (s.plots[fill].visible && a > 0) bands.push({ top: r[top].slice(WARM), bot: r[bot].slice(WARM), color: hex(s.plots[fill].color, k) });
+      };
+      if (on(1)) zone('u1', 'l1', 'fmid', 0.6);
+      if (on(1) && on(2)) { zone('u2', 'u1', 'fup', 1); zone('l1', 'l2', 'fdn', 1); }
+      if (on(2) && on(3)) { zone('u3', 'u2', 'fup', 1.7); zone('l2', 'l3', 'fdn', 1.7); }
+      if (bands.length) candles.attachPrimitive(new BandFill(bands));
     }
     if (first && s.plots.levels && s.plots.levels.visible) {
       const lv = s.plots.levels;
@@ -284,11 +351,11 @@ function updateLegendValues(i) {
   if (i === undefined) i = T.length - 1;
   document.querySelectorAll('#studies .lg-row').forEach(div => {
     const r = rows[+div.dataset.n];
-    const keys = r.s.type === 'volume' ? ['vol'] : r.s.type === 'macd' ? ['macd', 'signal', 'hist']
+    const keys = r.def.legend ? r.def.legend : r.s.type === 'volume' ? ['vol'] : r.s.type === 'macd' ? ['macd', 'signal', 'hist']
                : r.def.plots.filter(p => p.kind === 'line').map(p => p.k);
     div.querySelector('.vals').innerHTML = keys.filter(k => r.values[k] && (!r.s.plots[k] || r.s.plots[k].visible)).map(k => {
       const st = r.s.plots[k] || (k === 'hist' ? r.s.plots.hup : r.s.plots.up) || {};
-      return `<span class="lg-val" style="color:${st.color || 'inherit'}">${fmtVal(r.values[k][i], r.s.type)}</span>`;
+      return `<span class="lg-val" style="color:${st.color ? ink(st.color) : 'inherit'}">${fmtVal(r.values[k][i], r.s.type)}</span>`;
     }).join('');
   });
 }
@@ -357,7 +424,7 @@ function openSettings(s, back) {
     : def.plots.map(p => { const st = s.plots[p.k];
         return `<div class="fld"><label class="ctl">${p.kind === 'color' ? '' : `<input type="checkbox" data-pl="${p.k}" data-f="visible" ${st.visible ? 'checked' : ''}>`}
           ${esc(p.label)}</label><span class="ctl"><input type="color" data-pl="${p.k}" data-f="color" value="${st.color.slice(0, 7)}">
-          ${p.kind === 'color' ? '' : `<select class="sm" data-pl="${p.k}" data-f="width" title="Hrúbka">${opts([1, 2, 3, 4].map(w => [w + ' px', w]), st.width)}</select>
+          ${p.kind === 'color' || p.kind === 'fill' ? '' : `<select class="sm" data-pl="${p.k}" data-f="width" title="Hrúbka">${opts([1, 2, 3, 4].map(w => [w + ' px', w]), st.width)}</select>
           <select data-pl="${p.k}" data-f="style" title="Štýl čiary">${opts(LINE_STYLES, st.style)}</select>`}</span></div>`; }).join('');
   const paint = () => {
     modal.innerHTML = `<div class="dlg"><div class="dlg-h"><span>${esc(def.name)} <small style="font-weight:400;color:__MUTED__">${esc(def.title)}</small></span>

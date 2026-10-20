@@ -123,7 +123,7 @@ const KS = (() => {
 
   // ---- registry: what the "ƒx Indikátory" menu offers -------------------------------------------
   // inputs: {k, label, def, min, max, step?, type?: 'source'}
-  // plots:  {k, label, color, width?, style?, kind?: 'line' | 'color' (colour only) | 'level'}
+  // plots:  {k, label, color, width?, style?, kind?: 'line' | 'color' (colour only) | 'fill' (colour + on/off) | 'level'}
   const P = (k, label, color, extra) => ({ k, label, color, width: 1, style: 0, kind: 'line', ...(extra || {}) });
   const SRC = { k: 'source', label: 'Zdroj', type: 'source', def: 'close' };
   const LEVELS = [{ k: 'upper', label: 'Horná úroveň', def: 80, min: 0, max: 100 },
@@ -151,16 +151,25 @@ const KS = (() => {
       plots: [P('basis', 'Stred', '#ff6d00'), P('upper', 'Horné', '#2962ff'), P('lower', 'Dolné', '#2962ff')],
       label: s => `BB ${s.inputs.period} ${s.inputs.mult}`,
       calc: (D, s) => bollinger(source(D, s.inputs.source), s.inputs.period, s.inputs.mult) },
-    vwap: { name: 'VWAP', title: 'VWAP seansy s pásmami σ', pane: false,
+    // Coloured zones like on TradingView: red above the mean (expensive), green below (cheap), grey around it.
+    vwap: { name: 'VWAP', title: 'VWAP seansy s pásmami σ a farebnými zónami', pane: false, v: 2, legend: ['vwap'],
       inputs: [{ k: 'b1', label: 'Pásmo 1 (σ, 0 = vyp.)', def: 1, min: 0, max: 5, step: 0.5 },
-               { k: 'b2', label: 'Pásmo 2 (σ, 0 = vyp.)', def: 2, min: 0, max: 5, step: 0.5 }],
-      plots: [P('vwap', 'VWAP', '#4db6ac', { width: 2 }), P('u1', '+pásmo 1', '#4db6ac', { style: 2 }),
-              P('l1', '−pásmo 1', '#4db6ac', { style: 2 }), P('u2', '+pásmo 2', '#80cbc4', { style: 2 }),
-              P('l2', '−pásmo 2', '#80cbc4', { style: 2 })],
+               { k: 'b2', label: 'Pásmo 2 (σ, 0 = vyp.)', def: 2, min: 0, max: 5, step: 0.5 },
+               { k: 'b3', label: 'Pásmo 3 (σ, 0 = vyp.)', def: 3, min: 0, max: 6, step: 0.5 },
+               { k: 'opacity', label: 'Sýtosť výplne (%)', def: 12, min: 0, max: 100 }],
+      plots: [P('vwap', 'VWAP (stred)', '#ffffff', { width: 2 }),
+              P('u1', '+1. pásmo', '#787b86', { style: 1 }), P('l1', '−1. pásmo', '#787b86', { style: 1 }),
+              P('u2', '+2. pásmo', '#ef5350'), P('l2', '−2. pásmo', '#26a69a'),
+              P('u3', '+3. pásmo', '#ef5350'), P('l3', '−3. pásmo', '#26a69a'),
+              P('fup', 'Výplň nad VWAP (draho)', '#ef5350', { kind: 'fill' }),
+              P('fmid', 'Výplň okolo VWAP', '#787b86', { kind: 'fill' }),
+              P('fdn', 'Výplň pod VWAP (lacno)', '#26a69a', { kind: 'fill' })],
       label: () => 'VWAP',
       calc: (D, s) => {
         const r = vwap(D), b = (k, sign) => (k > 0 ? zip(r.vwap, r.sd, (m, x) => m + sign * k * x) : r.vwap.map(() => NaN));
-        return { vwap: r.vwap, u1: b(s.inputs.b1, 1), l1: b(s.inputs.b1, -1), u2: b(s.inputs.b2, 1), l2: b(s.inputs.b2, -1) };
+        const out = { vwap: r.vwap };
+        for (const n of [1, 2, 3]) { out[`u${n}`] = b(s.inputs[`b${n}`], 1); out[`l${n}`] = b(s.inputs[`b${n}`], -1); }
+        return out;
       } },
     donchian: { name: 'Donchian', title: 'Donchianov kanál', pane: false,
       inputs: [{ k: 'period', label: 'Perióda', def: 20, min: 2, max: 500 }],
@@ -219,16 +228,19 @@ const KS = (() => {
     const def = STUDIES[x && x.type];
     if (!def) return null;
     const inputs = {}, plots = {};
+    // Saved with an older look of this indicator (registry `v` bumped): take the new default colours/styles.
+    const stale = (x.v || 1) < (def.v || 1);
     for (const i of def.inputs) {
       const v = x.inputs && x.inputs[i.k];
       inputs[i.k] = i.type === 'source' ? (typeof v === 'string' ? v : i.def) : (Number.isFinite(+v) && v !== '' && v !== null ? +v : i.def);
     }
     for (const p of def.plots) {
-      const v = (x.plots && x.plots[p.k]) || {};
+      const v = (!stale && x.plots && x.plots[p.k]) || {};
       plots[p.k] = { color: v.color || p.color, width: +v.width || p.width, style: Number.isFinite(+v.style) ? +v.style : p.style,
                      visible: v.visible !== false };
     }
-    return { uid: x.uid || `s${Date.now().toString(36)}${(seq++).toString(36)}`, type: x.type, visible: x.visible !== false,
+    return { uid: x.uid || `s${Date.now().toString(36)}${(seq++).toString(36)}`, type: x.type, v: def.v || 1,
+             visible: x.visible !== false,
              inputs, plots, temp: !!x.temp };
   }
 
