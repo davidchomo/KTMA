@@ -14,7 +14,7 @@ Podrobný research (indikátor po indikátore, zlato/striebro, labelovanie, ML, 
 
 ```
                  ┌──────────────┐
-  dáta (1m)  ──▶ │ 1. Ingest    │  sťahuje 1m sviečky GC=F (SI=F), ukladá surové dáta
+  dáta (1m)  ──▶ │ 1. Ingest    │  sťahuje 1m sviečky XAU/USD (OANDA), ukladá surové dáta
                  └──────┬───────┘
                         ▼
                  ┌──────────────┐
@@ -264,7 +264,7 @@ pochopenie aj na úpravy. Triple-barrier a purged CV sú ~50 riadkov každé, na
 
 | Otázka | Rozhodnutie | Dôsledok |
 |---|---|---|
-| Živé dáta | **yfinance** `GC=F` | zadarmo, skutočný objem; CME dáta sú však oneskorené ≥ 10 min, takže 1m alerty prídu ~10 sviečok neskoro. Na zber dát a labelovanie to nevadí; na živé 1m reakcie neskôr prepnúť na OANDA (zdroj je vymeniteľný) |
+| Živé dáta | **OANDA** `XAU_USD` (zmena 20.10.2026, pôvodne yfinance `GC=F`) | spotové zlato ako u brokera, real-time, roky histórie zadarmo (demo účet); objem = tick volume. yfinance `GC=F` ostáva ako záložný zdroj |
 | Timeframy | **1m, 5m, 15m** (+ 1h, 4h ako kontext) | 1m s prísnejšími filtrami |
 | Kde to beží | **VPS** (Docker) | `docker compose` (skener + appka), appka za existujúcim Caddy na `ktma.mirasolen.eu` s heslom |
 | Labely | `LONG / SHORT / NEVSTUPOVAŤ / NEVIEM` + istota 1–3 + **vstup, SL, TP** | presnejší label (R:R) |
