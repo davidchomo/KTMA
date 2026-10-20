@@ -9,7 +9,6 @@ import logging
 import os
 import time
 
-import numpy as np
 import pandas as pd
 
 from .config import all_timeframes, load_config, tf_ms
