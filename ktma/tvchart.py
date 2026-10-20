@@ -78,7 +78,7 @@ def default_studies(style: dict | None = None) -> list[dict]:
         {"type": "macd", "inputs": {"fast": int(st["macd_fast"]), "slow": int(st["macd_slow"]),
                                     "signal": int(st["macd_signal"])},
          "plots": {"macd": line(st["macd_line_color"]), "signal": line(st["macd_signal_color"]),
-                   "hup": {"color": st["macd_up"]}, "hdown": {"color": st["macd_down"]}}},
+                   "h1": {"color": st["macd_up"]}, "h4": {"color": st["macd_down"]}}},
     ]
 
 
@@ -119,7 +119,8 @@ def build_spec(w: pd.DataFrame, layers: set, lines: list[dict] | None = None, fo
                reg_channel: dict | None = None, label_marks: list[dict] | None = None,
                zoom_before: int = 70, zoom_after: int = 40, style: dict | None = None,
                levels: list[dict] | None = None, position: dict | None = None, bar_seconds: int = 300,
-               warm: pd.DataFrame | None = None, force_studies: list[str] | None = None) -> dict:
+               warm: pd.DataFrame | None = None, force_studies: list[str] | None = None,
+               symbol: str = "", timeframe: str = "") -> dict:
     """`w` = frame from add_indicators + style_indicators (bars of one timeframe, index 0..n-1);
     `warm` = the bars just before `w` (indicator warm-up only, not drawn)."""
     st = {**STYLE_DEFAULTS, **(style or {})}
@@ -136,6 +137,9 @@ def build_spec(w: pd.DataFrame, layers: set, lines: list[dict] | None = None, fo
         "segments": [], "markers": [], "priceLines": price_lines or [],
         "ohlcv": ohlcv, "warm": len(ohlcv["t"]) - n,
         "studyDefaults": default_studies(st), "forceStudies": force_studies or [],
+        # for per-timeframe indicator visibility and drawings saved per symbol + timeframe
+        "symbol": symbol, "tf": timeframe, "barSeconds": bar_seconds,
+        "tzOffset": int(t[-1] - int(w["open_time"].iloc[-1]) // 1000) if n else 0,
         "style": {**st, "series": {"Bary": "bar", "Čiara": "line"}.get(st["type"], "candle"),
                   "colors": THEMES.get(st["theme"], THEMES["Tmavé"]), "scaleMode": SCALES.get(st["scale"], 0)},
     }

@@ -3,90 +3,160 @@
   html, body { margin: 0; padding: 0; background: __BG__; font-family: -apple-system, system-ui, sans-serif; }
   :root { color-scheme: __SCHEME__; }
   #chart { position: relative; width: 100%; height: __HEIGHT__px; }
+  #chart.drawing { cursor: crosshair; }
   #legend { position: absolute; left: 8px; top: 6px; z-index: 5; font-size: 12px; color: __TEXT__;
-            line-height: 1.5; max-width: calc(100% - 260px); pointer-events: none; }
+            line-height: 1.5; max-width: calc(100% - 300px); pointer-events: none; }
   #legend b { font-weight: 600; }
-  #ohlc, .lg-row { background: __LEGEND__; padding: 0 4px; display: inline-block; border-radius: 3px; }
-  .lg-row { pointer-events: auto; margin-top: 1px; white-space: nowrap; }
-  .lg-row.off { opacity: .45; }
+  #ohlc, .lg-row, #lgToggle { background: __LEGEND__; padding: 0 4px; display: inline-block; border-radius: 3px; }
+  .lg-row, #lgToggle { pointer-events: auto; margin-top: 1px; white-space: nowrap; }
+  #lgToggle { cursor: pointer; color: __MUTED__; font-size: 11px; border: 1px solid __BORDER__; }
+  #lgToggle:hover { color: __TEXT__; }
   .lg-name { margin-right: 6px; }
   .lg-val { margin-right: 4px; font-variant-numeric: tabular-nums; }
   .lg-btn { display: none; cursor: pointer; border: 0; background: transparent; color: __TEXT__; font-size: 12px;
             padding: 0 3px; line-height: 1.4; }
-  .lg-row:hover .lg-btn, .lg-row.off .lg-btn { display: inline; }
+  .lg-row:hover .lg-btn { display: inline; }
   .lg-btn:hover { color: #2962ff; }
   #help { font-size: 11px; color: __MUTED__; padding: 2px 8px; }
   .tb { position: absolute; top: 6px; z-index: 6; background: __BUTTON__; color: __TEXT__; border: 1px solid __BORDER__;
         border-radius: 4px; font-size: 13px; line-height: 1; padding: 5px 8px; cursor: pointer; }
   .tb:hover { opacity: 0.8; }
+  .tb.on { background: #2962ff; border-color: #2962ff; color: #fff; }
   #fs { right: 70px; font-size: 15px; padding: 4px 7px; }
   #fx { right: 108px; font-weight: 600; }
+  #tl { right: 222px; font-size: 14px; padding: 4px 8px; }
+  #hint { position: absolute; left: 50%; top: 8px; transform: translateX(-50%); z-index: 7; background: #2962ff; color: #fff;
+          font-size: 12px; padding: 4px 10px; border-radius: 4px; display: none; pointer-events: none; }
+  #drawbar { position: absolute; left: 50%; top: 40px; transform: translateX(-50%); z-index: 8; display: none; gap: 2px;
+             align-items: center; background: __PANEL__; border: 1px solid __BORDER__; border-radius: 6px; padding: 3px;
+             box-shadow: 0 4px 16px rgba(0,0,0,.35); font-size: 12px; color: __TEXT__; }
+  #drawbar.open { display: flex; }
+  #drawbar span { padding: 0 6px; color: __MUTED__; }
   html:fullscreen #chart { height: 100vh !important; }
   html:fullscreen #help { display: none; }
   /* dialogs (inside #chart so they also work in fullscreen) */
   #modal { position: absolute; inset: 0; z-index: 20; background: rgba(0,0,0,.45); display: none;
-           align-items: flex-start; justify-content: center; padding-top: 40px; box-sizing: border-box; }
+           align-items: flex-start; justify-content: center; padding-top: 30px; box-sizing: border-box; }
   #modal.open { display: flex; }
-  .dlg { background: __PANEL__; color: __TEXT__; border: 1px solid __BORDER__; border-radius: 8px; width: min(440px, 94%);
-         max-height: calc(100% - 60px); display: flex; flex-direction: column; box-shadow: 0 12px 40px rgba(0,0,0,.5);
+  .dlg { background: __PANEL__; color: __TEXT__; border: 1px solid __BORDER__; border-radius: 8px; width: min(460px, 94%);
+         max-height: calc(100% - 50px); display: flex; flex-direction: column; box-shadow: 0 12px 40px rgba(0,0,0,.5);
          font-size: 13px; }
   .dlg-h { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px;
            border-bottom: 1px solid __BORDER__; font-weight: 600; font-size: 14px; }
   .dlg-b { overflow: auto; padding: 6px 14px 12px; }
-  .dlg-f { display: flex; gap: 8px; justify-content: flex-end; padding: 10px 14px; border-top: 1px solid __BORDER__; }
-  .sec { font-size: 11px; color: __MUTED__; text-transform: uppercase; letter-spacing: .05em; margin: 12px 0 4px; }
+  .dlg-f { display: flex; gap: 8px; align-items: center; padding: 10px 14px; border-top: 1px solid __BORDER__; position: relative; }
+  .sec { font-size: 11px; color: __MUTED__; text-transform: uppercase; letter-spacing: .05em; margin: 14px 0 4px; }
   .row { display: flex; align-items: center; gap: 8px; padding: 5px 4px; border-radius: 4px; }
   .row:hover { background: __BUTTON__; }
   .row .grow { flex: 1; }
+  .row small, .muted { color: __MUTED__; }
   .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
   .add { cursor: pointer; padding: 6px 8px; border: 1px solid __BORDER__; border-radius: 4px; line-height: 1.25; }
   .add:hover { border-color: #2962ff; background: __BUTTON__; }
   .add small { display: block; color: __MUTED__; font-size: 11px; }
-  .row small { color: __MUTED__; }
   .ib { cursor: pointer; border: 0; background: transparent; color: __TEXT__; font-size: 14px; padding: 2px 5px; border-radius: 4px; }
   .ib:hover { background: __BORDER__; }
   .btn { cursor: pointer; border: 1px solid __BORDER__; background: __BUTTON__; color: __TEXT__; border-radius: 4px;
          padding: 6px 12px; font-size: 13px; }
   .btn.pri { background: #2962ff; border-color: #2962ff; color: #fff; }
+  .btn.danger:hover { border-color: #f23645; color: #f23645; }
   .tabs { display: flex; gap: 4px; border-bottom: 1px solid __BORDER__; margin: 0 -14px 8px; padding: 0 14px; }
   .tab { cursor: pointer; padding: 8px 10px; border-bottom: 2px solid transparent; color: __MUTED__; }
   .tab.on { color: __TEXT__; border-bottom-color: #2962ff; }
-  .fld { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 5px 0; }
-  .fld input[type=number], .fld select { width: 110px; background: __BG__; color: __TEXT__; border: 1px solid __BORDER__;
+  .fld { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 4px 0; min-height: 30px; }
+  .fld.sub { padding-left: 26px; }
+  .fld input[type=number], .fld select { width: 120px; background: __BG__; color: __TEXT__; border: 1px solid __BORDER__;
          border-radius: 4px; padding: 4px 6px; font-size: 13px; }
-  .fld input[type=color] { width: 34px; height: 24px; padding: 0; border: 1px solid __BORDER__; border-radius: 4px;
-         background: transparent; cursor: pointer; }
+  .fld select.sm { width: 92px; }
   .fld .ctl { display: flex; align-items: center; gap: 6px; }
-  .fld select.sm { width: 64px; }
-  input[type=checkbox] { accent-color: #2962ff; cursor: pointer; }
+  input[type=checkbox] { accent-color: #2962ff; cursor: pointer; width: 15px; height: 15px; }
+  .chk { background: repeating-conic-gradient(#808080 0 25%, #c0c0c0 0 50%) 0 0 / 8px 8px; }
+  .sw { cursor: pointer; width: 34px; height: 26px; padding: 3px; border: 1px solid __BORDER__; border-radius: 4px;
+        background: __BG__; display: inline-flex; }
+  .sw:hover { border-color: #2962ff; }
+  .sw i { flex: 1; border-radius: 2px; display: block; position: relative; }
+  .sw i b { position: absolute; inset: 0; border-radius: 2px; }
+  /* colour popover like on TradingView: palette, own colours, opacity, thickness, style */
+  #pop { position: absolute; z-index: 40; background: __PANEL__; border: 1px solid __BORDER__; border-radius: 6px; padding: 10px;
+         box-shadow: 0 8px 28px rgba(0,0,0,.5); width: 252px; color: __TEXT__; font-size: 12px; display: none; }
+  #pop.open { display: block; }
+  .pal { display: grid; grid-template-columns: repeat(10, 1fr); gap: 3px; }
+  .pal.gap { margin-top: 8px; }
+  .pc { width: 20px; height: 20px; border-radius: 3px; cursor: pointer; border: 1px solid rgba(128,128,128,.25); box-sizing: border-box; }
+  .pc:hover { transform: scale(1.15); }
+  .pc.sel { outline: 2px solid #2962ff; outline-offset: 1px; }
+  .pc.plus { display: flex; align-items: center; justify-content: center; font-size: 15px; background: transparent; color: __TEXT__; }
+  .hr { border-top: 1px solid __BORDER__; margin: 9px 0; }
+  .lbl { color: __MUTED__; margin: 6px 0 4px; }
+  .op { display: flex; align-items: center; gap: 8px; }
+  .op input[type=range] { flex: 1; accent-color: #2962ff; }
+  .op input[type=number] { width: 48px; background: __BG__; color: __TEXT__; border: 1px solid __BORDER__; border-radius: 4px; padding: 3px 4px; }
+  .seg { display: flex; border: 1px solid __BORDER__; border-radius: 4px; overflow: hidden; }
+  .seg div { flex: 1; height: 26px; display: flex; align-items: center; justify-content: center; cursor: pointer; }
+  .seg div + div { border-left: 1px solid __BORDER__; }
+  .seg div:hover { background: __BUTTON__; }
+  .seg div.on { background: __TEXT__; }
+  .seg div.on hr { border-color: __PANEL__ !important; }
+  .seg hr { width: 60%; margin: 0; border: 0; border-top-color: __TEXT__; border-top-style: solid; }
+  .menu { position: absolute; bottom: 44px; left: 14px; background: __PANEL__; border: 1px solid __BORDER__; border-radius: 6px;
+          box-shadow: 0 8px 28px rgba(0,0,0,.5); padding: 4px 0; z-index: 2; }
+  .menu div { padding: 7px 14px; cursor: pointer; white-space: nowrap; }
+  .menu div:hover { background: __BUTTON__; }
 </style></head><body>
 <div id="chart"><div id="legend"><div id="ohlc"></div><div id="studies"></div></div>
+<button id="tl" class="tb" title="Trendová čiara (Alt+T)">╱</button>
 <button id="fx" class="tb" title="Indikátory (pridať, skryť, nastaviť)">ƒx Indikátory</button>
 <button id="fs" class="tb" title="Celá obrazovka (Esc = späť)">⛶</button>
+<div id="hint"></div>
+<div id="drawbar"><span>Trendová čiara</span><button class="sw" id="dbColor" title="Farba, priehľadnosť, hrúbka"><i class="chk"><b></b></i></button>
+  <button class="ib" id="dbCfg" title="Nastavenia (dvojklik na čiaru)">⚙</button><button class="ib" id="dbDel" title="Zmazať (Delete)">🗑</button></div>
+<div id="pop"></div>
 <div id="modal"></div></div>
-<div id="help">ťahaj graf = posun · koliesko / dva prsty = zoom · ťahaj cenovú stupnicu hore/dole = natiahnuť ·
- dvojklik na stupnicu = späť · ƒx = indikátory</div>
+<div id="help">ťahaj graf = posun · koliesko / dva prsty = zoom · ťahaj cenovú stupnicu = natiahnuť · dvojklik na stupnicu = späť ·
+ ƒx = indikátory · Alt+T = trendová čiara (Delete = zmazať vybranú)</div>
 <script>__STUDIES_JS__</script>
 <script src="__LIB_LOCAL__" onerror="var s=document.createElement('script');s.src='__LIB_CDN__';s.onload=start;document.head.appendChild(s);"></script>
 <script>
 const SPEC = __SPEC__;
 const STORE_KEY = "ktma-range-__KEY__";
 const STUDY_KEY = "ktma-studies-v1";          // shared by every chart in this browser
+const TPL_KEY = "ktma-study-templates-v1";    // "Uložiť ako predvolené" per indicator type
+const COLORS_KEY = "ktma-custom-colors-v1";
+const DRAW_KEY = "ktma-drawings-v1", DRAW_STYLE_KEY = "ktma-draw-style-v1";
 const LS = {
   get(k) { try { return JSON.parse(window.localStorage.getItem(k) || 'null'); } catch (e) { return null; } },
   set(k, v) { try { window.localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} },
 };
 const esc = x => String(x).replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]));
+const $ = s => document.querySelector(s);
 const LINE_STYLES = [['━ plná', 0], ['┈ bodky', 1], ['╌ čiarky', 2], ['— dlhé čiarky', 3], ['· riedke bodky', 4]];
+const LINE_TYPES = [['∿ čiara', 0], ['⌐ schodová', 1], ['◠ krivka', 2], ['• body', 3]];
 const SOURCES = [['close', 'Close'], ['open', 'Open'], ['high', 'High'], ['low', 'Low'], ['hl2', '(H+L)/2'],
                  ['hlc3', '(H+L+C)/3'], ['ohlc4', '(O+H+L+C)/4']];
+const PALETTE = [
+  ['#ffffff', '#ebebeb', '#d6d6d6', '#bfbfbf', '#a8a8a8', '#8f8f8f', '#757575', '#5c5c5c', '#434343', '#000000'],
+  ['#f23645', '#ff9800', '#ffeb3b', '#4caf50', '#089981', '#00bcd4', '#2962ff', '#673ab7', '#9c27b0', '#e91e63'],
+  ['#fccbcd', '#ffe0b2', '#fff9c4', '#c8e6c9', '#ace5dc', '#b2ebf2', '#bbd9fb', '#d1c4e9', '#e1bee7', '#f8bbd0'],
+  ['#faa1a4', '#ffcc80', '#fff59d', '#a5d6a7', '#70ccbd', '#80deea', '#90bff9', '#b39ddb', '#ce93d8', '#f48fb1'],
+  ['#f77c80', '#ffb74d', '#fff176', '#81c784', '#42bda8', '#4dd0e1', '#5b9cf6', '#9575cd', '#ba68c8', '#f06292'],
+  ['#f7525f', '#ffa726', '#ffee58', '#66bb6a', '#22ab94', '#26c6da', '#3179f5', '#7e57c2', '#ab47bc', '#ec407a'],
+  ['#b22833', '#f57c00', '#fbc02d', '#388e3c', '#056656', '#0097a7', '#1848cc', '#512da8', '#7b1fa2', '#c2185b'],
+  ['#801922', '#e65100', '#f57f17', '#1b5e20', '#00332a', '#006064', '#0c3299', '#311b92', '#4a148c', '#880e4f']];
+const DASH = (style, w) => [[], [w, w * 1.5], [w * 3, w * 2], [w * 6, w * 3], [w, w * 4]][style] || [];
 
 // ---- indicator instances (saved in this browser) -------------------------------------------
+const TF = SPEC.tf || '';
+function newStudy(type) {
+  const tpl = (LS.get(TPL_KEY) || {})[type];
+  return KS.normalize({ ...(tpl || {}), type, uid: undefined, visible: true });
+}
+// Defaults from the server are current by definition (seeded from the saved chart style).
+const defaultStudies = () => SPEC.studyDefaults.map(x => KS.normalize({ ...x, v: (KS.STUDIES[x.type] || {}).v })).filter(Boolean);
 function loadStudies() {
   const saved = LS.get(STUDY_KEY);
-  const list = (Array.isArray(saved) ? saved : SPEC.studyDefaults).map(KS.normalize).filter(Boolean);
+  const list = Array.isArray(saved) ? saved.map(KS.normalize).filter(Boolean) : defaultStudies();
   for (const type of SPEC.forceStudies || []) {     // e.g. VWAP on a VWAP alert, not saved
-    if (!list.some(s => s.type === type && s.visible)) list.push(KS.normalize({ type, temp: true }));
+    if (!list.some(s => s.type === type && s.visible)) list.push(KS.normalize({ ...newStudy(type), temp: true }));
   }
   return list;
 }
@@ -94,20 +164,42 @@ function saveStudies() {
   LS.set(STUDY_KEY, studies.filter(s => !s.temp).map(({ temp, ...s }) => s));
 }
 let studies = loadStudies();
+const shown = s => s.visible && (!TF || s.tfs[TF] !== false);
 
-// ---- chart -----------------------------------------------------------------------------------
+// ---- data ------------------------------------------------------------------------------------
 const D = SPEC.ohlcv, WARM = SPEC.warm || 0;
 const T = D.t.slice(WARM);
+const BAR = SPEC.barSeconds || (T.length > 1 ? T[1] - T[0] : 60);
+const TZ = SPEC.tzOffset || 0;
 const idxByTime = new Map(T.map((t, i) => [t, i]));
 const ok = v => v !== null && v !== undefined && !Number.isNaN(v);
 const toSeries = arr => arr.slice(WARM).map((v, i) => [T[i], v]).filter(([, v]) => ok(v)).map(([time, value]) => ({ time, value }));
-let chart = null, rows = [];
 const SESS = (D.s || D.t.map(x => Math.floor(x / 86400))).slice(WARM);
 // White lines (e.g. the VWAP mean) would vanish on the light theme: draw them dark there.
 const ink = c => (SPEC.style.theme === 'Svetlé' && /^#fff(fff)?$/i.test(c) ? '#131722' : c);
+const col = st => KS.rgba(ink(st.color), st.opacity);
+let chart = null, candles = null, rows = [];
 
-// Filled zones between two price lines (Lightweight Charts has no built-in band fill), drawn under the candles.
-// bands: [{top, bot, color}] with values aligned to T; a new VWAP session starts a new polygon.
+// Bar time <-> logical index, also between bars and beyond the last bar (drawings reaching into the future).
+function timeToLogical(ct) {
+  const n = T.length;
+  if (!n) return 0;
+  if (ct <= T[0]) return (ct - T[0]) / BAR;
+  if (ct >= T[n - 1]) return n - 1 + (ct - T[n - 1]) / BAR;
+  let lo = 0, hi = n - 1;
+  while (hi - lo > 1) { const m = (lo + hi) >> 1; if (T[m] <= ct) lo = m; else hi = m; }
+  return lo + (ct - T[lo]) / (T[hi] - T[lo]);
+}
+function logicalToTime(l) {
+  const n = T.length;
+  if (l <= 0) return T[0] + l * BAR;
+  if (l >= n - 1) return T[n - 1] + (l - (n - 1)) * BAR;
+  const i = Math.floor(l);
+  return T[i] + (l - i) * (T[i + 1] - T[i]);
+}
+
+// Filled areas between two price lines (Lightweight Charts has no built-in band fill), drawn under the series.
+// bands: [{top, bot, color, breaks}] with values aligned to T; `breaks` starts a new polygon at each new session.
 class BandFill {
   constructor(bands) { this.bands = bands; this.p = null; }
   attached(p) { this.p = p; }
@@ -117,22 +209,22 @@ class BandFill {
   draw(target) {
     if (!this.p) return;
     const ts = this.p.chart.timeScale(), series = this.p.series;
-    target.useBitmapCoordinateSpace(({ context: ctx, horizontalPixelRatio: hr, verticalPixelRatio: vr }) => {
+    target.useMediaCoordinateSpace(({ context: ctx }) => {
       for (const b of this.bands) {
         ctx.fillStyle = b.color;
         let seg = [];
         const flush = () => {
           if (seg.length > 1) {
             ctx.beginPath();
-            seg.forEach(([x, y], i) => (i ? ctx.lineTo(x * hr, y * vr) : ctx.moveTo(x * hr, y * vr)));
-            for (let i = seg.length - 1; i >= 0; i--) ctx.lineTo(seg[i][0] * hr, seg[i][2] * vr);
+            seg.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
+            for (let i = seg.length - 1; i >= 0; i--) ctx.lineTo(seg[i][0], seg[i][2]);
             ctx.closePath();
             ctx.fill();
           }
           seg = [];
         };
         for (let i = 0; i < T.length; i++) {
-          if (i && SESS[i] !== SESS[i - 1]) flush();
+          if (b.breaks && i && SESS[i] !== SESS[i - 1]) flush();
           const x = ts.timeToCoordinate(T[i]);
           const y1 = ok(b.top[i]) ? series.priceToCoordinate(b.top[i]) : null;
           const y2 = ok(b.bot[i]) ? series.priceToCoordinate(b.bot[i]) : null;
@@ -145,10 +237,109 @@ class BandFill {
   }
 }
 
+// ---- drawings: trend lines (Alt+T), saved per symbol + timeframe in this browser ---------------
+const DRAW_ID = `${SPEC.symbol || ''}|${TF}`;
+const drawStyle = () => ({ color: '#2962ff', opacity: 100, width: 2, style: 0, extL: false, extR: false, ...(LS.get(DRAW_STYLE_KEY) || {}) });
+function loadDrawings() { return ((LS.get(DRAW_KEY) || {})[DRAW_ID] || []).map(d => ({ ...drawStyle(), ...d })); }
+function saveDrawings() { const all = LS.get(DRAW_KEY) || {}; all[DRAW_ID] = drawings; LS.set(DRAW_KEY, all); }
+let drawings = loadDrawings(), selected = null, pending = null, drawMode = false, drag = null;
+
+class DrawLayer {
+  constructor() { this.p = null; }
+  attached(p) { this.p = p; }
+  detached() { this.p = null; }
+  update() { if (this.p) this.p.requestUpdate(); }
+  updateAllViews() {}
+  paneViews() { return [{ zOrder: () => 'top', renderer: () => ({ draw: target => this.draw(target) }) }]; }
+  draw(target) {
+    if (!this.p) return;
+    target.useMediaCoordinateSpace(({ context: ctx, mediaSize }) => {
+      for (const d of pending ? drawings.concat([pending]) : drawings) {
+        const seg = segment(d, mediaSize.width);
+        if (!seg) continue;
+        ctx.strokeStyle = KS.rgba(d.color, d.opacity);
+        ctx.lineWidth = d.width;
+        ctx.setLineDash(DASH(d.style, d.width));
+        ctx.beginPath(); ctx.moveTo(seg.x1, seg.y1); ctx.lineTo(seg.x2, seg.y2); ctx.stroke();
+        ctx.setLineDash([]);
+        if (d === selected || d === pending) {
+          for (const [x, y] of [[seg.a[0], seg.a[1]], [seg.b[0], seg.b[1]]]) {
+            ctx.beginPath(); ctx.arc(x, y, 5, 0, 2 * Math.PI);
+            ctx.fillStyle = SPEC.style.colors.bg; ctx.fill();
+            ctx.strokeStyle = KS.rgba(d.color, 100); ctx.lineWidth = 2; ctx.stroke();
+          }
+        }
+      }
+    });
+  }
+}
+let drawLayer = null;
+// Pixel endpoints of a drawing: a/b = its anchor points, x1..y2 = the drawn segment (with extensions).
+function segment(d, width) {
+  if (!chart || !candles) return null;
+  const ts = chart.timeScale();
+  const xa = ts.logicalToCoordinate(timeToLogical(d.p1.t + TZ)), xb = ts.logicalToCoordinate(timeToLogical(d.p2.t + TZ));
+  const ya = candles.priceToCoordinate(d.p1.p), yb = candles.priceToCoordinate(d.p2.p);
+  if ([xa, xb, ya, yb].some(v => v === null || v === undefined)) return null;
+  let x1 = xa, y1 = ya, x2 = xb, y2 = yb;
+  const k = xb !== xa ? (yb - ya) / (xb - xa) : null;
+  const W = width || chart.paneSize(0).width;
+  if (k !== null) {
+    const [lx, ly, rx, ry] = xa <= xb ? [xa, ya, xb, yb] : [xb, yb, xa, ya];
+    [x1, y1, x2, y2] = [lx, ly, rx, ry];
+    if (d.extL) { y1 = ly - k * lx; x1 = 0; }
+    if (d.extR) { y2 = ry + k * (W - rx); x2 = W; }
+  }
+  return { a: [xa, ya], b: [xb, yb], x1, y1, x2, y2 };
+}
+function pointAt(x, y) {
+  const l = chart.timeScale().coordinateToLogical(x), p = candles.coordinateToPrice(y);
+  if (l === null || p === null) return null;
+  return { t: logicalToTime(l) - TZ, p };
+}
+function hitTest(x, y) {
+  if (y > chart.paneSize(0).height) return null;
+  let best = null;
+  for (const d of drawings) {
+    const s = segment(d);
+    if (!s) continue;
+    for (const [part, [px, py]] of [['p1', s.a], ['p2', s.b]]) {
+      if (Math.hypot(x - px, y - py) <= 7) return { d, part };
+    }
+    const dx = s.x2 - s.x1, dy = s.y2 - s.y1, len2 = dx * dx + dy * dy;
+    const t = len2 ? Math.max(0, Math.min(1, ((x - s.x1) * dx + (y - s.y1) * dy) / len2)) : 0;
+    const dist = Math.hypot(x - (s.x1 + t * dx), y - (s.y1 + t * dy));
+    if (dist <= Math.max(5, d.width + 3) && (!best || dist < best.dist)) best = { d, part: 'line', dist };
+  }
+  return best;
+}
+function setDrawMode(on) {
+  drawMode = on;
+  if (!on) pending = null;
+  $('#tl').classList.toggle('on', on);
+  $('#chart').classList.toggle('drawing', on);
+  hint(on ? 'Trendová čiara: klikni na prvý bod · Esc = zrušiť' : '');
+  if (drawLayer) drawLayer.update();
+}
+function hint(text) { const h = $('#hint'); h.textContent = text; h.style.display = text ? 'block' : 'none'; }
+function select(d) {
+  selected = d;
+  $('#drawbar').classList.toggle('open', !!d);
+  if (d) $('#dbColor b').style.background = KS.rgba(d.color, d.opacity);
+  if (drawLayer) drawLayer.update();
+}
+function drawingsChanged() { saveDrawings(); if (selected) select(selected); else if (drawLayer) drawLayer.update(); }
+function deleteSelected() {
+  if (!selected) return;
+  drawings = drawings.filter(d => d !== selected);
+  select(null); saveDrawings(); drawLayer && drawLayer.update();
+}
+
+// ---- chart -----------------------------------------------------------------------------------
 function build(keepRange) {
   const LW = LightweightCharts;
   const ST = SPEC.style, C = ST.colors;
-  const el = document.getElementById('chart');
+  const el = $('#chart');
   chart = LW.createChart(el, {
     autoSize: true,
     layout: { background: { color: C.bg }, textColor: C.text, fontSize: 11,
@@ -161,7 +352,6 @@ function build(keepRange) {
                    axisDoubleClickReset: { time: true, price: true } },
     handleScroll: { mouseWheel: false, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: false },
   });
-  let candles;
   if (ST.series === 'line') {
     candles = chart.addSeries(LW.LineSeries, { color: ST.up, lineWidth: Math.max(2, ST.line_width) });
     candles.setData(SPEC.candles.map(c => ({ time: c.time, value: c.close })));
@@ -205,18 +395,32 @@ function build(keepRange) {
   let pane = 1;
   for (const s of studies) {
     const def = KS.STUDIES[s.type];
+    if (!shown(s)) continue;
     const row = { s, def, values: {} };
     rows.push(row);
-    if (!s.visible) continue;
     const r = def.calc(D, s);
     const p = def.pane === true ? pane++ : 0;
+    const prec = s.out.precision === 'auto' ? null : +s.out.precision;
+    const fmt = prec === null ? {} : { priceFormat: { type: 'price', precision: prec, minMove: 1 / 10 ** prec } };
+    const lineOpts = st => ({ ...quiet, color: col(st), lineWidth: st.width, lineStyle: st.style, visible: st.visible,
+      lineType: st.type === 3 ? 0 : st.type, lineVisible: st.type !== 3, pointMarkersVisible: st.type === 3,
+      ...(st.type === 3 ? { pointMarkersRadius: st.width + 1 } : {}), lastValueVisible: s.out.priceLabels, ...fmt });
     const line = (k, extra) => {
-      const st = s.plots[k];
-      const opts = { ...quiet, color: ink(st.color), lineWidth: st.width, lineStyle: st.style, visible: st.visible, ...(extra || {}) };
+      const st = s.plots[k], opts = { ...lineOpts(st), ...(extra || {}) };
       row.values[k] = r[k].slice(WARM);
-      if (s.type !== 'vwap') {
+      const dual = def.plots.find(x => x.kind === 'dual' && x.of === k);
+      const dir = dual && s.plots[dual.k].visible ? s.plots[dual.k] : null;
+      const point = j => {
+        const v = row.values[k][j];
+        if (!dir) return { time: T[j], value: v };
+        const prev = row.values[k][j - 1];   // rising / falling colouring (e.g. VWAP)
+        return { time: T[j], value: v, color: KS.rgba(ok(prev) && v < prev ? dir.color2 : dir.color, dir.opacity) };
+      };
+      if (!def.sessionBreaks) {
         const ser = chart.addSeries(LW.LineSeries, opts, p);
-        ser.setData(toSeries(r[k]));
+        const data = [];
+        for (let j = 0; j < T.length; j++) if (ok(row.values[k][j])) data.push(point(j));
+        ser.setData(data);
         return ser;
       }
       // VWAP restarts every session: one line per session, so there is a gap instead of a vertical jump.
@@ -224,16 +428,17 @@ function build(keepRange) {
       for (let i = 1; i <= T.length; i++) {
         if (i < T.length && SESS[i] === SESS[i0]) continue;
         const data = [];
-        for (let j = i0; j < i; j++) if (ok(row.values[k][j])) data.push({ time: T[j], value: row.values[k][j] });
-        if (data.length) { const ser = chart.addSeries(LW.LineSeries, opts, p); ser.setData(data); first = first || ser; }
+        for (let j = i0; j < i; j++) if (ok(row.values[k][j])) data.push(point(j));
+        if (data.length) { const ser = chart.addSeries(LW.LineSeries, { ...opts, lastValueVisible: opts.lastValueVisible && i === T.length }, p); ser.setData(data); first = first || ser; }
         i0 = i;
       }
       return first;
     };
+    let host = null;    // series the fills attach to (same pane)
     if (s.type === 'volume') {
-      const up = s.plots.up.color + '80', dn = s.plots.down.color + '80';
+      const up = col(s.plots.up), dn = col(s.plots.down);
       const v = chart.addSeries(LW.HistogramSeries, { priceFormat: { type: 'volume' }, priceScaleId: 'vol',
-                                                       priceLineVisible: false, lastValueVisible: false });
+                                                       priceLineVisible: false, lastValueVisible: s.out.priceLabels });
       v.priceScale().applyOptions({ scaleMargins: { top: 0.82, bottom: 0 } });
       v.setData(T.map((t, i) => ({ time: t, value: D.v[WARM + i] || 0,
                                    color: D.c[WARM + i] >= D.o[WARM + i] ? up : dn })));
@@ -242,56 +447,51 @@ function build(keepRange) {
       continue;
     }
     if (s.type === 'macd') {
-      const h = r.hist, mu = s.plots.hup.color, md = s.plots.hdown.color;
-      const hs = chart.addSeries(LW.HistogramSeries, { priceLineVisible: false, lastValueVisible: false }, p);
-      // Green above zero, red below; a weakening bar is the same colour, slightly transparent.
-      hs.setData(h.slice(WARM).map((v, i) => [T[i], v, h[WARM + i - 1]]).filter(([, v]) => ok(v)).map(([time, v, prev]) => ({
-        time, value: v, color: v >= 0 ? (ok(prev) && v < prev ? mu + '99' : mu) : (ok(prev) && v > prev ? md + '99' : md) })));
+      const h = r.hist, c4 = ['h1', 'h2', 'h3', 'h4'].map(k => col(s.plots[k]));
+      host = chart.addSeries(LW.HistogramSeries, { priceLineVisible: false, lastValueVisible: s.out.priceLabels, ...fmt }, p);
+      host.setData(h.slice(WARM).map((v, i) => [T[i], v, h[WARM + i - 1]]).filter(([, v]) => ok(v)).map(([time, v, prev]) => ({
+        time, value: v, color: v >= 0 ? (ok(prev) && v < prev ? c4[1] : c4[0]) : (ok(prev) && v > prev ? c4[3] : c4[2]) })));
       row.values.hist = h.slice(WARM);
     }
-    let first = null;
     for (const pl of def.plots) {
       if (pl.kind !== 'line' || !(pl.k in r)) continue;
-      const ser = line(pl.k, def.pane ? { priceLineVisible: false } : { autoscaleInfoProvider: () => null });
-      first = first || ser;
+      const ser = line(pl.k, def.pane ? {} : { autoscaleInfoProvider: () => null });
+      host = host || ser;
     }
-    if (s.type === 'vwap') {
-      // red zones above the mean, grey around it, green below; the outer zone is a bit stronger
-      const a = Math.max(0, Math.min(100, s.inputs.opacity)) / 100, on = n => s.inputs[`b${n}`] > 0;
-      const hex = (c, k) => c.slice(0, 7) + Math.round(Math.min(1, a * k) * 255).toString(16).padStart(2, '0');
-      const bands = [];
-      const zone = (top, bot, fill, k) => {
-        if (s.plots[fill].visible && a > 0) bands.push({ top: r[top].slice(WARM), bot: r[bot].slice(WARM), color: hex(s.plots[fill].color, k) });
-      };
-      if (on(1)) zone('u1', 'l1', 'fmid', 0.6);
-      if (on(1) && on(2)) { zone('u2', 'u1', 'fup', 1); zone('l1', 'l2', 'fdn', 1); }
-      if (on(2) && on(3)) { zone('u3', 'u2', 'fup', 1.7); zone('l2', 'l3', 'fdn', 1.7); }
-      if (bands.length) candles.attachPrimitive(new BandFill(bands));
-    }
-    if (first && s.plots.levels && s.plots.levels.visible) {
+    if (host && s.plots.levels && s.plots.levels.visible) {
       const lv = s.plots.levels;
       for (const k of ['upper', 'lower', 'level']) {
-        if (k in s.inputs) first.createPriceLine({ price: s.inputs[k], color: lv.color, lineWidth: lv.width,
-                                                   lineStyle: lv.style, axisLabelVisible: true, title: '' });
+        if (k in s.inputs) host.createPriceLine({ price: s.inputs[k], color: col(lv), lineWidth: lv.width,
+                                                  lineStyle: lv.style, axisLabelVisible: true, title: '' });
       }
     }
+    const bands = [];
+    const val = name => (name[0] === '=' ? T.map(() => s.inputs[name.slice(1)]) : (r[name] || []).slice(WARM));
+    for (const pl of def.plots) {
+      const st = s.plots[pl.k];
+      if (pl.kind !== 'fill' || !st.visible || !st.opacity) continue;
+      bands.push({ top: val(pl.between[0]), bot: val(pl.between[1]), color: col(st), breaks: !!def.sessionBreaks });
+    }
+    if (bands.length) (def.pane ? host : candles) && (def.pane ? host : candles).attachPrimitive(new BandFill(bands));
   }
   const panes = chart.panes();
   if (panes.length > 1) {
     panes[0].setStretchFactor(Math.max(3, 6 - panes.length));
     for (let i = 1; i < panes.length; i++) panes[i].setStretchFactor(1);
   }
+  drawLayer = new DrawLayer();
+  candles.attachPrimitive(drawLayer);
   drawLegendRows();
 
   // OHLC legend like on TradingView
-  const ohlc = document.getElementById('ohlc');
-  const fmt = x => (x === undefined ? '–' : x.toFixed(2));
+  const ohlc = $('#ohlc');
+  const fmt2 = x => (x === undefined ? '–' : x.toFixed(2));
   const show = d => {
     if (!d) { ohlc.innerHTML = ''; return; }
-    const col = d.close >= d.open ? ST.up : ST.down;
+    const c = d.close >= d.open ? ST.up : ST.down;
     const notes = (SPEC.notes || {})[String(d.time)] || [];
-    ohlc.innerHTML = `O <b style="color:${col}">${fmt(d.open)}</b> H <b style="color:${col}">${fmt(d.high)}</b> ` +
-                     `L <b style="color:${col}">${fmt(d.low)}</b> C <b style="color:${col}">${fmt(d.close)}</b>` +
+    ohlc.innerHTML = `O <b style="color:${c}">${fmt2(d.open)}</b> H <b style="color:${c}">${fmt2(d.high)}</b> ` +
+                     `L <b style="color:${c}">${fmt2(d.low)}</b> C <b style="color:${c}">${fmt2(d.close)}</b>` +
                      notes.map(x => `<br>${esc(x)}`).join('');
     updateLegendValues(idxByTime.get(d.time));
   };
@@ -300,6 +500,10 @@ function build(keepRange) {
   chart.subscribeCrosshairMove(p => {
     const d = p && p.time !== undefined ? byTime.get(p.time) : null;
     show(d || lastCandle);
+    if (pending && p && p.point && !p.paneIndex) {
+      const pt = pointAt(p.point.x, p.point.y);
+      if (pt) { pending.p2 = pt; drawLayer.update(); }
+    }
   });
 
   // Keep zoom/scroll across Streamlit reruns (e.g. while editing SL/TP) and indicator changes.
@@ -320,29 +524,101 @@ function rebuild() {
   if (!chart) return;
   const r = chart.timeScale().getVisibleLogicalRange();
   chart.remove();
-  chart = null;
+  chart = null; candles = null; drawLayer = null;
   build(r);
 }
-function changed() { saveStudies(); rebuild(); }
+let rafPending = false;
+function changed() {      // many changes per second while dragging an opacity slider: redraw once per frame
+  saveStudies();
+  if (rafPending) return;
+  rafPending = true;
+  requestAnimationFrame(() => { rafPending = false; rebuild(); });
+}
+
+// ---- drag & edit drawings --------------------------------------------------------------------
+function rel(e) { const b = $('#chart').getBoundingClientRect(); return { x: e.clientX - b.left, y: e.clientY - b.top }; }
+function grab(e) {
+  if (!chart || drawMode || e.button !== 0 || e.target.closest('#legend,.tb,#modal,#pop,#drawbar')) return;
+  const { x, y } = rel(e), h = hitTest(x, y);
+  if (!h) return;
+  e.stopPropagation(); e.preventDefault();     // the chart must not pan while a line is dragged
+  if (drag && drag.d === h.d && !drag.moved) return;   // pointerdown + mousedown of the same press
+  select(h.d);
+  drag = { ...h, start: pointAt(x, y), p1: { ...h.d.p1 }, p2: { ...h.d.p2 }, moved: false };
+}
+$('#chart').addEventListener('pointerdown', grab, true);
+// Clicks for drawing / selecting come straight from the DOM: the chart's own click event drops a second click
+// within its double-click time, which would lose the second point of a quickly drawn line.
+let downAt = null;
+$('#chart').addEventListener('pointerdown', e => { downAt = rel(e); }, true);
+$('#chart').addEventListener('click', e => {
+  if (!chart || e.target.closest('#legend,.tb,#modal,#pop,#drawbar')) return;
+  const { x, y } = rel(e), moved = downAt && Math.hypot(x - downAt.x, y - downAt.y) > 4;
+  const ps = chart.paneSize(0), inPane = x >= 0 && x < ps.width && y >= 0 && y < ps.height;
+  if (moved || (drag && drag.moved)) return;      // a pan or a dragged line, not a click
+  if (drawMode) {
+    const pt = inPane && pointAt(x, y);
+    if (!pt) return;
+    if (!pending) { pending = { ...drawStyle(), id: `d${Date.now().toString(36)}`, type: 'trend', p1: pt, p2: { ...pt } }; hint('Klikni na druhý bod · Esc = zrušiť'); }
+    else { pending.p2 = pt; drawings.push(pending); const d = pending; pending = null; setDrawMode(false); saveDrawings(); select(d); }
+    drawLayer.update();
+    return;
+  }
+  const h = inPane ? hitTest(x, y) : null;
+  select(h ? h.d : null);
+}, true);
+$('#chart').addEventListener('mousedown', grab, true);
+window.addEventListener('pointermove', e => {
+  if (!drag) return;
+  const { x, y } = rel(e), pt = pointAt(x, y);
+  if (!pt || !drag.start) return;
+  drag.moved = true;
+  if (drag.part === 'line') {
+    const dt = pt.t - drag.start.t, dp = pt.p - drag.start.p;
+    drag.d.p1 = { t: drag.p1.t + dt, p: drag.p1.p + dp };
+    drag.d.p2 = { t: drag.p2.t + dt, p: drag.p2.p + dp };
+  } else drag.d[drag.part] = pt;
+  drawLayer.update();
+});
+window.addEventListener('pointerup', () => {
+  if (!drag) return;
+  if (drag.moved) saveDrawings();
+  setTimeout(() => { drag = null; }, 0);
+});
+$('#chart').addEventListener('dblclick', e => {
+  if (!chart || e.target.closest('#legend,.tb,#modal,#pop,#drawbar')) return;
+  const { x, y } = rel(e), h = hitTest(x, y);
+  if (h) { e.stopPropagation(); select(h.d); openDrawSettings(h.d); }
+}, true);
+$('#tl').onclick = () => setDrawMode(!drawMode);
+$('#dbDel').onclick = deleteSelected;
+$('#dbCfg').onclick = () => selected && openDrawSettings(selected);
+$('#dbColor').onclick = e => selected && colorPopover(e.currentTarget, selected, { width: true, style: true }, drawingsChanged);
 
 // ---- legend rows: name, value under the crosshair, 👁 ⚙ ✕ ------------------------------------
-function fmtVal(v, type) {
+let legendOpen = LS.get('ktma-legend-open') !== false;
+function fmtVal(v, s) {
   if (!ok(v)) return '–';
-  if (type === 'volume') return Math.abs(v) >= 1e6 ? (v / 1e6).toFixed(2) + 'M' : Math.abs(v) >= 1e3 ? (v / 1e3).toFixed(1) + 'K' : v.toFixed(0);
+  if (s.type === 'volume') return Math.abs(v) >= 1e6 ? (v / 1e6).toFixed(2) + 'M' : Math.abs(v) >= 1e3 ? (v / 1e3).toFixed(1) + 'K' : v.toFixed(0);
+  if (s.out.precision !== 'auto') return v.toFixed(+s.out.precision);
   return Math.abs(v) >= 100 ? v.toFixed(2) : v.toFixed(Math.abs(v) >= 1 ? 2 : 4);
 }
 function drawLegendRows() {
-  const box = document.getElementById('studies');
-  box.innerHTML = rows.map((r, n) => `<div class="lg-row${r.s.visible ? '' : ' off'}" data-n="${n}">` +
+  const box = $('#studies');
+  const toggle = rows.length ? `<div id="lgToggle" title="${legendOpen ? 'Skryť zoznam indikátorov' : 'Zobraziť zoznam indikátorov'}">` +
+    `${legendOpen ? '⌃ skryť' : `⌄ indikátory (${rows.length})`}</div>` : '';
+  box.innerHTML = (legendOpen ? rows.map((r, n) => `<div class="lg-row" data-n="${n}">` +
     `<span class="lg-name">${esc(r.def.label(r.s))}</span><span class="vals"></span>` +
-    `<button class="lg-btn" data-act="eye" title="${r.s.visible ? 'Skryť' : 'Zobraziť'}">${r.s.visible ? '👁' : '◌'}</button>` +
+    `<button class="lg-btn" data-act="eye" title="Skryť (zapneš v ƒx Indikátory)">👁</button>` +
     `<button class="lg-btn" data-act="cfg" title="Nastavenia">⚙</button>` +
-    `<button class="lg-btn" data-act="del" title="Odstrániť">✕</button></div>`).join('<br>');
+    `<button class="lg-btn" data-act="del" title="Odstrániť">✕</button></div>`).join('<br>') + '<br>' : '') + toggle;
+  const t = $('#lgToggle');
+  if (t) t.onclick = () => { legendOpen = !legendOpen; LS.set('ktma-legend-open', legendOpen); drawLegendRows(); updateLegendValues(); };
   box.querySelectorAll('.lg-row').forEach(div => div.addEventListener('click', e => {
     const b = e.target.closest('button');
     const s = rows[+div.dataset.n].s;
     if (!b) { if (e.detail === 2) openSettings(s); return; }   // double-click name = settings, like TradingView
-    if (b.dataset.act === 'eye') { s.visible = !s.visible; changed(); }
+    if (b.dataset.act === 'eye') { s.visible = false; changed(); }
     else if (b.dataset.act === 'cfg') openSettings(s);
     else if (b.dataset.act === 'del') { studies = studies.filter(x => x !== s); changed(); }
   }));
@@ -351,20 +627,94 @@ function updateLegendValues(i) {
   if (i === undefined) i = T.length - 1;
   document.querySelectorAll('#studies .lg-row').forEach(div => {
     const r = rows[+div.dataset.n];
+    if (!r.s.out.legendValues) { div.querySelector('.vals').innerHTML = ''; return; }
     const keys = r.def.legend ? r.def.legend : r.s.type === 'volume' ? ['vol'] : r.s.type === 'macd' ? ['macd', 'signal', 'hist']
                : r.def.plots.filter(p => p.kind === 'line').map(p => p.k);
     div.querySelector('.vals').innerHTML = keys.filter(k => r.values[k] && (!r.s.plots[k] || r.s.plots[k].visible)).map(k => {
-      const st = r.s.plots[k] || (k === 'hist' ? r.s.plots.hup : r.s.plots.up) || {};
-      return `<span class="lg-val" style="color:${st.color ? ink(st.color) : 'inherit'}">${fmtVal(r.values[k][i], r.s.type)}</span>`;
+      const st = r.s.plots[k] || (k === 'hist' ? r.s.plots.h1 : r.s.plots.up) || {};
+      return `<span class="lg-val" style="color:${st.color ? ink(st.color) : 'inherit'}">${fmtVal(r.values[k][i], r.s)}</span>`;
     }).join('');
   });
 }
 
+// ---- colour popover (palette, own colours, opacity, thickness, line style) --------------------
+const pop = $('#pop');
+let popClose = null;
+function closePop() { pop.classList.remove('open'); pop.innerHTML = ''; if (popClose) { const f = popClose; popClose = null; f(); } }
+document.addEventListener('mousedown', e => {
+  if (pop.classList.contains('open') && !pop.contains(e.target) && !e.target.closest('.sw')) closePop();
+}, true);
+// `st` is edited in place: {color, opacity, width?, style?}; `keys` lets one popover edit color2/opacity2 etc.
+function colorPopover(anchor, st, opt, onChange, keys) {
+  const K = { color: 'color', opacity: 'opacity', ...(keys || {}) };
+  const fire = () => { onChange(); const b = anchor.querySelector('b'); if (b) b.style.background = KS.rgba(st[K.color], st[K.opacity]); };
+  if (pop.classList.contains('open') && pop.dataset.anchor === anchor.dataset.id) { closePop(); return; }
+  closePop();
+  pop.dataset.anchor = anchor.dataset.id || '';
+  const own = LS.get(COLORS_KEY) || [];
+  const cell = c => `<div class="pc ${String(st[K.color]).toLowerCase() === c ? 'sel' : ''}" data-c="${c}" style="background:${c}" title="${c}"></div>`;
+  const paint = () => {
+    pop.innerHTML = `<div class="pal">${PALETTE[0].map(cell).join('')}</div><div class="pal gap">${PALETTE[1].map(cell).join('')}</div>
+      <div class="pal gap">${PALETTE.slice(2).flat().map(cell).join('')}</div><div class="hr"></div>
+      <div class="pal">${own.slice(0, 9).map(cell).join('')}<label class="pc plus" title="Vlastná farba">＋<input type="color" value="${st[K.color].slice(0, 7)}" style="width:0;height:0;opacity:0;position:absolute"></label></div>
+      <div class="lbl">Priehľadnosť (krytie)</div>
+      <div class="op"><input type="range" min="0" max="100" value="${st[K.opacity]}"><input type="number" min="0" max="100" value="${st[K.opacity]}"><span>%</span></div>
+      ${opt.width ? `<div class="lbl">Hrúbka</div><div class="seg" data-seg="width">${[1, 2, 3, 4].map(w => `<div class="${st.width === w ? 'on' : ''}" data-v="${w}"><hr style="border-top-width:${w}px"></div>`).join('')}</div>` : ''}
+      ${opt.style ? `<div class="lbl">Štýl čiary</div><div class="seg" data-seg="style">${[0, 2, 1].map(v => `<div class="${st.style === v ? 'on' : ''}" data-v="${v}"><hr style="border-top-width:2px;border-top-style:${['solid', 'dotted', 'dashed'][v]}"></div>`).join('')}</div>` : ''}`;
+    pop.querySelectorAll('[data-c]').forEach(c => c.onclick = () => { st[K.color] = c.dataset.c; fire(); paint(); });
+    const picker = pop.querySelector('input[type=color]');
+    picker.oninput = () => { st[K.color] = picker.value; fire(); };
+    picker.onchange = () => {
+      const list = [picker.value, ...own.filter(c => c !== picker.value)].slice(0, 9);
+      LS.set(COLORS_KEY, list); own.splice(0, own.length, ...list); paint();
+    };
+    const [rng, numb] = pop.querySelectorAll('.op input');
+    const setOp = v => { st[K.opacity] = Math.max(0, Math.min(100, Math.round(+v || 0))); rng.value = numb.value = st[K.opacity]; fire(); };
+    rng.oninput = () => setOp(rng.value);
+    numb.onchange = () => setOp(numb.value);
+    pop.querySelectorAll('[data-seg] div').forEach(d => d.onclick = () => { st[d.parentElement.dataset.seg] = +d.dataset.v; fire(); paint(); });
+  };
+  paint();
+  const box = $('#chart').getBoundingClientRect(), a = anchor.getBoundingClientRect();
+  pop.classList.add('open');
+  const left = Math.min(a.left - box.left, box.width - pop.offsetWidth - 8);
+  const below = a.bottom - box.top + 4, h = pop.offsetHeight;
+  pop.style.left = Math.max(8, left) + 'px';
+  pop.style.top = Math.max(8, below + h > box.height - 8 ? a.top - box.top - h - 4 : below) + 'px';
+  popClose = () => anchor.querySelector('b') && (anchor.querySelector('b').style.background = KS.rgba(st[K.color], st[K.opacity]));
+}
+const swatch = (id, color, opacity) => `<button class="sw" data-id="${id}" data-sw="${id}" title="Farba a priehľadnosť"><i class="chk"><b style="background:${KS.rgba(color, opacity)}"></b></i></button>`;
+
 // ---- dialogs ---------------------------------------------------------------------------------
-const modal = document.getElementById('modal');
-function closeModal() { modal.classList.remove('open'); modal.innerHTML = ''; }
+const modal = $('#modal');
+let modalCancel = null;
+function closeModal() { closePop(); modal.classList.remove('open'); modal.innerHTML = ''; modalCancel = null; }
 modal.addEventListener('mousedown', e => { if (e.target === modal) closeModal(); });
-document.addEventListener('keydown', e => { if (e.key === 'Escape' && modal.classList.contains('open')) { e.preventDefault(); closeModal(); } });
+document.addEventListener('keydown', onKey);
+try {   // Alt+T etc. also when the focus is in the Streamlit page around the chart
+  const pd = window.parent && window.parent !== window && window.parent.document;
+  if (pd) {
+    const relay = e => {
+      if (!window.frameElement || !window.frameElement.isConnected) { pd.removeEventListener('keydown', relay, true); return; }
+      if ($('#chart').clientWidth > 0 && e.altKey && e.code === 'KeyT') onKey(e);
+    };
+    pd.addEventListener('keydown', relay, true);
+  }
+} catch (e) {}
+function onKey(e) {
+  const typing = e.target && /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName);
+  if (e.altKey && e.code === 'KeyT') { e.preventDefault(); closeModal(); setDrawMode(!drawMode); return; }
+  if (e.key === 'Escape') {
+    if (pop.classList.contains('open')) { e.preventDefault(); closePop(); }
+    else if (modal.classList.contains('open')) { e.preventDefault(); modalCancel ? modalCancel() : closeModal(); }
+    else if (drawMode) { e.preventDefault(); setDrawMode(false); }
+    else if (selected) { e.preventDefault(); select(null); }
+    return;
+  }
+  if ((e.key === 'Delete' || e.key === 'Backspace') && selected && !typing && !modal.classList.contains('open')) {
+    e.preventDefault(); deleteSelected();
+  }
+}
 
 function openIndicators() {
   const types = Object.entries(KS.STUDIES);
@@ -374,12 +724,12 @@ function openIndicators() {
     <div class="grid">${types.map(([k, d]) => `<div class="add" data-add="${k}" title="Pridať ${esc(d.name)}"><b>＋ ${esc(d.name)}</b>
       <small>${esc(d.title)}</small></div>`).join('')}</div></div>
     <div class="dlg-f"><button class="btn" data-reset title="Vráti pôvodnú sadu indikátorov">↺ Predvolené</button>
-      <button class="btn pri" data-x>Hotovo</button></div></div>`;
+      <span style="flex:1"></span><button class="btn pri" data-x>Hotovo</button></div></div>`;
   const act = modal.querySelector('#act');
   const renderActive = () => {
     act.innerHTML = studies.length ? studies.map((s, n) => `<div class="row" data-n="${n}">
         <input type="checkbox" ${s.visible ? 'checked' : ''} title="Zobraziť / skryť">
-        <span class="grow">${esc(KS.STUDIES[s.type].label(s))}${s.temp ? ' <small>(k tomuto alertu)</small>' : ''}</span>
+        <span class="grow">${esc(KS.STUDIES[s.type].label(s))}${s.temp ? ' <small>(k tomuto alertu)</small>' : ''}${TF && !s.tfs[TF] ? ' <small>(skryté na ' + TF + ')</small>' : ''}</span>
         <button class="ib" data-act="up" title="Vyššie">↑</button>
         <button class="ib" data-act="cfg" title="Nastavenia">⚙</button>
         <button class="ib" data-act="del" title="Odstrániť">✕</button></div>`).join('')
@@ -398,40 +748,58 @@ function openIndicators() {
   };
   renderActive();
   modal.querySelectorAll('[data-add]').forEach(div => div.addEventListener('click', () => {
-    const s = KS.normalize({ type: div.dataset.add });
+    const s = newStudy(div.dataset.add);
     studies.push(s); changed(); openSettings(s, openIndicators);
   }));
   modal.querySelectorAll('[data-x]').forEach(b => b.addEventListener('click', closeModal));
   modal.querySelector('[data-reset]').addEventListener('click', () => {
     const b = modal.querySelector('[data-reset]');
     if (!b.dataset.sure) { b.dataset.sure = '1'; b.textContent = 'Naozaj? Klikni znova'; return; }
-    studies = SPEC.studyDefaults.map(KS.normalize); changed(); openIndicators();
+    studies = defaultStudies(); changed(); openIndicators();
   });
+  modalCancel = null;
   modal.classList.add('open');
 }
 
-// TradingView-like settings: "Vstupy" (periods, source, levels) and "Štýl" (visibility, colour, width, line style).
-// Changes apply immediately; "Zrušiť" puts the previous values back.
+// TradingView-like settings: "Vstupy", "Štýl" (per plot: on/off, colour + opacity + thickness, line type, fills,
+// output values) and "Viditeľnosť" (timeframes). Changes apply immediately; "Zrušiť" puts the previous values back.
 function openSettings(s, back) {
   const def = KS.STUDIES[s.type];
-  const before = JSON.stringify({ inputs: s.inputs, plots: s.plots });
+  const before = JSON.stringify({ inputs: s.inputs, plots: s.plots, tfs: s.tfs, out: s.out });
   let tab = def.inputs.length ? 'in' : 'st';
   const opts = (list, cur) => list.map(([label, v]) => `<option value="${v}" ${String(v) === String(cur) ? 'selected' : ''}>${esc(label)}</option>`).join('');
-  const body = () => tab === 'in'
-    ? def.inputs.map(i => `<div class="fld"><span>${esc(i.label)}</span>${i.type === 'source'
+  const cb = (attrs, on) => `<input type="checkbox" ${attrs} ${on ? 'checked' : ''}>`;
+  const plotRow = p => {
+    const st = s.plots[p.k];
+    if (p.kind === 'color') return `<div class="fld sub"><span>${esc(p.label)}</span><span class="ctl">${swatch(p.k, st.color, st.opacity)}</span></div>`;
+    if (p.kind === 'dual') return `<div class="fld"><label class="ctl">${cb(`data-pl="${p.k}"`, st.visible)} ${esc(p.label)}</label>
+      <span class="ctl"><small class="muted">rastie</small>${swatch(p.k, st.color, st.opacity)}<small class="muted">klesá</small>${swatch(p.k + ':2', st.color2, st.opacity)}</span></div>`;
+    const extra = p.kind === 'line' ? `<select class="sm" data-type="${p.k}" title="Typ čiary">${opts(LINE_TYPES, st.type)}</select>` : '';
+    return `<div class="fld"><label class="ctl">${cb(`data-pl="${p.k}"`, st.visible)} ${esc(p.label)}</label>
+      <span class="ctl">${swatch(p.k, st.color, st.opacity)}${extra}</span></div>`;
+  };
+  const body = () => {
+    if (tab === 'in') return def.inputs.map(i => `<div class="fld"><span>${esc(i.label)}</span>${i.type === 'source'
         ? `<select data-in="${i.k}">${opts(SOURCES.map(([v, l]) => [l, v]), s.inputs[i.k])}</select>`
-        : `<input type="number" data-in="${i.k}" value="${s.inputs[i.k]}" min="${i.min}" max="${i.max}" step="${i.step || 1}">`}</div>`).join('')
-    : def.plots.map(p => { const st = s.plots[p.k];
-        return `<div class="fld"><label class="ctl">${p.kind === 'color' ? '' : `<input type="checkbox" data-pl="${p.k}" data-f="visible" ${st.visible ? 'checked' : ''}>`}
-          ${esc(p.label)}</label><span class="ctl"><input type="color" data-pl="${p.k}" data-f="color" value="${st.color.slice(0, 7)}">
-          ${p.kind === 'color' || p.kind === 'fill' ? '' : `<select class="sm" data-pl="${p.k}" data-f="width" title="Hrúbka">${opts([1, 2, 3, 4].map(w => [w + ' px', w]), st.width)}</select>
-          <select data-pl="${p.k}" data-f="style" title="Štýl čiary">${opts(LINE_STYLES, st.style)}</select>`}</span></div>`; }).join('');
+        : `<input type="number" data-in="${i.k}" value="${s.inputs[i.k]}" min="${i.min}" max="${i.max}" step="${i.step || 1}">`}</div>`).join('');
+    if (tab === 'vis') return `<div class="muted" style="margin:6px 0">Na ktorých timeframe sa ${esc(def.name)} zobrazí:</div>` +
+      KS.TIMEFRAMES.map(tf => `<div class="fld"><label class="ctl">${cb(`data-tf="${tf}"`, s.tfs[tf])} ${tf}${tf === TF ? ' <small class="muted">(tento graf)</small>' : ''}</label></div>`).join('');
+    const lines = def.plots.filter(p => p.kind !== 'fill'), fills = def.plots.filter(p => p.kind === 'fill');
+    return lines.map(plotRow).join('') + (fills.length ? '<div class="sec">Výplne</div>' + fills.map(plotRow).join('') : '') +
+      `<div class="sec">Výstupné hodnoty</div>
+      <div class="fld"><span>Presnosť</span><select data-out="precision">${opts([['Predvolená', 'auto'], ['0', 0], ['1', 1], ['2', 2], ['3', 3], ['4', 4]], s.out.precision)}</select></div>
+      <div class="fld"><label class="ctl">${cb('data-out="priceLabels"', s.out.priceLabels)} Hodnoty na cenovej osi</label></div>
+      <div class="fld"><label class="ctl">${cb('data-out="legendValues"', s.out.legendValues)} Hodnoty v legende</label></div>`;
+  };
+  const cancel = () => { Object.assign(s, JSON.parse(before)); changed(); back ? back() : closeModal(); };
   const paint = () => {
+    closePop();
     modal.innerHTML = `<div class="dlg"><div class="dlg-h"><span>${esc(def.name)} <small style="font-weight:400;color:__MUTED__">${esc(def.title)}</small></span>
       <button class="ib" data-cancel>✕</button></div><div class="dlg-b">
       <div class="tabs">${def.inputs.length ? `<span class="tab ${tab === 'in' ? 'on' : ''}" data-tab="in">Vstupy</span>` : ''}
-        <span class="tab ${tab === 'st' ? 'on' : ''}" data-tab="st">Štýl</span></div>${body()}</div>
-      <div class="dlg-f"><button class="btn" data-default>Predvolené</button><span class="grow" style="flex:1"></span>
+        <span class="tab ${tab === 'st' ? 'on' : ''}" data-tab="st">Štýl</span>
+        <span class="tab ${tab === 'vis' ? 'on' : ''}" data-tab="vis">Viditeľnosť</span></div>${body()}</div>
+      <div class="dlg-f"><button class="btn" data-defmenu>Predvolené ▾</button><span style="flex:1"></span>
         <button class="btn" data-cancel>Zrušiť</button><button class="btn pri" data-ok>OK</button></div></div>`;
     modal.querySelectorAll('[data-tab]').forEach(t => t.addEventListener('click', () => { tab = t.dataset.tab; paint(); }));
     modal.querySelectorAll('[data-in]').forEach(inp => inp.addEventListener('change', () => {
@@ -440,40 +808,90 @@ function openSettings(s, back) {
       else { const v = Math.min(i.max, Math.max(i.min, +inp.value)); if (Number.isFinite(v)) s.inputs[i.k] = v; inp.value = s.inputs[i.k]; }
       changed();
     }));
-    modal.querySelectorAll('[data-pl]').forEach(inp => inp.addEventListener(inp.type === 'color' ? 'input' : 'change', () => {
-      const st = s.plots[inp.dataset.pl], f = inp.dataset.f;
-      st[f] = f === 'visible' ? inp.checked : f === 'color' ? inp.value : +inp.value;
-      changed();
+    modal.querySelectorAll('[data-pl]').forEach(inp => inp.addEventListener('change', () => { s.plots[inp.dataset.pl].visible = inp.checked; changed(); }));
+    modal.querySelectorAll('[data-type]').forEach(sel => sel.addEventListener('change', () => { s.plots[sel.dataset.type].type = +sel.value; changed(); }));
+    modal.querySelectorAll('[data-tf]').forEach(inp => inp.addEventListener('change', () => { s.tfs[inp.dataset.tf] = inp.checked; changed(); }));
+    modal.querySelectorAll('[data-out]').forEach(inp => inp.addEventListener('change', () => {
+      s.out[inp.dataset.out] = inp.type === 'checkbox' ? inp.checked : (inp.value === 'auto' ? 'auto' : +inp.value); changed();
     }));
-    modal.querySelector('[data-default]').addEventListener('click', () => {
-      const d = KS.normalize({ type: s.type });
-      s.inputs = d.inputs; s.plots = d.plots; changed(); paint();
+    modal.querySelectorAll('[data-sw]').forEach(b => b.addEventListener('click', () => {
+      const [k, second] = b.dataset.sw.split(':'), p = def.plots.find(x => x.k === k);
+      const lineish = p.kind === 'line' || p.kind === 'level';
+      colorPopover(b, s.plots[k], { width: lineish, style: lineish }, changed, second ? { color: 'color2' } : null);
+    }));
+    modal.querySelector('[data-defmenu]').addEventListener('click', e => {
+      const f = e.currentTarget.parentElement;
+      if (f.querySelector('.menu')) { f.querySelector('.menu').remove(); return; }
+      f.insertAdjacentHTML('beforeend', `<div class="menu"><div data-m="reset">Obnoviť pôvodné nastavenia</div>
+        <div data-m="save">Uložiť ako predvolené pre nové ${esc(def.name)}</div></div>`);
+      f.querySelector('[data-m=reset]').onclick = () => { const d = KS.normalize({ type: s.type }); s.inputs = d.inputs; s.plots = d.plots; s.tfs = d.tfs; s.out = d.out; changed(); paint(); };
+      f.querySelector('[data-m=save]').onclick = () => {
+        const all = LS.get(TPL_KEY) || {};
+        all[s.type] = { type: s.type, v: s.v, inputs: s.inputs, plots: s.plots, tfs: s.tfs, out: s.out };
+        LS.set(TPL_KEY, all); f.querySelector('.menu').remove(); hint('Uložené ako predvolené'); setTimeout(() => hint(drawMode ? 'Trendová čiara: klikni na bod' : ''), 1500);
+      };
     });
-    modal.querySelectorAll('[data-cancel]').forEach(b => b.addEventListener('click', () => {
-      Object.assign(s, JSON.parse(before)); changed(); back ? back() : closeModal();
-    }));
+    modal.querySelectorAll('[data-cancel]').forEach(b => b.addEventListener('click', cancel));
     modal.querySelector('[data-ok]').addEventListener('click', () => (back ? back() : closeModal()));
   };
   paint();
+  modalCancel = cancel;
   modal.classList.add('open');
 }
 
-document.getElementById('fx').onclick = openIndicators;
-document.getElementById('fs').onclick = () => {
+function openDrawSettings(d) {
+  const before = JSON.stringify(d);
+  const paint = () => {
+    closePop();
+    modal.innerHTML = `<div class="dlg"><div class="dlg-h">Trendová čiara<button class="ib" data-cancel>✕</button></div><div class="dlg-b">
+      <div class="fld"><span>Farba, priehľadnosť, hrúbka</span><span class="ctl">${swatch('d', d.color, d.opacity)}</span></div>
+      <div class="fld"><span>Štýl čiary</span><select data-f="style">${LINE_STYLES.map(([l, v]) => `<option value="${v}" ${d.style === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
+      <div class="fld"><span>Hrúbka</span><select data-f="width">${[1, 2, 3, 4].map(w => `<option value="${w}" ${d.width === w ? 'selected' : ''}>${w} px</option>`).join('')}</select></div>
+      <div class="fld"><label class="ctl"><input type="checkbox" data-f="extL" ${d.extL ? 'checked' : ''}> Predĺžiť doľava</label></div>
+      <div class="fld"><label class="ctl"><input type="checkbox" data-f="extR" ${d.extR ? 'checked' : ''}> Predĺžiť doprava</label></div>
+      <div class="muted" style="margin-top:8px">Nové čiary dostanú naposledy nastavený štýl. Čiaru posunieš ťahaním, konce ťahaním za krúžky.</div></div>
+      <div class="dlg-f"><button class="btn danger" data-del>🗑 Zmazať</button><button class="btn danger" data-delall>Zmazať všetky na ${esc(TF || 'grafe')}</button>
+        <span style="flex:1"></span><button class="btn" data-cancel>Zrušiť</button><button class="btn pri" data-ok>OK</button></div></div>`;
+    const apply = () => {
+      LS.set(DRAW_STYLE_KEY, { color: d.color, opacity: d.opacity, width: d.width, style: d.style, extL: d.extL, extR: d.extR });
+      drawingsChanged();
+    };
+    modal.querySelector('[data-sw]').onclick = e => colorPopover(e.currentTarget, d, { width: true, style: true }, () => { apply(); });
+    modal.querySelectorAll('[data-f]').forEach(inp => inp.addEventListener('change', () => {
+      d[inp.dataset.f] = inp.type === 'checkbox' ? inp.checked : +inp.value; apply();
+    }));
+    modal.querySelector('[data-del]').onclick = () => { select(d); deleteSelected(); closeModal(); };
+    modal.querySelector('[data-delall]').onclick = e => {
+      const b = e.currentTarget;
+      if (!b.dataset.sure) { b.dataset.sure = '1'; b.textContent = 'Naozaj? Klikni znova'; return; }
+      drawings = []; select(null); saveDrawings(); drawLayer && drawLayer.update(); closeModal();
+    };
+    modal.querySelectorAll('[data-cancel]').forEach(b => b.onclick = () => { Object.assign(d, JSON.parse(before)); drawingsChanged(); closeModal(); });
+    modal.querySelector('[data-ok]').onclick = closeModal;
+  };
+  paint();
+  modalCancel = () => { Object.assign(d, JSON.parse(before)); drawingsChanged(); closeModal(); };
+  modal.classList.add('open');
+}
+
+$('#fx').onclick = openIndicators;
+$('#fs').onclick = () => {
   if (document.fullscreenElement) document.exitFullscreen();
   else document.documentElement.requestFullscreen().catch(() => {});
 };
-// Another chart on the page changed the indicators: follow it.
+// Another chart on the page changed the indicators or drawings: follow it.
 window.addEventListener('storage', e => {
-  if (e.key !== STUDY_KEY || !chart) return;
-  const temp = studies.filter(s => s.temp);
-  studies = loadStudies().filter(s => !s.temp).concat(temp);
-  rebuild();
+  if (!chart) return;
+  if (e.key === STUDY_KEY) {
+    const temp = studies.filter(s => s.temp);
+    studies = loadStudies().filter(s => !s.temp).concat(temp);
+    rebuild();
+  } else if (e.key === DRAW_KEY) { drawings = loadDrawings(); select(null); drawLayer && drawLayer.update(); }
 });
 // A chart inside a hidden Streamlit tab has zero width; wait until it is visible.
 function start() {
   if (!window.LightweightCharts || chart) return;
-  const el = document.getElementById('chart');
+  const el = $('#chart');
   if (el.clientWidth > 0) { build(); return; }
   const obs = new ResizeObserver(() => { if (el.clientWidth > 0 && !chart) { obs.disconnect(); build(); } });
   obs.observe(el);

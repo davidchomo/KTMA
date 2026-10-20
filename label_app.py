@@ -227,7 +227,8 @@ def chart(cfg, store, alert, blind: bool, before: int, after: int, plan: dict, l
                       reg_channel=cfg["structure"].get("regression_channel"),
                       style=chart_style(), label_marks=past_labels(store, alert["symbol"], alert["timeframe"], w, alert["id"]),
                       levels=(alert.get("details") or {}).get("levels"),
-                      position=plan or None, bar_seconds=tf_ms(alert["timeframe"]) // 1000)
+                      position=plan or None, bar_seconds=tf_ms(alert["timeframe"]) // 1000,
+                      symbol=alert["symbol"], timeframe=alert["timeframe"])
     return spec, chart_height(layers), df
 
 
@@ -271,7 +272,8 @@ def live_view(cfg, store, symbol: str, tf: str, bars: int, only_notified: bool, 
     c[3].metric("Alerty za 24 h", n24, f"{s24} na Telegram", delta_color="off")
     spec = build_spec(w, layers, lines, extend=15, markers=markers, warm=warm,
                       reg_channel=cfg["structure"].get("regression_channel"),
-                      style=chart_style(), label_marks=past_labels(store, symbol, tf, w), levels=levels)
+                      style=chart_style(), label_marks=past_labels(store, symbol, tf, w), levels=levels,
+                      bar_seconds=tf_ms(tf) // 1000, symbol=symbol, timeframe=tf)
     render(spec, chart_height(layers), f"live-{symbol}-{tf}-{bars}")
     st.caption(f"Čiary a kanál presne tak, ako ich skener vidí teraz (aktívne čiary: {len(lines)}). "
                "Šípky = alerty (popis uvidíš hore, keď prejdeš myšou na sviečku). Obnovuje sa každú minútu.")
