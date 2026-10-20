@@ -20,6 +20,8 @@ from ktma.cli import _load_env
 from ktma.config import ROOT, load_config, tf_ms
 from ktma.data import resample
 from ktma.dataset import build_dataset, ev_table
+from ktma.describe import (adx_text, direction_text, rsi_text, signal_text, symbol_name, trend_arrow,
+                           volume_text)
 from ktma.indicators import add_indicators
 from ktma.outcomes import trade_result
 from ktma.storage import Store
@@ -65,7 +67,12 @@ def fmt_time(ms: int) -> str:
     return pd.Timestamp(int(ms), unit="ms", tz="UTC").strftime("%Y-%m-%d %H:%M")
 
 
-def base_figure(cfg, w: pd.DataFrame, focus_x: int, lines: list[dict], extend: int = 40):
+LAYERS = ["EMA 21/50", "EMA 200", "VWAP", "Regresný kanál", "Trendové čiary", "Paralelné kanály"]
+DEFAULT_LAYERS = ["EMA 21/50", "Regresný kanál", "Trendové čiary"]
+
+
+def base_figure(cfg, w: pd.DataFrame, focus_x: int, lines: list[dict], extend: int = 40,
+                layers=tuple(DEFAULT_LAYERS)):
     """Candles + indicators + regression channel and trendlines as the scanner saw
     them at bar `focus_x` of the window `w` (a frame from add_indicators)."""
     x = np.arange(len(w))
@@ -74,13 +81,13 @@ def base_figure(cfg, w: pd.DataFrame, focus_x: int, lines: list[dict], extend: i
                         row_heights=[0.58, 0.12, 0.15, 0.15])
     fig.add_trace(go.Candlestick(x=x, open=w["open"], high=w["high"], low=w["low"], close=w["close"],
                                  name="cena", text=labels, showlegend=False), row=1, col=1)
-    for p, color in ((21, "#f2a900"), (50, "#3b82f6"), (200, "#a855f7")):
-        if f"ma_{p}" in w:
+    for p, color, layer in ((21, "#f2a900", "EMA 21/50"), (50, "#3b82f6", "EMA 21/50"), (200, "#a855f7", "EMA 200")):
+        if f"ma_{p}" in w and layer in layers:
             fig.add_trace(go.Scatter(x=x, y=w[f"ma_{p}"], name=f"EMA {p}", line=dict(width=1, color=color)), row=1, col=1)
-    if "vwap" in w:
+    if "vwap" in w and "VWAP" in layers:
         fig.add_trace(go.Scatter(x=x, y=w["vwap"], name="VWAP", line=dict(width=1, color="#14b8a6", dash="dot")), row=1, col=1)
     rc = cfg["structure"].get("regression_channel")
-    if rc and focus_x + 1 >= rc["period"]:
+    if rc and focus_x + 1 >= rc["period"] and "Regresný kanál" in layers:
         # Straight channel fitted on the last `period` closes up to the focus bar.
         xs = np.arange(focus_x + 1 - rc["period"], focus_x + 1)
         b, a0 = np.polyfit(xs, w["close"].to_numpy()[xs], 1)
@@ -91,7 +98,7 @@ def base_figure(cfg, w: pd.DataFrame, focus_x: int, lines: list[dict], extend: i
                                      line=dict(width=1, color="#94a3b8", dash=dash)), row=1, col=1)
 
     wt = w["open_time"].to_numpy()
-    for ln in lines or []:
+    for ln in (lines or []) if "Trendové čiary" in layers else []:
         x1 = int(np.searchsorted(wt, ln["t1"]))
         if x1 >= len(wt) or wt[x1] != ln["t1"]:
             x1 = focus_x - ln["bars_from_t1"]
@@ -99,9 +106,10 @@ def base_figure(cfg, w: pd.DataFrame, focus_x: int, lines: list[dict], extend: i
         xs = np.array([max(x1, 0), x_end])   # clip to the visible window
         ys = ln["p1"] + ln["slope_per_bar"] * (xs - x1)
         color = "#ef4444" if ln["kind"] == "resistance" else "#22c55e"
+        name = "rezistencia" if ln["kind"] == "resistance" else "podpora"
         fig.add_trace(go.Scatter(x=xs, y=ys, mode="lines", line=dict(color=color, width=2), hoverinfo="skip",
-                                 name=f"{ln['kind']} ({ln['touches']}×)"), row=1, col=1)
-        if ln.get("channel_offset"):
+                                 name=f"{name} ({ln['touches']}×)", showlegend=False), row=1, col=1)
+        if ln.get("channel_offset") and "Paralelné kanály" in layers:
             fig.add_trace(go.Scatter(x=xs, y=ys + ln["channel_offset"], mode="lines", showlegend=False,
                                      hoverinfo="skip", line=dict(color=color, width=1, dash="dot")), row=1, col=1)
 
@@ -147,7 +155,7 @@ def fit_y(fig, w, extra=()):
     fig.update_yaxes(range=[min(ys) - pad, max(ys) + pad], row=1, col=1)
 
 
-def chart(cfg, store, alert, blind: bool, before: int, after: int, plan: dict):
+def chart(cfg, store, alert, blind: bool, before: int, after: int, plan: dict, layers=DEFAULT_LAYERS):
     df = candles(store, alert["symbol"], alert["timeframe"])
     times = df["open_time"].to_numpy()
     ai = int(np.searchsorted(times, alert["bar_time"]))
@@ -158,7 +166,8 @@ def chart(cfg, store, alert, blind: bool, before: int, after: int, plan: dict):
     w = w.iloc[start:].reset_index(drop=True)
     a_x = ai - lo - start
 
-    fig = base_figure(cfg, w, a_x, alert.get("lines"))
+    layers = set(layers) | ({"VWAP"} if alert["signal"].startswith("VWAP") else set())
+    fig = base_figure(cfg, w, a_x, alert.get("lines"), layers=layers)
     fig.add_trace(go.Scatter(x=[a_x], y=[alert["price"]], mode="markers", name="alert",
                              marker=dict(size=14, symbol="triangle-up" if alert["direction"] == "bullish" else "triangle-down",
                                          color="#22c55e" if alert["direction"] == "bullish" else "#ef4444",
@@ -175,7 +184,7 @@ def chart(cfg, store, alert, blind: bool, before: int, after: int, plan: dict):
     return fig, df
 
 
-def live_view(cfg, store, symbol: str, tf: str, bars: int, only_notified: bool):
+def live_view(cfg, store, symbol: str, tf: str, bars: int, only_notified: bool, layers=DEFAULT_LAYERS):
     """Current chart with the trendlines the scanner sees right now and recent alerts."""
     raw = candles(store, symbol, tf).tail(cfg["window_bars"]).reset_index(drop=True)
     if len(raw) < 60:
@@ -187,7 +196,7 @@ def live_view(cfg, store, symbol: str, tf: str, bars: int, only_notified: bool):
     last = len(f) - 1
     lines = lines_snapshot(struct["lines"], last, f["open_time"].to_numpy())
     w = f.tail(bars).reset_index(drop=True)
-    fig = base_figure(cfg, w, len(w) - 1, lines, extend=15)
+    fig = base_figure(cfg, w, len(w) - 1, lines, extend=15, layers=layers)
 
     t0 = int(w["open_time"].iloc[0])
     q = "SELECT id, bar_time, signal, direction, price, notify FROM alerts WHERE symbol=? AND timeframe=? AND bar_time>=?"
@@ -229,7 +238,7 @@ def live_view(cfg, store, symbol: str, tf: str, bars: int, only_notified: bool):
                      column_config={"označiť": st.column_config.LinkColumn("označiť", display_text="otvoriť")})
 
 
-def page_live(cfg, store):
+def page_live(cfg, store, layers):
     syms = cfg["symbols"]
     c = st.columns([1, 1, 2, 2])
     symbol = c[0].selectbox("Symbol", syms, key="live_sym")
@@ -240,7 +249,7 @@ def page_live(cfg, store):
 
     @st.fragment(run_every="60s")
     def _refresh():
-        live_view(cfg, store, symbol, tf, bars, only_notified)
+        live_view(cfg, store, symbol, tf, bars, only_notified, layers)
 
     _refresh()
 
@@ -267,6 +276,50 @@ def alert_queue(store, f) -> pd.DataFrame:
 
 
 # ---------------------------------------------------------------- pages
+def local_time(ms: int) -> str:
+    return pd.Timestamp(int(ms), unit="ms", tz="UTC").tz_convert("Europe/Bratislava").strftime("%d.%m. %H:%M")
+
+
+def alert_header(alert: dict):
+    """Plain-language summary of an alert: what happened, how strong, in which context."""
+    title, expl = signal_text(alert["signal"])
+    feats = alert.get("features") or {}
+    d = alert.get("details") or {}
+    tf = alert["timeframe"]
+    with st.container(border=True):
+        st.markdown(f"### {direction_text(alert['direction'])} · {title}")
+        st.markdown(f"**{symbol_name(alert['symbol'])}** · sviečka **{tf}** · {local_time(alert['bar_time'])} "
+                    f"(SK čas) · alert #{alert['id']}")
+        if expl:
+            st.write(expl)
+        c = st.columns(5)
+        c[0].metric("Cena", f"{alert['price']:.2f}")
+        c[0].caption(f"ATR {alert['atr'] or 0:.2f} = bežná veľkosť sviečky")
+        c[1].metric("RSI", f"{alert['rsi']:.0f}" if alert["rsi"] is not None else "–")
+        c[1].caption(rsi_text(alert["rsi"]))
+        c[2].metric("Objem", f"{alert['volume_ratio']:.1f}×" if alert["volume_ratio"] is not None else "–")
+        c[2].caption(volume_text(alert["volume_ratio"]))
+        c[3].metric("ADX", f"{d['adx']:.0f}" if d.get("adx") is not None else "–")
+        c[3].caption(adx_text(d.get("adx")))
+        c[4].metric("Trend 1h / 4h", f"{trend_arrow(feats.get('1h__swing_trend'))[:1]} / "
+                                     f"{trend_arrow(feats.get('4h__swing_trend'))[:1]}")
+        c[4].caption(", ".join(f"{t} {trend_arrow(feats.get(f'{t}__swing_trend'))[2:] or '–'}" for t in ("1h", "4h")))
+        notes = []
+        if d.get("line"):
+            ln = d["line"]
+            kind = "rezistencia" if ln["kind"] == "resistance" else "podpora"
+            notes.append(f"📏 Čiara: {kind}, {ln['touches']} dotyky, úroveň {ln['value']:.2f}")
+        sup, res = feats.get(f"{tf}__sup_dist_atr"), feats.get(f"{tf}__res_dist_atr")
+        if sup is not None:
+            notes.append(f"Najbližšia podpora {sup:.1f} ATR pod cenou")
+        if res is not None:
+            notes.append(f"najbližšia rezistencia {res:.1f} ATR nad cenou")
+        if d.get("candidate_only"):
+            notes.append("ℹ️ iba uložený kandidát (nešiel na Telegram)")
+        if notes:
+            st.caption(" · ".join(notes))
+
+
 def page_label(cfg, store, f):
     qp = st.query_params.get("alert")
     queue = alert_queue(store, f)
@@ -283,14 +336,7 @@ def page_label(cfg, store, f):
         st.rerun()
 
     st.caption(f"Vo fronte: {len(queue)} alertov")
-    c = st.columns([3, 1, 1, 1])
-    dir_txt = {"bullish": "🟢 býčí (LONG?)", "bearish": "🔴 medvedí (SHORT?)"}.get(alert["direction"], alert["direction"])
-    c[0].subheader(f"#{alert['id']} · {alert['symbol']} {alert['timeframe']} · {alert['signal']}")
-    c[1].metric("Cena", f"{alert['price']:.2f}")
-    c[2].metric("RSI", f"{alert['rsi']:.1f}" if alert["rsi"] is not None else "–")
-    c[3].metric("Objem", f"{alert['volume_ratio']:.1f}×" if alert["volume_ratio"] is not None else "–")
-    st.write(f"{dir_txt} · {fmt_time(alert['bar_time'])} UTC · ATR {alert['atr'] or 0:.2f}"
-             + (" · *iba kandidát (bez notifikácie)*" if (alert["details"] or {}).get("candidate_only") else ""))
+    alert_header(alert)
 
     atr = alert["atr"] or 0.0
     existing = store.label_for(alert["id"], f["labeler"]) or {}
@@ -327,7 +373,7 @@ def page_label(cfg, store, f):
 
     plan = {"entry": entry, "sl": sl, "tp": tp, "be": be or None} if label in ("LONG", "SHORT") else {}
     with left:
-        fig, df = chart(cfg, store, alert, f["blind"], f["before"], f["after"], plan)
+        fig, df = chart(cfg, store, alert, f["blind"], f["before"], f["after"], plan, f["layers"])
         show(fig, f"alert{alert['id']}-{f['blind']}-{f['before']}-{f['after']}")
         if not f["blind"]:
             o = store.outcome(alert["id"])
@@ -473,6 +519,8 @@ def main():
                                  help="Uvidíš iba to, čo bolo známe v čase alertu. Do labelu sa uloží saw_future=0."),
             "before": st.slider("Sviečok pred alertom", 30, 400, 150),
             "after": st.slider("Sviečok po alerte", 0, 200, 60),
+            "layers": st.multiselect("Na grafe", LAYERS, DEFAULT_LAYERS,
+                                     help="VWAP sa pri VWAP signáloch ukáže automaticky."),
         }
         if st.button("Ďalší alert podľa filtrov"):
             st.session_state["current"] = None
@@ -483,7 +531,7 @@ def main():
     with tabs[0]:
         page_label(cfg, store, f)
     with tabs[1]:
-        page_live(cfg, store)
+        page_live(cfg, store, f["layers"])
     with tabs[2]:
         page_manual(cfg, store, f)
     with tabs[3]:

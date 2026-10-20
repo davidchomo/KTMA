@@ -87,6 +87,68 @@ class YFinanceProvider:
         return drop_unclosed(df, timeframe)
 
 
+class OandaProvider:
+    """OANDA v20 REST API: spot XAU/USD, XAG/USD in real time (free practice account).
+
+    Volume is *tick volume* (number of price updates), there is no central
+    volume for spot metals. Needs OANDA_API_TOKEN (and OANDA_ENV=practice|live).
+    """
+
+    GRANULARITY = {"1m": "M1", "5m": "M5", "15m": "M15", "1h": "H1"}
+    HOSTS = {"practice": "https://api-fxpractice.oanda.com", "live": "https://api-fxtrade.oanda.com"}
+    MAX_COUNT = 5000
+
+    def __init__(self, history_days: dict | None = None, token: str | None = None, env: str | None = None):
+        import os
+
+        self.token = token or os.environ.get("OANDA_API_TOKEN")
+        if not self.token:
+            raise RuntimeError("Chýba OANDA_API_TOKEN v .env (OANDA demo účet -> Manage API Access)")
+        self.host = self.HOSTS[(env or os.environ.get("OANDA_ENV") or "practice").lower()]
+        self.history_days = {"1m": 14, "5m": 90, "15m": 180, "1h": 730, **(history_days or {})}
+
+    @staticmethod
+    def instrument(symbol: str) -> str:
+        s = symbol.upper().replace("/", "")
+        return s if "_" in s else f"{s[:3]}_{s[3:]}"
+
+    def _get(self, instrument: str, params: dict) -> list[dict]:
+        import requests
+
+        r = requests.get(
+            f"{self.host}/v3/instruments/{instrument}/candles", params=params, timeout=30,
+            headers={"Authorization": f"Bearer {self.token}", "Accept-Datetime-Format": "UNIX"},
+        )
+        if r.status_code != 200:
+            # Never include the request headers/token in the error.
+            raise RuntimeError(f"OANDA {r.status_code}: {r.text[:200]}")
+        return r.json().get("candles", [])
+
+    def fetch(self, symbol: str, timeframe: str, since_ms: int | None = None) -> pd.DataFrame:
+        step = tf_ms(timeframe)
+        if since_ms is None:
+            since_ms = now_ms() - self.history_days[timeframe] * 86_400_000
+        rows, start = [], since_ms
+        while True:
+            batch = self._get(self.instrument(symbol), {
+                "granularity": self.GRANULARITY[timeframe], "price": "M",
+                "from": f"{start / 1000:.0f}", "count": self.MAX_COUNT,
+            })
+            for c in batch:
+                if not c.get("complete"):
+                    continue
+                m = c["mid"]
+                rows.append((int(float(c["time"]) * 1000), float(m["o"]), float(m["h"]), float(m["l"]),
+                             float(m["c"]), float(c.get("volume", 0))))
+            if len(batch) < self.MAX_COUNT:
+                break
+            start = int(float(batch[-1]["time"]) * 1000) + step
+            if start >= now_ms():
+                break
+        df = pd.DataFrame(rows, columns=COLUMNS).drop_duplicates("open_time").sort_values("open_time")
+        return drop_unclosed(df.reset_index(drop=True), timeframe)
+
+
 class SyntheticProvider:
     """Deterministic random-walk data with trends, ranges and volume spikes.
 
@@ -135,6 +197,8 @@ def get_provider(cfg: dict):
     name = cfg["data"]["provider"]
     if name == "yfinance":
         return YFinanceProvider()
+    if name == "oanda":
+        return OandaProvider(cfg["data"].get("history_days"))
     if name == "synthetic":
         return SyntheticProvider(**cfg["data"].get("synthetic", {}))
     raise ValueError(f"Unknown data provider: {name}")

@@ -5,51 +5,52 @@ from __future__ import annotations
 import html
 import logging
 import os
+import re
 
 import pandas as pd
 import requests
 
+from .describe import adx_text, direction_text, rsi_text, signal_text, symbol_name, trend_arrow, volume_text
+
 log = logging.getLogger(__name__)
 
-ARROW = {"bullish": "🟢 LONG?", "bearish": "🔴 SHORT?", "neutral": "⚪"}
-
-
 def format_alert(alert: dict, label_url: str | None = None) -> str:
-    t = pd.Timestamp(alert["bar_time"], unit="ms", tz="UTC").strftime("%Y-%m-%d %H:%M")
+    title, expl = signal_text(alert["signal"])
     d = alert.get("details") or {}
     f = alert.get("features") or {}
-    tf = alert["timeframe"]
-    lines = [
-        f"<b>{html.escape(alert['symbol'])} {tf}</b> · {html.escape(alert['signal'])}",
-        f"{ARROW.get(alert['direction'], '')} · cena <b>{alert['price']:.2f}</b>",
+    t = pd.Timestamp(alert["bar_time"], unit="ms", tz="UTC").tz_convert("Europe/Bratislava").strftime("%d.%m. %H:%M")
+    out = [
+        f"{direction_text(alert['direction'])} · <b>{html.escape(symbol_name(alert['symbol']))}</b> · {alert['timeframe']}",
+        f"<b>{html.escape(title)}</b>",
     ]
-    vals = []
+    if expl:
+        out.append(html.escape(expl))
+    out.append("")
+    vals = [f"Cena <b>{alert['price']:.2f}</b>"]
     if alert.get("rsi") is not None:
-        vals.append(f"RSI {alert['rsi']:.1f}")
+        vals.append(f"RSI {alert['rsi']:.0f} ({rsi_text(alert['rsi'])})")
     if alert.get("volume_ratio") is not None:
-        vals.append(f"Vol {alert['volume_ratio']:.1f}×")
+        vals.append(f"Objem {alert['volume_ratio']:.1f}× ({volume_text(alert['volume_ratio'])})")
+    out.append(" · ".join(vals))
+    ctx = []
     if d.get("adx") is not None:
-        vals.append(f"ADX {d['adx']:.0f}")
-    if alert.get("atr") is not None:
-        vals.append(f"ATR {alert['atr']:.2f}")
-    if vals:
-        lines.append(" · ".join(vals))
+        ctx.append(f"ADX {d['adx']:.0f} ({adx_text(d['adx'])})")
+    for tf in ("1h", "4h"):
+        st = f.get(f"{tf}__swing_trend")
+        if st is not None:
+            ctx.append(f"{tf} {trend_arrow(st)}")
+    if ctx:
+        out.append(" · ".join(ctx))
     if d.get("line"):
         ln = d["line"]
-        lines.append(f"Čiara: {ln['kind']} · dotyky {ln['touches']} · úroveň {ln['value']:.2f}")
-    trend = []
-    for ctx in ("1h", "4h"):
-        st = f.get(f"{ctx}__swing_trend")
-        if st is not None:
-            trend.append(f"{ctx} {'↑' if st > 0 else '↓' if st < 0 else '↔'}")
-    if trend:
-        lines.append("Trend: " + " · ".join(trend))
+        kind = "rezistencia" if ln["kind"] == "resistance" else "podpora"
+        out.append(f"📏 Čiara: {kind}, {ln['touches']} dotyky, {ln['value']:.2f}")
     if alert.get("model_score") is not None:
-        lines.append(f"Model: {alert['model_score'] * 100:.0f} %")
-    lines.append(f"{t} UTC (začiatok sviečky) · #{alert.get('id', '?')}")
+        out.append(f"🤖 Model: {alert['model_score'] * 100:.0f} %")
+    out.append(f"🕒 {t} (SK čas) · #{alert.get('id', '?')}")
     if label_url:
-        lines.append(f'<a href="{html.escape(label_url)}">Označiť</a>')
-    return "\n".join(lines)
+        out.append(f'<a href="{html.escape(label_url)}">👉 Označiť</a>')
+    return "\n".join(out)
 
 
 class Notifier:
@@ -65,10 +66,10 @@ class Notifier:
             self.telegram = False
 
     def send(self, alert: dict) -> bool:
-        url = f"{self.label_url}?alert={alert.get('id')}" if self.label_url else None
+        url = f"{self.label_url.rstrip('/')}/?alert={alert.get('id')}" if self.label_url else None
         text = format_alert(alert, url)
         if self.console:
-            print("\n" + html.unescape(text.replace("<b>", "").replace("</b>", "")), flush=True)
+            print("\n" + html.unescape(re.sub(r"<[^>]+>", "", text)), flush=True)
         if self.telegram:
             try:
                 r = requests.post(

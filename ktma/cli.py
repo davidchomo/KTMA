@@ -58,7 +58,7 @@ def main(argv=None):
     if args.cmd == "demo":
         cfg["data"] = {"provider": "synthetic", "synthetic": {"days": args.days}}
         cfg["db_path"] = str(ROOT / "data" / "demo.sqlite")
-        cfg["symbols"] = ["GC=F"]
+        cfg["symbols"] = ["XAUUSD"]
         cfg["notify"] = {"console": False, "telegram": False}
         s = _scanner(cfg)
         s.backfill()

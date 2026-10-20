@@ -153,9 +153,9 @@ def test_telegram_message_and_token_not_logged(cfg, monkeypatch, caplog):
              "price": 4123.4, "rsi": 81.2, "volume_ratio": 2.3, "atr": 3.1, "bar_time": 0,
              "details": {"adx": 22.0}, "features": {"1h__swing_trend": 1.0}}
     assert Notifier(c).send(alert) is False
-    assert "RSI 81.2" in calls[0]["text"] and "1h ↑" in calls[0]["text"]
+    assert "RSI 81 (silne prekúpené)" in calls[0]["text"] and "1h ↑ rastie" in calls[0]["text"]
     assert "SECRET123" not in caplog.text
-    assert "SHORT?" in format_alert(alert)
+    assert "možný SHORT" in format_alert(alert) and "RSI vystúpilo nad 80" in format_alert(alert)
 
 
 def test_live_scan_notifies_only_new_recent_alerts(cfg, tmp_path):
@@ -180,3 +180,40 @@ def test_live_scan_notifies_only_new_recent_alerts(cfg, tmp_path):
     assert all(a["bar_time"] > before for a in new if a["timeframe"] == "5m")
     assert sent and all(a["notify"] for a in sent)
     assert store.get_state("GC=F", "5m") > before
+
+
+def test_oanda_provider_paginates_and_skips_incomplete(monkeypatch):
+    from ktma.data import OandaProvider, now_ms
+
+    step = 60_000
+    end = (now_ms() // step) * step - 10 * step
+    start = end - 7000 * step
+    calls = []
+
+    class Resp:
+        status_code = 200
+
+        def __init__(self, candles):
+            self._c = candles
+
+        def json(self):
+            return {"candles": self._c}
+
+    def fake_get(url, params, timeout, headers):
+        assert "XAU_USD" in url and headers["Authorization"] == "Bearer T"
+        calls.append(params)
+        t0 = int(params["from"]) * 1000
+        n = min(params["count"], (end - t0) // step + 1)
+        out = [{"complete": True, "volume": 5, "time": f"{(t0 + k * step) / 1000:.9f}",
+                "mid": {"o": "1", "h": "2", "l": "0.5", "c": "1.5"}} for k in range(n)]
+        if n < params["count"]:
+            out[-1]["complete"] = False   # the forming candle
+        return Resp(out)
+
+    monkeypatch.setattr("requests.get", fake_get)
+    p = OandaProvider(token="T", env="practice")
+    assert p.instrument("XAUUSD") == "XAU_USD" and p.instrument("XAG_USD") == "XAG_USD"
+    df = p.fetch("XAUUSD", "1m", since_ms=start)
+    assert len(calls) == 2                       # 7001 candles -> two pages of max 5000
+    assert len(df) == 7000                       # incomplete last candle dropped
+    assert df["open_time"].is_monotonic_increasing and df["open_time"].iloc[0] == start

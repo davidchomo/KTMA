@@ -1,6 +1,6 @@
 # KTMA – technické alerty na zlato a striebro + labelovanie pre ML
 
-Systém, ktorý **neobchoduje**, iba hlási technické signály na `GC=F` (zlato, neskôr `SI=F` striebro) na
+Systém, ktorý **neobchoduje**, iba hlási technické signály na **XAU/USD** (spotové zlato, neskôr XAG/USD striebro) na
 **1m, 5m a 15m** (kontext 1h a 4h). Ku každému alertu uloží kompletný stav trhu a pošle ho na Telegram.
 Kamarát-trader potom v prehliadači označí, či to bol správny vstup (LONG/SHORT/NEVSTUPOVAŤ, TRUE/FALSE, vstup, SL,
 TP, BE). Z týchto labelov sa neskôr natrénuje model.
@@ -25,9 +25,14 @@ Pôvodný projekt (sumarizácia správ cez LLM) je v [legacy/news_summarizer/](l
 ```bash
 git clone https://github.com/davidchomo/KTMA.git ~/ktma && cd ~/ktma
 git checkout claude/ta-alerts-labeling
-cp .env.example .env && nano .env         # Telegram token, chat id, KTMA_LABEL_URL
+cp .env.example .env && nano .env         # OANDA token, Telegram token, chat id, KTMA_LABEL_URL
 mkdir -p data
 ```
+
+**OANDA (dáta XAU/USD v reálnom čase, zadarmo):** založ si demo (practice) účet na oanda.com → v účte
+**Manage API Access** → **Generate** → token vlož do `.env` ako `OANDA_API_TOKEN` (`OANDA_ENV=practice`).
+Objem pri spotovom zlate je tick volume (počet zmien ceny). Bez OANDA účtu sa dá v `config.yaml` prepnúť
+`provider: yfinance` a symbol `GC=F` (futures, oneskorené ≥ 10 min).
 
 **Telegram bot:** v Telegrame napíš `@BotFather` → `/newbot` → dostaneš `TELEGRAM_BOT_TOKEN`.
 Napíš svojmu botovi ľubovoľnú správu, otvor `https://api.telegram.org/bot<TOKEN>/getUpdates` a z `"chat":{"id":…}`
@@ -68,6 +73,16 @@ docker compose logs -f scanner
 
 Appka potom beží na `https://ktma.mirasolen.eu`. Certifikát vybaví Caddy sám.
 
+### Prechod z GC=F na XAU/USD
+Ak už beží verzia s `GC=F` a ešte nemáte labely, začnite s čistou databázou:
+```bash
+docker compose down
+mv data/ktma.sqlite data/ktma-gcf-old.sqlite; rm -f data/ktma.sqlite-wal data/ktma.sqlite-shm
+git pull && docker compose build
+docker compose run --rm scanner python -m ktma backfill
+docker compose up -d
+```
+
 ### 4. Údržba
 ```bash
 docker compose run --rm scanner python -m ktma stats     # počty sviečok, alertov, labelov
@@ -89,7 +104,8 @@ python -m pytest -q                                       # testy (vrátane test
 
 ## Štruktúra
 ```
-ktma/data.py        zdroje dát (yfinance, synthetic), skladanie vyšších TF z 1m
+ktma/data.py        zdroje dát (OANDA, yfinance, synthetic), skladanie vyšších TF z 1m
+ktma/describe.py    zrozumiteľné popisy signálov a hodnôt (appka aj Telegram)
 ktma/indicators.py  RSI, MACD, EMA, ATR, ADX, Bollinger, OBV, VWAP, Donchian, regresný kanál
 ktma/structure.py   ATR ZigZag swingy, trendové čiary, paralelné kanály (bez prekresľovania)
 ktma/signals.py     pravidlá alertov + filtre notifikácií

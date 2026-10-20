@@ -3,7 +3,7 @@
 ### Obchod a labely
 | Skratka | Význam | Čo s tým robiť |
 |---|---|---|
-| **Symbol** | označenie inštrumentu. `GC=F` = zlato (COMEX futures), `SI=F` = striebro | mení sa v nastaveniach v `symbols` |
+| **Symbol** | označenie inštrumentu. `XAUUSD` = zlato (spot XAU/USD), `XAGUSD` = striebro; `GC=F`/`SI=F` = futures z Yahoo | mení sa v nastaveniach v `symbols` |
 | **LONG** | nákup, zarábaš keď cena **rastie** | label „dobrý vstup long“ |
 | **SHORT** | predaj, zarábaš keď cena **klesá** | label „dobrý vstup short“ |
 | **NEVSTUPOVAŤ** (SKIP) | signál nestojí za obchod | tiež dôležitý label, model sa učí aj z neho |
@@ -34,7 +34,7 @@
 | **BB, %B** | Bollingerove pásma (± 2σ okolo SMA 20), %B = kde je cena v pásme (0 = spodok, 1 = vrch) | |
 | **VWAP** | Volume Weighted Average Price, priemerná cena dňa vážená objemom (od 17:00 Chicago) | nad VWAP = kupci majú navrch; ± 2σ pásma = natiahnuté |
 | **OBV** | On-Balance Volume, kumulatívny objem podľa smeru | divergencia s cenou = slabnúci pohyb |
-| **Vol ×** (volume ratio) | objem sviečky / priemer predch. 20 sviečok | 2× a viac = volume spike |
+| **Vol ×** (volume ratio) | objem sviečky / priemer predch. 20 sviečok (pri XAU/USD tick volume = počet zmien ceny) | 2× a viac = volume spike |
 | **Donchian 20/55** | najvyššie maximum / najnižšie minimum posledných 20/55 sviečok | prerazenie = nové maximum/minimum |
 
 ### Trendové čiary a kanály
@@ -93,7 +93,7 @@ Pred uložením sa urobí záloha `data/config.yaml.bak`.
 
 | Chcem… | Zmeň |
 |---|---|
-| pridať striebro | v `symbols` odkomentuj `- SI=F` (odstráň `#`) |
+| pridať striebro | v `symbols` odkomentuj `- XAGUSD` (odstráň `#`) |
 | menej správ na Telegram | zvýš `notify_filters.cooldown_bars`, nastav `min_volume_ratio: 1.5`, alebo uber predpony v `only_on` |
 | iba alerty potvrdené objemom | `notify_filters.min_volume_ratio: 1.5` (pre 1m `min_volume_ratio_1m`) |
 | nehlásiť RSI proti silnému trendu | `notify_filters.rsi_max_adx: 30` |

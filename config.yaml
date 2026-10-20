@@ -2,15 +2,17 @@
 # Všetky časy sú v UTC. Podrobnosti v docs/ARCHITEKTURA.md a docs/RESEARCH.md.
 
 data:
-  # yfinance  – zlato/striebro futures (GC=F, SI=F). Zadarmo, skutočný objem, CME dáta oneskorené ≥ 10 min.
-  #             História: 1m ~7 dní, 5m/15m ~60 dní, 1h ~2 roky. Skener ukladá každú 1m sviečku,
-  #             takže si históriu budujete sami.
+  # oanda     – spotové XAU/USD a XAG/USD v reálnom čase (OANDA demo účet zadarmo).
+  #             Objem = tick volume (spot nemá centrálny objem). Potrebuje OANDA_API_TOKEN v .env.
+  # yfinance  – futures GC=F / SI=F z Yahoo, skutočný objem, ale oneskorené ≥ 10 min.
   # synthetic – vymyslené dáta na offline test (python -m ktma demo).
-  provider: yfinance
+  provider: oanda
+  history_days: {1m: 14, 5m: 90, 15m: 180, 1h: 730}   # koľko histórie stiahnuť pri backfille (oanda)
 
 symbols:
-  - GC=F                     # zlato (COMEX futures)
-  # - SI=F                   # striebro – odkomentuj, keď ho budete chcieť sledovať
+  - XAUUSD                   # zlato (spot XAU/USD)
+  # - XAGUSD                 # striebro – odkomentuj, keď ho budete chcieť sledovať
+  # pri provider: yfinance použi GC=F (zlato) / SI=F (striebro)
 
 alert_timeframes: [1m, 5m, 15m]      # na týchto TF vznikajú alerty
 context_timeframes: [1h, 4h]         # tieto sa počítajú iba ako kontext do features
