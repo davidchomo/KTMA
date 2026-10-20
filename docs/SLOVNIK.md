@@ -15,7 +15,9 @@
 | **TP** – take profit | cena, kde vyberieš zisk | predvyplnený 2× ATR od vstupu |
 | **BE** – break-even | cena, pri ktorej by si posunul SL na vstup (obchod už nemôže prerobiť) | voliteľné, 0 = nepoužívaš |
 | **R** | jednotka rizika = vzdialenosť vstup → SL. Zisk 2R = dvojnásobok rizika | výsledky sa merajú v R, nie v dolároch |
-| **R:R** (risk:reward) | pomer rizika a zisku, napr. 1:2 | appka počíta automaticky |
+| **R:R** (risk:reward) | pomer rizika a zisku, napr. 1:2 | appka počíta automaticky; zelená ≥ 1,5, žltá 1–1,5, červená < 1 |
+| **Návrh SL/TP** | SL kúsok za najbližšou podporou (pri SHORT rezistenciou), min. 0,8 ATR; TP pred ďalšou úrovňou | tlačidlo „🎯 Použiť návrh“ |
+| **Zóny na grafe** | zelená = od vstupu po TP (zisk), červená = od vstupu po SL (riziko), ako nástroj Long/Short pozícia na TradingView | menia sa hneď, keď posunieš SL/TP |
 | **EV** (expected value) | očakávaný výsledok na obchod v R = priemer všetkých výsledkov. EV > 0 = signál sa oplatí | záložka Štatistiky a EV |
 | **Win rate** | % obchodov v zisku | pri R:R 1:2 stačí ~34 % na EV > 0 |
 | **saw_future** | videl si pri labelovaní, čo sa stalo potom? | režim „Naslepo“ ho vypne |
@@ -48,6 +50,9 @@
 | **Support / podpora** | čiara pod cenou (cez minimá) |
 | **Resistance / rezistencia** | čiara nad cenou (cez maximá) |
 | **Dotyky (touches)** | koľko pivotov leží na čiare; 3+ = silnejšia čiara |
+| **S/R úroveň** | horizontálna podpora/rezistencia: viac swingov na rovnakej cene. Na stupnici „S2“ = podpora s 2 dotykmi, „R3“ = rezistencia s 3. Po prerazení sa rola otočí |
+| **🧩 Súlad** | koľko rôznych stratégií (RSI, MACD, EMA, VWAP, čiary, S/R, kanál, Donchian, setupy) súhlasí so smerom alertu |
+| **Silná / slabá čiara** | plná hrubá = 3+ dotyky, tenká prerušovaná = 2 dotyky |
 | **Paralelný kanál** | trendová čiara + rovnobežka cez opačný extrém (bodkovaná v grafe) |
 | **Regresný kanál** | priamka najmenších štvorcov cez posledných 100 zatvorení ± 2σ (sivá prerušovaná) |
 | **Repainting** | indikátor spätne mení minulosť. KTMA to nerobí: čiara vzniká až po potvrdení pivotu |
@@ -85,6 +90,9 @@
 | `TL_TOUCH_RESISTANCE` / `TL_TOUCH_SUPPORT` | dotyk čiary a odraz |
 | `CHANNEL_BREAK_UP` / `_DOWN` | zatvorenie mimo regresného kanála |
 | `DONCHIAN_BREAK_UP_55` / `_DOWN_55` | nové 55-sviečkové maximum / minimum (20 iba do DB) |
+| `SR_BREAK_UP` / `SR_BREAK_DOWN` | zatvorenie nad horizontálnou rezistenciou / pod podporou (úroveň s 2+ dotykmi) |
+| `SR_BOUNCE_SUPPORT` / `SR_BOUNCE_RESISTANCE` | dotyk horizontálnej úrovne a odraz |
+| `CONFLUENCE_LONG` / `_SHORT` | 🧩 súlad: aspoň 3 (na 1m 4) rôzne stratégie v rovnakom smere v posledných 3 sviečkach |
 | `HOLY_GRAIL_LONG` / `_SHORT` | Holy Grail: silný trend (ADX > 30), pullback k EMA 20, prerazenie max/min sviečky dotyku |
 | `ORB_UP_NY`, `ORB_DOWN_LONDON`, … | Opening Range Breakout: zatvorenie nad/pod rozsahom prvých 15 min seansy |
 | `HITCHHIKER_LONG_NY`, … | Hitchhiker: ranný ťah, tesná konsolidácia, jej prerazenie (1m, 5m) |
@@ -100,6 +108,9 @@
   pod ním alebo skrytý; výška grafu.
 - **💾 Uložiť ako moje** uloží graf, zobrazenie aj vrstvy pod tvojím menom. Načítajú sa vždy, keď zadáš meno.
 - **⛶** v rohu grafu = celá obrazovka, Esc = späť.
+- **🗂 Vrstvy:** čo je na grafe (čiary, S/R, dotyky, kanál, EMA, VWAP, alerty, labely) a ktoré panely sú pod ním.
+- **💬** vpravo dole = chat s Claudom k aktuálnemu alertu.
+- Klávesy: **Ctrl+Enter** = uložiť a ďalší, **Ctrl+Shift+Enter** = preskočiť.
 
 ## ⚙️ Čo robiť v nastaveniach
 
@@ -109,7 +120,8 @@ Pred uložením sa urobí záloha `data/config.yaml.bak`.
 | Chcem… | Zmeň |
 |---|---|
 | pridať striebro | v `symbols` odkomentuj `- XAGUSD` (odstráň `#`) |
-| menej správ na Telegram | zvýš `notify_filters.cooldown_bars`, nastav `min_volume_ratio: 1.5`, alebo uber predpony v `only_on` |
+| menej správ na Telegram | `notify_filters.mode: confluence` (iba 🧩 súlad + setupy), alebo zvýš `cooldown_bars`, `min_volume_ratio: 1.5` |
+| prísnejší / voľnejší súlad | `confluence.min_families` (koľko stratégií musí súhlasiť), `confluence.require_htf_trend: true` |
 | iba alerty potvrdené objemom | `notify_filters.min_volume_ratio: 1.5` (pre 1m `min_volume_ratio_1m`) |
 | nehlásiť RSI proti silnému trendu | `notify_filters.rsi_max_adx: 30` |
 | iné prahy RSI | `indicators.rsi.overbought / oversold` (kandidáti v `candidate_levels`) |

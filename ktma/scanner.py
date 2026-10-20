@@ -16,6 +16,7 @@ from .data import resample
 from .features import FEATURE_VERSION, build_snapshot, derive_features
 from .indicators import add_indicators
 from .outcomes import compute_outcome
+from .plan import suggest_plan
 from .setups import detect_setups
 from .confluence import confluence_events
 from .signals import detect, should_notify
@@ -183,6 +184,12 @@ class Scanner:
         htf = [f"{t} {'↑' if want > 0 else '↓'}" for t in ("1h", "4h")
                if features.get(f"{t}__swing_trend") is not None and features[f"{t}__swing_trend"] * want > 0]
         details["confluence"] = {"families": fams, "htf": htf}
+        lines_snap = lines_snapshot(struct["lines"], ev["i"], times)
+        details["plan"] = suggest_plan(ev["direction"], float(row["close"]), _r(row["atr"]), details, lines_snap,
+                                       self.cfg.get("plan"))
+        if details["plan"] and details["plan"]["rr"] is not None:
+            features["plan__rr"] = details["plan"]["rr"]
+            features["plan__risk_atr"] = details["plan"]["risk_atr"]
         features["conf__families"] = len(fams)
         features["conf__htf_agree"] = len(htf)
         if ev.get("extra"):
@@ -195,7 +202,7 @@ class Scanner:
             "volume_ratio": _r(row["volume_ratio"]), "atr": _r(row["atr"]),
             "details": details,
             "features": features,
-            "lines": lines_snapshot(struct["lines"], ev["i"], times),
+            "lines": lines_snap,
             "feature_version": FEATURE_VERSION, "rules_hash": self.rules_hash,
             "source": "live" if live else "backfill",
         }

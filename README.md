@@ -1,4 +1,4 @@
-# KTMA – technické alerty na zlato a striebro + labelovanie pre ML
+# ◆ Nexus (KTMA) – technické alerty na zlato a striebro + labelovanie pre ML
 
 Systém, ktorý **neobchoduje**, iba hlási technické signály na **XAU/USD** (spotové zlato, neskôr XAG/USD striebro) na
 **1m, 5m a 15m** (kontext 1h a 4h). Ku každému alertu uloží kompletný stav trhu a pošle ho na Telegram.
@@ -7,7 +7,9 @@ TP, BE). Z týchto labelov sa neskôr natrénuje model.
 
 **Signály:** RSI 80/20 (+ kandidáti 70/30 a 75/25 iba do DB), MACD, EMA 9/21 a 50/200, cena × EMA 200, objem,
 VWAP (± 2σ), Donchian 20/55, regresný kanál, **automatické trendové čiary a kanály** (dotyk, prerazenie,
-bez prekresľovania). Stratégie: **Holy Grail**, **Opening Range Breakout**, **Hitchhiker**.
+bez prekresľovania), **horizontálne podpory/rezistencie** (prerazenie, odraz). Stratégie: **Holy Grail**,
+**Opening Range Breakout**, **Hitchhiker** a **🧩 súlad viacerých stratégií**. Ku každému alertu automatický
+**návrh SL/TP s risk:reward**.
 
 | Dokument | Obsah |
 |---|---|
@@ -127,6 +129,8 @@ ktma/indicators.py  RSI, MACD, EMA, ATR, ADX, Bollinger, OBV, VWAP, Donchian, re
 ktma/structure.py   ATR ZigZag swingy, trendové čiary, paralelné kanály (bez prekresľovania)
 ktma/signals.py     pravidlá alertov + filtre notifikácií
 ktma/setups.py      stratégie: Holy Grail, Opening Range Breakout, Hitchhiker
+ktma/confluence.py  🧩 súlad viacerých stratégií
+ktma/plan.py        návrh SL/TP a risk:reward
 ktma/tvchart.py     graf v štýle TradingView (Lightweight Charts)
 ktma/assistant.py   💬 Opýtaj sa Clauda (Claude Code bez nástrojov)
 ktma/features.py    snapshot features zo všetkých TF (zarovnané podľa uzavretia sviečky)

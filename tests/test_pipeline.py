@@ -376,3 +376,17 @@ def test_confluence_needs_distinct_families_in_window():
     assert ev[3]["confluence"]["families"] == ["RSI", "TL", "VWAP"]
     assert ev[6]["confluence"]["families"] == ["MACD"]          # far away, alone
     assert confluence_events(ev, {"window_bars": 3, "min_families": {"1m": 4, "5m": 3}}, "1m") == []
+
+
+def test_suggest_plan_uses_levels_then_atr():
+    from ktma.plan import suggest_plan
+
+    det = {"levels": [{"price": 98.0}, {"price": 105.0}, {"price": 101.0}]}
+    p = suggest_plan("bullish", 100.0, 1.0, det, [])
+    assert p["sl"] == 97.8 and p["tp"] == 100.9 and p["sl_reason"] == "za najbližšou úrovňou"
+    assert p["rr"] == round(0.9 / 2.2, 2)
+    p = suggest_plan("bearish", 100.0, 1.0, {}, [])
+    assert (p["sl"], p["tp"], p["rr"]) == (101.0, 98.0, 2.0)
+    assert suggest_plan("bullish", 100.0, 0, {}, []) is None
+    tight = suggest_plan("bullish", 100.0, 1.0, {"levels": [{"price": 99.9}]}, [])
+    assert tight["sl"] == 99.2 and "blízko" in tight["sl_reason"]

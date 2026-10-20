@@ -85,7 +85,7 @@ def build_spec(w: pd.DataFrame, layers: set, lines: list[dict] | None = None, fo
                extend: int = 40, markers: list[dict] | None = None, price_lines: list[dict] | None = None,
                reg_channel: dict | None = None, label_marks: list[dict] | None = None,
                zoom_before: int = 70, zoom_after: int = 40, style: dict | None = None,
-               levels: list[dict] | None = None) -> dict:
+               levels: list[dict] | None = None, position: dict | None = None, bar_seconds: int = 300) -> dict:
     """`w` = frame from add_indicators + style_indicators (bars of one timeframe, index 0..n-1)."""
     st = {**STYLE_DEFAULTS, **(style or {})}
     up_c, down_c = st["up"], st["down"]
@@ -152,8 +152,29 @@ def build_spec(w: pd.DataFrame, layers: set, lines: list[dict] | None = None, fo
                 {"time": int(t[x_start]), "value": float(val(x_start) + off)},
                 {"time": int(t[x_end]), "value": float(val(x_end) + off)}]})
 
+    if position and position.get("entry") and position.get("sl") and position.get("tp"):
+        # TradingView-style long/short position: green zone entry→TP, red zone entry→SL.
+        n_bars = position.get("bars", 30)
+        ts = [int(x) for x in t[focus: focus + n_bars]]
+        while len(ts) < n_bars:                          # extend into the future after the last bar
+            ts.append((ts[-1] if ts else int(t[-1])) + bar_seconds)
+        e, sl, tp = position["entry"], position["sl"], position["tp"]
+        risk = abs(e - sl)
+        rr = abs(tp - e) / risk if risk else 0
+        spec["position"] = {"times": ts, "entry": e, "sl": sl, "tp": tp,
+                            "profit": up_c + "40", "loss": down_c + "40"}
+        spec["priceLines"] += [
+            {"price": e, "color": "#2962ff", "title": "Vstup", "style": 0},
+            {"price": tp, "color": up_c, "title": f"TP +{rr:.1f}R", "style": 0},
+            {"price": sl, "color": down_c, "title": "SL −1R", "style": 0}]
+        if position.get("be"):
+            spec["priceLines"].append({"price": position["be"], "color": "#f9a825", "title": "BE", "style": 2})
+
     if "S/R" in layers:
-        for lv in levels or []:
+        ref = float(w["close"].iloc[focus])
+        sup = sorted((lv for lv in levels or [] if lv["role"] == "support"), key=lambda lv: ref - lv["price"])[:2]
+        res = sorted((lv for lv in levels or [] if lv["role"] != "support"), key=lambda lv: lv["price"] - ref)[:2]
+        for lv in sup + res:
             sup = lv["role"] == "support"
             spec["priceLines"].append({"price": lv["price"], "color": (up_c if sup else down_c) + "cc",
                                        "title": f"{'S' if sup else 'R'}{lv['touches']}",
@@ -267,6 +288,20 @@ function draw() {
     const s = chart.addSeries(LW.LineSeries, { ...quiet, color: g.color, lineWidth: g.width, lineStyle: g.style,
                                                  autoscaleInfoProvider: () => null });
     s.setData(g.data);
+  }
+  if (SPEC.position) {
+    const P = SPEC.position;
+    const zone = (value, color) => {
+      const z = chart.addSeries(LW.BaselineSeries, {
+        baseValue: { type: 'price', price: P.entry },
+        topFillColor1: color, topFillColor2: color, bottomFillColor1: color, bottomFillColor2: color,
+        topLineColor: 'rgba(0,0,0,0)', bottomLineColor: 'rgba(0,0,0,0)', lineWidth: 1,
+        priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false,
+        autoscaleInfoProvider: () => null });
+      z.setData(P.times.map(t => ({ time: t, value: value })));
+    };
+    zone(P.tp, P.profit);
+    zone(P.sl, P.loss);
   }
   if (SPEC.markers.length) LW.createSeriesMarkers(candles, SPEC.markers);
   for (const p of SPEC.priceLines) {

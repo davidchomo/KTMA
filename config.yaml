@@ -135,6 +135,14 @@ notify_filters:              # ovplyvňujú iba notifikácie; do DB sa ukladá v
   exclude: [VOLUME_SPIKE]    # tieto sa nikdy nenotifikujú samostatne (objem je v každej správe)
   cooldown_bars: 10          # ten istý signál na tom istom TF najskôr po 10 sviečkach
 
+plan:                        # automatický návrh SL/TP ku každému alertu (vidno v appke aj na Telegrame)
+  sl_buffer_atr: 0.2         # SL kúsok za najbližšou podporou/rezistenciou
+  min_sl_atr: 0.8            # SL najmenej 0.8 ATR od vstupu (inak by bol nezmyselne tesný)
+  max_sl_atr: 3.0            # úroveň ďalej ako 3 ATR sa na SL nepoužije
+  min_tp_atr: 1.0            # TP na najbližšej úrovni aspoň 1 ATR od vstupu
+  default_sl_atr: 1.0        # keď úroveň nie je: SL 1× ATR
+  default_tp_atr: 2.0        #                    TP 2× ATR
+
 outcomes:
   horizons: [5, 10, 20]      # výnos po N sviečkach (v ATR)
   take_profit_atr: 2.0       # triple-barrier

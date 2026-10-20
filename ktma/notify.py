@@ -50,6 +50,9 @@ def format_alert(alert: dict, label_url: str | None = None) -> str:
         out.append(f"📏 Úroveň: {d['level']['price']:.2f} ({d['level']['touches']} dotyky)")
     if setup_text(d.get("setup")):
         out.append(f"🎯 {setup_text(d.get('setup'))}")
+    plan = d.get("plan")
+    if plan and plan.get("rr") is not None:
+        out.append(f"🎯 Návrh: SL {plan['sl']:.2f} · TP {plan['tp']:.2f} · <b>R:R 1:{plan['rr']:.1f}</b>")
     conf = d.get("confluence") or {}
     if len(conf.get("families", [])) >= 2:
         out.append(f"🧩 Súlad: {confluence_text(conf)}")
