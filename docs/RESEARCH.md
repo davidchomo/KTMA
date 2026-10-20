@@ -399,6 +399,28 @@ pozícia v kanáli (0 = spodok, 1 = vrch), šírka kanála ÷ ATR, R² regresie,
 
 ---
 
+## 12. Pomenované stratégie (setupy)
+
+| Setup | Pôvod | Pravidlá v KTMA | Dôkazy |
+|---|---|---|---|
+| **Holy Grail** | Linda Raschke & Larry Connors, *Street Smarts* | ADX(14) > 30 a smer podľa ±DI; sviečka sa dotkne **EMA 20** (pullback); signál, keď niektorá z ďalších 3 sviečok prerazí **maximum** (LONG) / **minimum** (SHORT) sviečky dotyku | TradingView implementácie sa líšia v detailoch (niektoré pridávajú filter EMA 50, ADX voliteľný) 🔴; pôvodné pravidlá treba overiť v knihe |
+| **Opening Range Breakout (ORB)** | Toby Crabel (1990) | rozsah (high/low) prvých **15 min** (nastaviteľné na 30) po otvorení **Londýna (8:00)** a **COMEX v New Yorku (8:20)**; signál pri prvom **zatvorení** nad/pod rozsahom do 3 h po otvorení, každý smer raz za seansu | Crabel pôvodne používal prvých 30 sekúnd a „stretch“ z 10 dní; 15/30 min sú neskoršie úpravy 🟡. Test na Nasdaq: priemerný obchod nepokryl náklady 🔴; na zlato sa test nenašiel |
+| **Hitchhiker** | SMB Capital (scalp na akciách „in play“) | v prvej hodine po otvorení: **ranný ťah** ≥ 2 ATR od otváracej ceny, potom **tesná konsolidácia** (6 sviečok, rozsah ≤ 1 ATR) v hornej (dolnej) polovici ťahu; signál pri zatvorení nad (pod) konsolidáciou. Iba 1m a 5m | popisy sú iba z cheat-sheetov a TradingView 🔴; originál je pre akcie po 9:30 NY, na zlato sme ho preniesli na otvorenie Londýna a COMEX |
+
+Všetky tri sa ukladajú ako bežné alerty (s úrovňami setupu v `details.setup`), takže kamarát ich labeluje rovnako
+a model sa naučí, kedy na zlate fungujú. Parametre sú v `config.yaml` → `setups`.
+
+Zdroje: [Holy Grail (TradingView)](https://my.tradingview.com/script/hawl3ybg-Holy-Grail-Setup-with-Confidence-Opacity) ·
+[Street Smarts pullback (TradingView)](https://my.tradingview.com/script/1HQtlUIa) ·
+[Crabel: ORB – a century of evidence](https://tobycrabel.substack.com/p/opening-range-breakout-a-century) ·
+[Test ORB na Nasdaq (Unger Academy)](https://ungeracademy.com/blog/testing-toby-crabel-s-opening-range-breakout-does-it-really-work-code-backtest-on-nasdaq) ·
+[ORB pravidlá](https://tradingcompendium.com/en/trading-strategies/opening-range-breakout-orb) ·
+[Crabel patterns](https://nigonthailand.substack.com/p/how-to-trade-the-toby-crabel-patterns) ·
+[HitchHiker scalp cheat sheet (SMB)](https://smbpowerpoints.s3.amazonaws.com/scalping_cheat_sheets_public/hitchhiker_scalp_cheat_sheet.pdf) ·
+[Hitchhiker Scalp (TradingView)](https://www.tradingview.com/script/pQ7zUvxZ-Hitchhiker-Scalp-1-16-2026-v2-Morning-Only-Scalps/)
+
+---
+
 ## Zdroje
 **Indikátory:** [Lund – ziskovosť TA](https://lup.lub.lu.se/luur/download?func=downloadFile&recordOId=8905915&fileOId=8905916) ·
 [Forecasting gold with TA indicators](https://www.researchgate.net/publication/386486470_Forecasting_gold_price_using_technical_analysis_indicators) ·

@@ -142,6 +142,8 @@ Všetko je konfigurovateľné v `config.yaml`:
   vznikajú až po potvrdení pivotu a ostávajú, kým ich cena neprerazí.
 - Na **1m** prísnejšie filtre (väčší ZigZag prah, potvrdenie objemom pre notifikáciu), inak by kamaráta zahltil šum.
 - Neskôr: konfluencia (viac signálov naraz / naprieč TF), divergencie RSI/MACD (až po potvrdení pivotu)
+- **Pomenované stratégie** (RESEARCH.md §12): Holy Grail (ADX > 30 + pullback k EMA 20), Opening Range Breakout
+  (Londýn 8:00, COMEX 8:20), Hitchhiker (ranný ťah + konsolidácia).
 - Princíp: **logovať viac, než hlásiť.** Do DB ide každý kandidát, notifikácia iba pre to, čo prejde filtrami.
 
 ---

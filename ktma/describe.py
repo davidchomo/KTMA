@@ -36,6 +36,14 @@ _SIGNALS = [
     (r"TL_TOUCH_SUPPORT", "Odraz od podpory", "Cena sa dotkla čiary zdola a odrazila sa hore."),
     (r"CHANNEL_BREAK_UP", "Výbeh nad regresný kanál", "Cena vybehla nad horný okraj trendového kanála."),
     (r"CHANNEL_BREAK_DOWN", "Výbeh pod regresný kanál", "Cena vybehla pod dolný okraj trendového kanála."),
+    (r"HOLY_GRAIL_LONG", "Holy Grail LONG", "Silný rastový trend (ADX > 30), cena sa vrátila k EMA 20 a teraz prerazila "
+     "maximum sviečky dotyku. Pokračovanie trendu (Linda Raschke)."),
+    (r"HOLY_GRAIL_SHORT", "Holy Grail SHORT", "Silný klesajúci trend (ADX > 30), cena sa vrátila k EMA 20 a teraz prerazila "
+     "minimum sviečky dotyku. Pokračovanie trendu (Linda Raschke)."),
+    (r"ORB_UP_(\w+)", "Opening Range Breakout nahor ({0})", "Cena zatvorila nad rozsahom prvých minút seansy {0} (Toby Crabel)."),
+    (r"ORB_DOWN_(\w+)", "Opening Range Breakout nadol ({0})", "Cena zatvorila pod rozsahom prvých minút seansy {0} (Toby Crabel)."),
+    (r"HITCHHIKER_LONG_(\w+)", "Hitchhiker LONG ({0})", "Ranný ťah hore, tesná konsolidácia pri maxime a jej prerazenie (SMB scalp)."),
+    (r"HITCHHIKER_SHORT_(\w+)", "Hitchhiker SHORT ({0})", "Ranný ťah dole, tesná konsolidácia pri minime a jej prerazenie (SMB scalp)."),
     (r"DONCHIAN_BREAK_UP_(\d+)", "Nové {0}-sviečkové maximum", "Cena prerazila najvyššiu cenu za posledných {0} sviečok."),
     (r"DONCHIAN_BREAK_DOWN_(\d+)", "Nové {0}-sviečkové minimum", "Cena prerazila najnižšiu cenu za posledných {0} sviečok."),
 ]
@@ -98,3 +106,19 @@ def trend_arrow(v) -> str:
         return "–"
     return "↑ rastie" if v > 0 else ("↓ klesá" if v < 0 else "↔ do strán")
 
+
+
+def setup_text(setup: dict | None) -> str | None:
+    """One line with the key levels of a named setup (from alert details)."""
+    if not setup:
+        return None
+    if "or_high" in setup:
+        return f"Opening range {setup['or_minutes']} min: {setup['or_low']:.2f} – {setup['or_high']:.2f}"
+    if "setup_high" in setup:
+        return f"Sviečka dotyku EMA 20: max {setup['setup_high']:.2f}, ADX {setup['adx']:.0f}"
+    if "setup_low" in setup:
+        return f"Sviečka dotyku EMA 20: min {setup['setup_low']:.2f}, ADX {setup['adx']:.0f}"
+    if "consol_high" in setup:
+        return (f"Konsolidácia {setup['consol_low']:.2f} – {setup['consol_high']:.2f}, "
+                f"otvorenie seansy {setup['open_price']:.2f}")
+    return None

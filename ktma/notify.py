@@ -10,7 +10,8 @@ import re
 import pandas as pd
 import requests
 
-from .describe import adx_text, direction_text, rsi_text, signal_text, symbol_name, trend_arrow, volume_text
+from .describe import (adx_text, direction_text, rsi_text, setup_text, signal_text, symbol_name, trend_arrow,
+                       volume_text)
 
 log = logging.getLogger(__name__)
 
@@ -45,6 +46,8 @@ def format_alert(alert: dict, label_url: str | None = None) -> str:
         ln = d["line"]
         kind = "rezistencia" if ln["kind"] == "resistance" else "podpora"
         out.append(f"📏 Čiara: {kind}, {ln['touches']} dotyky, {ln['value']:.2f}")
+    if setup_text(d.get("setup")):
+        out.append(f"🎯 {setup_text(d.get('setup'))}")
     if alert.get("model_score") is not None:
         out.append(f"🤖 Model: {alert['model_score'] * 100:.0f} %")
     out.append(f"🕒 {t} (SK čas) · #{alert.get('id', '?')}")

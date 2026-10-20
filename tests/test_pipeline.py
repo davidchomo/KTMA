@@ -251,3 +251,64 @@ def test_binance_provider_paginates_and_drops_off_hours(monkeypatch):
     assert gold_market_open(df["open_time"]).all()
     sat = pd.Series([int(pd.Timestamp("2026-10-17 12:00", tz="UTC").value // 1_000_000)])
     assert not gold_market_open(sat).iloc[0]
+
+
+def _bars(start_utc: str, n: int, step_min: int = 1) -> pd.DataFrame:
+    t0 = int(pd.Timestamp(start_utc, tz="UTC").value // 1_000_000)
+    return pd.DataFrame({"open_time": t0 + 60_000 * step_min * np.arange(n)})
+
+
+def test_holy_grail_triggers_on_break_of_touch_bar_high():
+    from ktma.setups import holy_grail
+
+    n = 60
+    df = _bars("2026-10-14 10:00", n, 5)
+    close = 100 + np.arange(n) * 0.5
+    df["close"], df["open"] = close, close - 0.2
+    df["high"], df["low"] = close + 0.3, close - 0.3
+    k = 45
+    df.loc[k, "low"] = close[k] - 8            # pullback bar tags the 20 EMA
+    df.loc[k + 1, "high"] = df.loc[k, "high"] - 0.1   # no break yet
+    df.loc[k + 2, "high"] = df.loc[k, "high"] + 0.5   # break of the touch bar's high
+    df["adx"], df["plus_di"], df["minus_di"] = 35.0, 30.0, 10.0
+    ev = [e for e in holy_grail(df, {"ema": 20, "min_adx": 30, "max_wait_bars": 3}) if e["i"] >= k]
+    assert ev[0]["signal"] == "HOLY_GRAIL_LONG" and ev[0]["i"] == k + 2
+    df["adx"] = 20.0                            # weak trend -> no setup
+    assert holy_grail(df, {"ema": 20, "min_adx": 30}) == []
+
+
+def test_opening_range_breakout_once_per_session():
+    from ktma.setups import opening_range_breakout
+
+    # Wed 2026-10-14, NY 08:20 = 12:20 UTC (EDT)
+    df = _bars("2026-10-14 12:00", 90)
+    df["open"] = df["close"] = 9.5
+    df["high"], df["low"] = 9.6, 9.4
+    m = ((df["open_time"] - df["open_time"].iloc[0]) // 60_000).to_numpy()
+    in_or = (m >= 20) & (m < 35)
+    df.loc[in_or, "high"], df.loc[in_or, "low"] = 10.0, 9.0
+    df.loc[m == 40, "close"] = 10.5             # first close above the range
+    df.loc[m == 41, "close"] = 10.6             # must not fire again
+    cfg = {"range_minutes": 15, "window_minutes": 180,
+           "sessions": [{"name": "NY", "tz": "America/New_York", "open": "08:20"}]}
+    ev = opening_range_breakout(df, "1m", cfg)
+    assert [(e["signal"], int(m[e["i"]])) for e in ev] == [("ORB_UP_NY", 40)]
+    assert ev[0]["extra"]["or_high"] == 10.0 and ev[0]["extra"]["or_low"] == 9.0
+    assert opening_range_breakout(df, "1h", cfg) == []   # TF longer than the range
+
+
+def test_hitchhiker_drive_consolidation_break():
+    from ktma.setups import hitchhiker
+
+    # London 08:00 BST = 07:00 UTC on 2026-10-14
+    df = _bars("2026-10-14 07:00", 30)
+    price = np.concatenate([np.linspace(100, 106, 10), np.full(6, 105.8), [106.5], np.full(13, 106.4)])
+    df["open"] = np.concatenate([[100], price[:-1]])
+    df["close"] = price
+    df["high"] = np.maximum(df["open"], df["close"]) + 0.1
+    df["low"] = np.minimum(df["open"], df["close"]) - 0.1
+    df["atr"] = 1.0
+    cfg = {"window_minutes": 60, "drive_atr": 2.0, "consol_bars": 6, "consol_atr": 1.0, "max_tf_minutes": 5,
+           "sessions": [{"name": "LONDON", "tz": "Europe/London", "open": "08:00"}]}
+    ev = hitchhiker(df, "1m", cfg)
+    assert [(e["signal"], e["i"]) for e in ev] == [("HITCHHIKER_LONG_LONDON", 16)]

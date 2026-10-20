@@ -79,6 +79,30 @@ signals:
   vwap_cross: true           # cena prekríži VWAP
   vwap_band_touch: true      # cena sa dotkne pásma ± 2σ
 
+setups:                      # pomenované stratégie (docs/RESEARCH.md §12)
+  holy_grail:                # Linda Raschke: ADX > 30, pullback k EMA 20, prerazenie max/min sviečky dotyku
+    enabled: true
+    ema: 20
+    min_adx: 30
+    max_wait_bars: 3         # koľko sviečok po dotyku čakať na prerazenie
+  orb:                       # Opening Range Breakout (Toby Crabel): rozsah prvých N minút seansy
+    enabled: true
+    range_minutes: 15        # 15 alebo 30
+    window_minutes: 180      # koľko minút po otvorení ešte hlásiť prerazenie
+    sessions:
+      - {name: LONDON, tz: Europe/London, open: "08:00"}
+      - {name: NY, tz: America/New_York, open: "08:20"}     # otvorenie COMEX zlata
+  hitchhiker:                # SMB Capital scalp: ranný ťah, tesná konsolidácia, prerazenie
+    enabled: true
+    window_minutes: 60       # iba prvá hodina po otvorení
+    drive_atr: 2.0           # ranný ťah aspoň 2 ATR od otváracej ceny
+    consol_bars: 6           # konsolidácia = posledných 6 sviečok
+    consol_atr: 1.0          # ... s rozsahom najviac 1 ATR
+    max_tf_minutes: 5        # iba na 1m a 5m
+    sessions:
+      - {name: LONDON, tz: Europe/London, open: "08:00"}
+      - {name: NY, tz: America/New_York, open: "08:20"}
+
 notify_filters:              # ovplyvňujú iba notifikácie; do DB sa ukladá všetko
   min_volume_ratio: 0        # napr. 1.5 = hlás iba s potvrdením objemu (0 = vypnuté)
   min_volume_ratio_1m: 1.5   # prísnejšie na 1m
@@ -86,7 +110,8 @@ notify_filters:              # ovplyvňujú iba notifikácie; do DB sa ukladá v
   min_line_touches: 3        # prerazenie/dotyk čiary hlásiť iba ak má čiara aspoň toľko dotykov
   donchian_notify: [55]      # Donchian prerazenia na notifikáciu (20 sa iba ukladá)
   only_on:                   # na týchto TF notifikovať iba signály začínajúce týmito predponami
-    1m: [RSI_ABOVE_80, RSI_BELOW_20, TL_BREAK, TL_TOUCH, MA_50_200, VWAP_UPPER, VWAP_LOWER]
+    1m: [RSI_ABOVE_80, RSI_BELOW_20, TL_BREAK, TL_TOUCH, MA_50_200, VWAP_UPPER, VWAP_LOWER,
+         HOLY_GRAIL, ORB_, HITCHHIKER]
   exclude: [VOLUME_SPIKE]    # tieto sa nikdy nenotifikujú samostatne (objem je v každej správe)
   cooldown_bars: 10          # ten istý signál na tom istom TF najskôr po 10 sviečkach
 

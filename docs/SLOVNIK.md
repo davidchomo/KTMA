@@ -40,6 +40,8 @@
 ### Trendové čiary a kanály
 | Pojem | Význam |
 |---|---|
+| **Opening range** | rozsah (max/min) prvých minút po otvorení seansy |
+| **Pullback** | dočasný návrat ceny proti trendu (napr. k EMA 20) |
 | **Pivot / swing** | lokálne maximum (H) alebo minimum (L), potvrdené až keď sa cena otočí o k × ATR (ATR ZigZag) |
 | **HH / HL / LH / LL** | Higher High, Higher Low (rastový trend) / Lower High, Lower Low (klesajúci trend) |
 | **TL** | trendline, trendová čiara cez 2+ pivoty |
@@ -83,6 +85,9 @@
 | `TL_TOUCH_RESISTANCE` / `TL_TOUCH_SUPPORT` | dotyk čiary a odraz |
 | `CHANNEL_BREAK_UP` / `_DOWN` | zatvorenie mimo regresného kanála |
 | `DONCHIAN_BREAK_UP_55` / `_DOWN_55` | nové 55-sviečkové maximum / minimum (20 iba do DB) |
+| `HOLY_GRAIL_LONG` / `_SHORT` | Holy Grail: silný trend (ADX > 30), pullback k EMA 20, prerazenie max/min sviečky dotyku |
+| `ORB_UP_NY`, `ORB_DOWN_LONDON`, … | Opening Range Breakout: zatvorenie nad/pod rozsahom prvých 15 min seansy |
+| `HITCHHIKER_LONG_NY`, … | Hitchhiker: ranný ťah, tesná konsolidácia, jej prerazenie (1m, 5m) |
 
 ---
 
@@ -102,6 +107,8 @@ Pred uložením sa urobí záloha `data/config.yaml.bak`.
 | viac / menej trendových čiar | `structure.zigzag_atr` pre daný TF: väčšie číslo = menej, väčšie swingy |
 | citlivejší dotyk čiary | `structure.touch_atr` (0,25 = do štvrtiny ATR) |
 | vypnúť skupinu signálov | v `signals` daj `false` (napr. `vwap_band_touch: false`) |
+| zapnúť/vypnúť stratégie | `setups.holy_grail.enabled`, `setups.orb.enabled`, `setups.hitchhiker.enabled` |
+| ORB z 30 minút namiesto 15 | `setups.orb.range_minutes: 30` |
 | iný TP/SL pre automatické výsledky | `outcomes.take_profit_atr / stop_loss_atr` |
 | zapnúť Telegram | `notify.telegram: true` + `TELEGRAM_BOT_TOKEN` a `TELEGRAM_CHAT_ID` v súbore `.env` na serveri |
 

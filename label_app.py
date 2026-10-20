@@ -18,7 +18,7 @@ from ktma.cli import _load_env
 from ktma.config import ROOT, load_config, tf_ms
 from ktma.data import resample
 from ktma.dataset import build_dataset, ev_table
-from ktma.describe import (adx_text, direction_text, rsi_text, signal_text, symbol_name,
+from ktma.describe import (adx_text, direction_text, rsi_text, setup_text, signal_text, symbol_name,
                            trend_arrow, volume_text)
 from ktma.indicators import add_indicators
 from ktma.outcomes import trade_result
@@ -258,6 +258,8 @@ def alert_header(alert: dict):
             ln = d["line"]
             kind = "rezistencia" if ln["kind"] == "resistance" else "podpora"
             rows.append(("Čiara", f"{ln['value']:.2f}", f"{kind}, {ln['touches']} dotyky"))
+        if setup_text(d.get("setup")):
+            rows.append(("Setup", "", setup_text(d.get("setup"))))
         sup, res = feats.get(f"{tf}__sup_dist_atr"), feats.get(f"{tf}__res_dist_atr")
         if sup is not None:
             rows.append(("Podpora", f"{sup:.1f} ATR", "pod cenou"))

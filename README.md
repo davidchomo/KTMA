@@ -7,7 +7,7 @@ TP, BE). Z týchto labelov sa neskôr natrénuje model.
 
 **Signály:** RSI 80/20 (+ kandidáti 70/30 a 75/25 iba do DB), MACD, EMA 9/21 a 50/200, cena × EMA 200, objem,
 VWAP (± 2σ), Donchian 20/55, regresný kanál, **automatické trendové čiary a kanály** (dotyk, prerazenie,
-bez prekresľovania).
+bez prekresľovania). Stratégie: **Holy Grail**, **Opening Range Breakout**, **Hitchhiker**.
 
 | Dokument | Obsah |
 |---|---|
@@ -109,6 +109,8 @@ ktma/describe.py    zrozumiteľné popisy signálov a hodnôt (appka aj Telegram
 ktma/indicators.py  RSI, MACD, EMA, ATR, ADX, Bollinger, OBV, VWAP, Donchian, regresný kanál
 ktma/structure.py   ATR ZigZag swingy, trendové čiary, paralelné kanály (bez prekresľovania)
 ktma/signals.py     pravidlá alertov + filtre notifikácií
+ktma/setups.py      stratégie: Holy Grail, Opening Range Breakout, Hitchhiker
+ktma/tvchart.py     graf v štýle TradingView (Lightweight Charts)
 ktma/features.py    snapshot features zo všetkých TF (zarovnané podľa uzavretia sviečky)
 ktma/outcomes.py    triple-barrier, MFE/MAE, trend-scanning, výsledok plánu (R)
 ktma/scanner.py     celý pipeline (živý sken aj backfill)

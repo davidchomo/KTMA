@@ -16,6 +16,7 @@ from .data import resample
 from .features import FEATURE_VERSION, build_snapshot, derive_features
 from .indicators import add_indicators
 from .outcomes import compute_outcome
+from .setups import detect_setups
 from .signals import detect, should_notify
 from .storage import Store
 from .structure import StructureEngine, line_record, lines_snapshot
@@ -27,7 +28,7 @@ NATIVE_BOOTSTRAP = ["5m", "15m", "1h"]
 
 
 def rules_hash(cfg: dict) -> str:
-    rules = {k: cfg.get(k) for k in ("indicators", "structure", "signals")}
+    rules = {k: cfg.get(k) for k in ("indicators", "structure", "signals", "setups")}
     return hashlib.sha1(json.dumps(rules, sort_keys=True).encode()).hexdigest()[:10]
 
 
@@ -121,7 +122,7 @@ class Scanner:
             f, struct, _ = analyzed[tf]
             times = f["open_time"].to_numpy()
             last_done = self.store.get_state(symbol, tf)
-            events = detect(f, self.cfg) + struct["events"]
+            events = detect(f, self.cfg) + struct["events"] + detect_setups(f, tf, self.cfg)
             events.sort(key=lambda e: (e["i"], e["signal"]))
             max_age = self.cfg.get("notify_max_age_bars", 15)
             for ev in events:
@@ -166,6 +167,8 @@ class Scanner:
         details.update({c: _r(row[c]) for c in row.index if c.startswith("ma_")})
         if "line" in ev:
             details["line"] = {k: (round(v, 6) if isinstance(v, float) else v) for k, v in ev["line"].items()}
+        if ev.get("extra"):
+            details["setup"] = {k: (round(v, 6) if isinstance(v, float) else v) for k, v in ev["extra"].items()}
         details["candidate_only"] = bool(ev.get("candidate"))
         return {
             "symbol": symbol, "timeframe": tf, "bar_time": bar_time,
