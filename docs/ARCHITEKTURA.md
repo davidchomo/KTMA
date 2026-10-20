@@ -1,4 +1,4 @@
-# KTMA – návrh architektúry (na schválenie pred písaním kódu)
+# KTMA – architektúra (schválená, verzia 2)
 
 **Cieľ:** systém, ktorý **neobchoduje**, iba **hlási** technické signály na zlate (neskôr striebre),
 ku každému signálu **uloží kompletný stav trhu** a umožní kamarátovi-traderovi označiť,
@@ -18,18 +18,20 @@ Podrobný research (indikátor po indikátore, zlato/striebro, labelovanie, ML, 
                  └──────┬───────┘
                         ▼
                  ┌──────────────┐
-                 │ 2. Resampler │  z 1m poskladá 5m/15m/1h/4h/1d (vždy rovnako, bez lookahead)
+                 │ 2. Resampler │  z 1m poskladá 5m/15m (alerty) a 1h/4h (kontext), bez lookahead
                  └──────┬───────┘
                         ▼
                  ┌──────────────┐
-                 │ 3. Indikátory│  RSI, MACD, MA, ATR, objem – na každom timeframe
+                 │ 3. Indikátory│  RSI, MACD, MA, ATR, ADX, BB, objem – na každom timeframe
+                 │ 3b. Štruktúra│  ATR ZigZag swingy → trendové čiary a kanály (žijú, kým ich
+                 │    trhu      │  cena neprerazí; snapshot ide do alertu)
                  └──────┬───────┘
                         ▼
                  ┌──────────────┐        ┌──────────────┐
                  │ 4. Pravidlá  │ ─────▶ │ 5. Snapshot  │  zamrazí všetky features zo všetkých TF
                  │  (alerty)    │        │  + uloženie  │  v momente alertu (+ verzia pravidiel)
                  └──────────────┘        └──────┬───────┘
-                                                ├──────────────▶ 6. Notifikácia (Telegram/Discord)
+                                                ├──────────────▶ 6. Notifikácia (Telegram)
                                                 ├──────────────▶ 7. Skóre modelu (ak existuje)
                                                 ▼
                                   ┌──────────────────────────┐
@@ -37,7 +39,7 @@ Podrobný research (indikátor po indikátore, zlato/striebro, labelovanie, ML, 
                                   └────────────┬─────────────┘
                                                ▼
                                   ┌──────────────────────────┐
-             kamarát ───────────▶ │ 9. Label UI (prehliadač) │  graf pred/po alerte + tlačidlá
+             kamarát ───────────▶ │ 9. Label UI (prehliadač) │  graf pred/po alerte, čiary, label + SL/TP
                                   └────────────┬─────────────┘
                                                ▼
                                   ┌──────────────────────────┐
@@ -105,13 +107,17 @@ Tabuľky:
 | `candles_1m` | symbol, open_time, OHLCV, source |
 | `alerts` | id, symbol, timeframe, bar_time, signal, direction, price, volume_ratio, `features` (JSON), `feature_version`, `rules_hash`, `model_score`, `model_version`, source (live/backfill), created_at. UNIQUE (symbol, tf, bar_time, signal) |
 | `outcomes` | alert_id, výsledok triple-barrier pre long aj short, výnosy po 5/10/20 sviečkach, MFE, MAE |
-| `labels` | alert_id, labeler, label, confidence, note, `saw_future` (videl, čo sa stalo potom), created_at. Viac ľudí môže označiť ten istý alert |
+| `labels` | alert_id, labeler, label, confidence, **entry, stop_loss, take_profit** (ceny, ktoré by kamarát nastavil), note, `saw_future` (videl, čo sa stalo potom), created_at. Viac ľudí môže označiť ten istý alert |
+| `trendlines` | id, symbol, tf, typ (support/resistance/channel), kotvy (čas, cena), sklon, dotyky, vznik, prerazenie/zánik. Alert si ukladá snapshot aktívnych čiar |
+| `line_labels` | hodnotenie samotnej čiary kamarátom: dobrá / zlá / (chýbajúca čiara ako manual_mark) |
 | `events` | makro kalendár (CPI, NFP, FOMC, PCE): čas, typ |
 | `manual_marks` | „premeškané vstupy“: symbol, tf, bar_time, smer, labeler, poznámka |
 
-**Taxonómia labelov** (na doladenie s kamarátom):
+**Taxonómia labelov** (schválená):
 `LONG` (dobrý vstup long) · `SHORT` (dobrý vstup short) · `NEVSTUPOVAŤ` · `NEVIEM`
-\+ istota 1–3 + voliteľná poznámka (prečo).
+\+ istota 1–3 + **vstup, SL a TP**, ktoré by kamarát nastavil (UI predvyplní návrh podľa ATR, kamarát ich posunie)
+\+ voliteľná poznámka (prečo). Z SL/TP sa dopočíta R:R a skutočný výsledok obchodu podľa kamaráta,
+čo je ďalší, presnejší label pre model (napr. regresia očakávaného R).
 
 **Kvalita labelov:** krátke písomné pravidlá „čo je dobrý vstup“ (horizont, R:R, správy), ~10 % alertov
 ukázať znova naslepo a merať zhodu (Cohenovo kappa). Keď existuje model, časť alertov vyberať podľa neistoty
@@ -121,7 +127,8 @@ modelu (active learning) a časť náhodne.
 
 ## 5. Signály (primárne pravidlá)
 
-Na každom TF (5m, 15m, 1h, 4h, 1d), všetko konfigurovateľné v `config.yaml`:
+Alerty na **1m, 5m a 15m**. Kontext z **1h a 4h** sa počíta tiež (zo 1m dát) a ide iba do features.
+Všetko je konfigurovateľné v `config.yaml`:
 
 - **RSI(14)**: vstup nad 80 / pod 20 aj návrat z pásma. **Kandidáti pri 70/30 a 75/25 sa ukladajú do DB bez
   notifikácie**, takže vlastné dáta neskôr ukážu, ktorý prah je na zlate lepší. Voliteľný ADX filter notifikácií (ADX > 30 → RSI extrém nehlásiť)
@@ -129,6 +136,11 @@ Na každom TF (5m, 15m, 1h, 4h, 1d), všetko konfigurovateľné v `config.yaml`:
 - **MA**: EMA 9/21, 50/200 (golden/death cross), cena cez MA200
 - **Objem**: spike ≥ 2× priemer posledných 20 sviečok; ku každému alertu sa ukladá `volume_ratio`
   a dá sa nastaviť filter „hlás iba s potvrdením objemom“ (alert sa uloží vždy, filter ovplyvní iba notifikáciu)
+- **Trendové čiary a kanály** (podrobne v RESEARCH.md §10): ATR ZigZag swingy → podpora/rezistencia z pivotov
+  (≥ 2–3 dotyky, žiadne zatvorenie za čiarou), paralelný kanál, regresný kanál ± 2σ, Donchian 20/55.
+  Alerty: prerazenie čiary/kanála, dotyk a odraz, nové Donchian maximum/minimum. Čiary sa nekreslia do minulosti:
+  vznikajú až po potvrdení pivotu a ostávajú, kým ich cena neprerazí.
+- Na **1m** prísnejšie filtre (väčší ZigZag prah, potvrdenie objemom pre notifikáciu), inak by kamaráta zahltil šum.
 - Neskôr: konfluencia (viac signálov naraz / naprieč TF), divergencie RSI/MACD (až po potvrdení pivotu)
 - Princíp: **logovať viac, než hlásiť.** Do DB ide každý kandidát, notifikácia iba pre to, čo prejde filtrami.
 
@@ -228,7 +240,7 @@ pochopenie aj na úpravy. Triple-barrier a purged CV sú ~50 riadkov každé, na
 
 ## 10. Nasadenie
 
-Jeden malý server alebo domáci PC (4 CPU, 4–8 GB RAM):
+**VPS** (4 CPU, 4–8 GB RAM, Linux):
 - `scanner`: beží stále (systemd alebo Docker), každú minútu
 - `label-ui`: Streamlit, prístup pre kamaráta cez heslo alebo cez Tailscale (nie otvorený do internetu)
 - denná záloha `ktma.sqlite`
@@ -241,20 +253,23 @@ Jeden malý server alebo domáci PC (4 CPU, 4–8 GB RAM):
 | Fáza | Obsah | Výsledok |
 |---|---|---|
 | **0** | schválenie tejto architektúry | – |
-| **1 – MVP** | ingest GC=F 1m, resampler, indikátory, pravidlá, SQLite, Telegram, backfill, outcomes, testy | alerty chodia a ukladajú sa |
-| **2 – Labelovanie** | Streamlit UI s grafom, labely + premeškané vstupy, export datasetu | kamarát označí prvých 300–500 alertov |
+| **1 – MVP** | ingest GC=F 1m (yfinance), resampler, indikátory, pravidlá, trendové čiary a kanály, SQLite, Telegram, backfill, outcomes, testy | alerty chodia a ukladajú sa |
+| **2 – Labelovanie** | Streamlit UI s grafom a čiarami, labely + SL/TP + premeškané vstupy, export datasetu | kamarát označí prvých 300–500 alertov |
 | **3 – Model** | logreg / LightGBM / TabPFN, purged CV, report, skóre v alertoch | alert s pravdepodobnosťou „dobrý vstup“ |
 | **4 – Rozšírenie** | striebro, OANDA real-time, história z Dukascopy/Databento, makro features, RunPod | lepší model |
 
 ---
 
-## 12. Otvorené otázky (treba rozhodnúť)
+## 12. Rozhodnutia (október 2026)
 
-1. **Živé dáta:** stačí na začiatok yfinance (zadarmo, pravdepodobne ~10 min oneskorenie), alebo hneď OANDA demo (real-time)?
-2. **Timeframy:** 5m, 15m, 1h, 4h, 1d, alebo aj 1m?
-3. **Kde to pobeží:** domáci PC / VPS / RunPod CPU pod?
-4. **Labely:** sedí `LONG / SHORT / NEVSTUPOVAŤ / NEVIEM` + istota 1–3? Má kamarát zadávať aj ideálny SL/TP?
-5. **Notifikácie:** Telegram, Discord, alebo oboje?
+| Otázka | Rozhodnutie | Dôsledok |
+|---|---|---|
+| Živé dáta | **yfinance** `GC=F` | zadarmo, skutočný objem; CME dáta sú však oneskorené ≥ 10 min, takže 1m alerty prídu ~10 sviečok neskoro. Na zber dát a labelovanie to nevadí; na živé 1m reakcie neskôr prepnúť na OANDA (zdroj je vymeniteľný) |
+| Timeframy | **1m, 5m, 15m** (+ 1h, 4h ako kontext) | 1m s prísnejšími filtrami |
+| Kde to beží | **VPS** | systemd alebo Docker, Streamlit za heslom alebo Tailscale |
+| Labely | `LONG / SHORT / NEVSTUPOVAŤ / NEVIEM` + istota 1–3 + **vstup, SL, TP** | presnejší label (R:R) |
+| Notifikácie | **Telegram** | bot token + chat id v `.env` |
+| Trendové čiary | **áno, automaticky a nonstop**, nemenia sa spätne | modul štruktúry trhu (§5, RESEARCH.md §10) |
 
 ---
 
@@ -265,6 +280,7 @@ Jeden malý server alebo domáci PC (4 CPU, 4–8 GB RAM):
 - MiniRocket: [arXiv 2012.08791](https://arxiv.org/pdf/2012.08791), [MultiRocket](https://arxiv.org/pdf/2102.00457)
 - Chronos-Bolt / TTM: [AutoGluon Chronos](https://auto.gluon.ai/1.5/_modules/autogluon/timeseries/models/chronos/model.html), [chronos-bolt-tiny](https://www.promptlayer.com/models/chronos-bolt-tiny)
 - Dáta: [tick-vault](https://github.com/keyhankamyar/TickVault), [oandapyV20](https://github.com/hootnot/oanda-api-v20), [Databento pricing](https://databento.com/pricing), [Databento MGC](https://databento.com/catalog/cme/GLBX.MDP3/futures/MGC)
+- Trendové čiary a kanály: pozri zdroje v [RESEARCH.md §10–11](RESEARCH.md)
 - Úložisko: [DuckDB vs SQLite](https://www.analyticsvidhya.com/blog/2026/01/duckdb-vs-sqlite/)
 - Open-source: [freqtrade](https://www.greptile.com/grepository/freqtrade), [Qlib](https://pypi.org/project/pyqlib), [Label Studio time series](https://labelstud.io/blog/release-080-time-series-labeling.html), [streamlit-lightweight-charts](https://pypi.org/project/streamlit-lightweight-charts/), [lightweight-charts-python](https://github.com/wenli/lightweight-charts-python)
 - Makro pre zlato: [Axiory: reálne výnosy a dolár](https://axiory.com/education/metals-trading-series/advanced-guide-to-trading-gold-xau-usd-how-to-use), [FXCM](https://www.fxcm.com/uk/insights/higher-real-yields-continue-to-pressure-gold/)

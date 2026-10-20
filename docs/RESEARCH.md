@@ -293,6 +293,112 @@ knižníc. Triple-barrier, trend-scanning a purged CV porovnáme s mlfinpy.
 
 ---
 
+## 10. Trendové čiary a kanály (automaticky, nonstop)
+
+### 10.1 Čo hovorí výskum
+- Najbližšie akademické dôkazy sa týkajú **„trading range breakout“** a **channel breakout** pravidiel (príbuzné s prerazením
+  trendovej čiary). V štúdii Sullivan, Timmermann & White (1999) na menách patrili k najlepším pravidlám kĺzavé priemery
+  a channel breakout 🟢 (prehľad Park & Irwin). Na indexových futures však vychádzajú nevýznamne, prípadne iba v jednom
+  trhu a nie v podobdobiach 🟡. **Štúdia, ktorá by testovala samotné trendové čiary, sa nenašla.**
+- Donchian breakout (Turtle: vstup 20/55 sviečok, výstup 10/20) je klasika trend-followingu na komoditách. Dôkazy,
+  ktoré sa dali nájsť, sú slabé (diplomová práca, marketing) 🟡🔴.
+- Regresné kanály (lineárna regresia ± k·σ, Raffov kanál) sú dobre popísané, ale **bez testov mimo vzorky** 🔴.
+  Prakticky sa odporúča: falošný breakout = cena vybehne z kanála, ale kanál sa nerozšíri. Skutočný breakout = kanál
+  sa hneď rozširuje 🔴. Kanál je skôr **kontext** (kde v trende sme) ako samostatný signál.
+- **Záver:** trendové čiary a kanály sú presne to, čo trader „vidí“ očami a čo indikátory nezachytia. Preto ich
+  chceme **kvantifikovať ako features a alerty a nechať kamaráta a model, aby rozhodli, kedy fungujú**. Netvrdíme, že
+  majú overený edge.
+
+### 10.2 Problém č. 1: prekresľovanie (repainting)
+Väčšina automatických trendlines na TradingView sa **prekresľuje**. Napríklad LuxAlgo „Trendlines with Breaks“ má
+čiary posunuté dozadu o dĺžku pivotu, nemenné sú iba signály prerazenia 🔴. Pivot (swing high/low) sa dá potvrdiť až
+po N sviečkach, takže čiara „nakreslená do minulosti“ v čase alertu neexistovala.
+→ **V KTMA čiara vzniká až v momente potvrdenia pivotu, ukladá sa s časom vzniku a do alertu ide jej snapshot.**
+Kamarát potom v UI vidí presne tie čiary, ktoré systém v tom momente poznal.
+
+### 10.3 Ako hľadať swingy (pivoty)
+| Metóda | Ako | Plus / mínus |
+|---|---|---|
+| Fraktál / pivot N-N | high je najvyšší z N sviečok vľavo aj vpravo | jednoduché, oneskorenie N sviečok, na 1m veľa šumu |
+| **ATR ZigZag** ⭐ | swing sa potvrdí, keď sa cena otočí o k × ATR od extrému | prispôsobí sa volatilite, potvrdené pivoty sa nemenia, posledná vetva sa hýbe 🔴 |
+| **Directional change** (intrinsic time) | to isté s percentuálnym prahom δ, akademicky popísané (Glattfelder, Olsen, Tsang) | filtruje šum a hodí sa na vysokú frekvenciu 🟡 |
+
+→ **ATR ZigZag** (k ≈ 1,5–3 podľa TF) je základ pre trendové čiary, kanály aj štruktúru trhu (HH/HL/LH/LL).
+
+### 10.4 Ako z pivotov urobiť čiary
+| Metóda | Zdroj | Poznámka |
+|---|---|---|
+| Páry pivotov + validácia (žiadne zatvorenie za čiarou, ≥ 3 dotyky, R²) | pytrendline, Coinmonks, Metrify | ⭐ ľahko vysvetliteľné, takto kreslí človek |
+| Optimalizovaný fit: najmenšie štvorce, potom posun a sklon tak, aby sa čiara dotýkala extrémov a všetky body boli na jednej strane | TradingView „Trend Lines by CR86“, neurotrader | stabilné, nepotrebuje pivoty |
+| Hough transformácia / sorted slope search | knižnica **trendln** (MIT) | dobré na hromadnú analýzu a porovnanie |
+
+**Návrh pre KTMA (kombinácia):**
+1. ATR ZigZag → potvrdené swing high / swing low.
+2. Kandidáti: dvojice posledných K swing highs (rezistencia) a swing lows (podpora).
+3. Validácia: medzi kotvami a odvtedy žiadne **zatvorenie** za čiarou o viac ako 0,1 × ATR, dotyk = do 0,2 × ATR.
+4. Skóre = počet dotykov + dĺžka + aktuálnosť − odchýlka. Na každej strane ostanú 1–2 najlepšie čiary.
+5. **Životný cyklus:** čiara žije, kým ju cena neprerazí (zatvorenie za čiarou o > x × ATR) alebo kým nevyprší. Nové pivoty
+   ju nenahradia, kým nie je prerazená, takže čiary **ostávajú stáť ako u človeka** a neskáču pri každej sviečke.
+6. **Kanál:** (a) paralelný kanál = trendová čiara + rovnobežka cez opačný extrém, (b) lineárna regresia ± 2σ za posledných
+   N sviečok, (c) Donchian 20/55 ako jednoduchý horizontálny kanál.
+
+### 10.5 Alerty a features z čiar a kanálov
+| Alert | Kedy |
+|---|---|
+| `TL_BREAK_UP` / `TL_BREAK_DOWN` | zatvorenie za rezistenciou/podporou (voliteľne s potvrdením objemu) |
+| `TL_TOUCH_SUPPORT` / `TL_TOUCH_RESISTANCE` | dotyk čiary a odraz (zatvorenie späť na správnej strane) |
+| `CHANNEL_BREAK_UP` / `CHANNEL_BREAK_DOWN` | zatvorenie mimo kanála |
+| `CHANNEL_TOUCH_UPPER` / `CHANNEL_TOUCH_LOWER` | dotyk hrany kanála |
+| `DONCHIAN_BREAK_20` / `_55` | nové 20/55-sviečkové maximum/minimum |
+
+Features: vzdialenosť k najbližšej podpore/rezistencii (÷ATR), sklon čiary (ATR/sviečka), počet dotykov, vek čiary,
+pozícia v kanáli (0 = spodok, 1 = vrch), šírka kanála ÷ ATR, R² regresie, zmena šírky (rozširovanie po breakoute),
+štruktúra trhu (posledné HH/HL/LH/LL).
+
+**Kamarát môže označiť aj samotnú čiaru** (dobrá / zlá / chýba), čím zlepšíme aj detekciu čiar, nielen alerty.
+
+---
+
+## 11. Nízke timeframy (1m, 5m, 15m)
+
+- **1m je najviac zašumený:** veľa falošných signálov, jedna veľká objednávka urobí knôt, spread a slippage zjedia veľkú
+  časť pohybu 🔴. Jeden predajca nenašiel na 1m ani 5m žiadnu konfiguráciu s profit factorom > 1 po slippage 🔴.
+- **5m je najčastejšie odporúčaný kompromis**, **15m** sa často odporúča na zlato pre automaty 🔴.
+- **Oneskorenie dát:** pri bezplatných CME dátach (≥ 10 min) príde alert na 1m **o 10 sviečok neskôr**. Na zber dát
+  a labelovanie to nevadí, na živé reakcie áno. → Na živé 1m alerty treba real-time zdroj (OANDA), dovtedy 1m slúži
+  hlavne na zber dát.
+- **Odporúčanie:** alerty na **1m, 5m a 15m**, ale **kontext z 1h a 4h** (trend, kanál, ADX) sa počíta tiež (zo 1m dát,
+  je to zadarmo) a ide do features. Na 1m prísnejšie filtre (ATR ZigZag s väčším k, potvrdenie objemom), aby kamarát
+  nebol zahltený.
+
+### Zdroje k sekciám 10–11
+[pytrendline](https://github.com/ednunezg/pytrendline) · [trendln](https://github.com/GregoryMorse/trendln) ·
+[trendln PyPI](https://pypi.org/project/trendln/) · [Trendline (ryanllu)](https://github.com/ryanllu/trendline) ·
+[shreyas-dhakal/trendlines](https://github.com/shreyas-dhakal/trendlines) ·
+[Detekcia kanálov v Pythone (Coinmonks)](https://medium.com/coinmonks/detecting-price-channels-in-python-c53fdae46fe3) ·
+[Channel breakout v Pythone](https://medium.com/@ziad.francis/step-by-step-guide-to-automating-price-channel-breakouts-using-python-596922df6e18) ·
+[Trend Lines by CR86](https://www.tradingview.com/script/3EKIOED4-trend-lines-by-cr86) ·
+[Automatic Trendline (Metrify)](https://vn.tradingview.com/script/kiKDpU85-Automatic-Trendline-Metrify) ·
+[LuxAlgo Trendlines with Breaks](https://www.tradingview.com/script/IYL88A1N-Trendlines-with-Breaks-LuxAlgo/) ·
+[LuxAlgo docs](https://www.luxalgo.com/library/indicator/trendlines-with-breaks/) ·
+[Lineárny regresný kanál (NexusFi)](https://nexusfi.com/a/indicators/linear-regression-channel) ·
+[LuxAlgo regresný kanál](https://www.luxalgo.com/library/concept/linear-regression-channel/) ·
+[Raffov kanál](https://blueberrymarkets.com/market-analysis/what-is-the-raff-channel-indicator/) ·
+[Raff na XAUUSD](https://my.tradingview.com/chart/XAUUSD/A3Eudme3-Raff-Regression-Channel-RRC) ·
+[Park & Irwin: profitabilita TA](https://farmdoc.illinois.edu/assets/marketing/agmas/AgMAS04_04.pdf) ·
+[Opening range breakout na futures](https://www.researchgate.net/publication/331076454_Assessing_the_Profitability_of_Timely_Opening_Range_Breakout_on_Index_Futures_Markets) ·
+[Donchian breakout (UCT)](https://open.uct.ac.za/handle/11427/21754) · [Donchian kanály](https://crosstrade.io/learn/technical-indicators/donchian-channels) ·
+[ATR ZigZag (TradingView)](https://www.tradingview.com/script/nXBPDpq7-ATR-ZigZag-Volatility-Filtered-Market-Structure/) ·
+[ATR ZigZag (MQL5)](https://www.mql5.com/en/code/22214) ·
+[Directional-change intrinsic time](https://en.wikipedia.org/wiki/Directional-change_intrinsic_time) ·
+[Theory of Intrinsic Time (arXiv 2406.07354)](https://arxiv.org/pdf/2406.07354) ·
+[DC prístup (Aloud, Tsang a kol.)](https://ideas.repec.org/a/zbw/ifweej/201236.html) ·
+[Zlato: porovnanie timeframov](https://goldenviperea.com/blog/gold-trading/gold-trading-timeframes) ·
+[Scalping indikátory (Excavo)](https://excavo.com/blog/best-scalping-indicators-tradingview) ·
+[Gold scalping timeframy](https://fxnx.com/en/blog/gold-scalping-timeframes-tested-2026-edge)
+
+---
+
 ## Zdroje
 **Indikátory:** [Lund – ziskovosť TA](https://lup.lub.lu.se/luur/download?func=downloadFile&recordOId=8905915&fileOId=8905916) ·
 [Forecasting gold with TA indicators](https://www.researchgate.net/publication/386486470_Forecasting_gold_price_using_technical_analysis_indicators) ·
