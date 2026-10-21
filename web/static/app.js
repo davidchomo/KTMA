@@ -1724,7 +1724,7 @@
     const per = TA.pivotPeriod(TF_SEC[tf]);
     let piv = techCache['piv|' + symbol + '|' + per];
     if (!piv || Date.now() - piv.at > 600000) {
-      const pb = await fetchBars(symbol, per === '12M' ? '1M' : per, null, per === '12M' ? 40 : 5);
+      const pb = await fetchBars(symbol, per === '12M' ? '1M' : per, null, per === '12M' ? 40 : 12);
       let prev = pb[pb.length - 2];
       if (per === '12M') {
         const y = new Date(pb[pb.length - 1].time * 1000).getUTCFullYear() - 1, ys = pb.filter(b => new Date(b.time * 1000).getUTCFullYear() === y);
