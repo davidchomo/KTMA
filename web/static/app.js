@@ -37,7 +37,7 @@
             lvl: { color: '#ffb74d', opacity: 75, width: 1, style: 2 } },
     ideas: { on: true, markers: true, history: true, notify: true, sound: false, minTouches: 0, minLevel: 0, rr: 2, minScore: 1, strat: {} },
     tint: { on: false, opacity: 18, label: true },
-    range: { on: false, minLen: 15, maxAtr: 3.5, minTests: 2, count: 6, bos: true, mid: true, fill: 10, ext: 40, width: 1.5, color: '#5b9cf6', up: '#00c853', down: '#ff1744' },
+    range: { on: false, solid: true, minLen: 15, maxAtr: 3.5, minTests: 2, count: 6, bos: true, mid: true, fill: 10, ext: 40, width: 1.5, color: '#5b9cf6', up: '#00c853', down: '#ff1744' },
     fork: { on: false, type: 'andrews', k: 0, count: 1, half: false, fill: 6, ext: 80, width: 1.5, up: '#26a69a', down: '#ef5350' },
     scan: { symbols: ['XAUUSD', 'XAGUSD', 'BTCUSD'], tfs: ['1m', '5m', '15m', '1h', '4h'], fresh: 3, near: true, minScore: 0, every: 0 },
     chat: { open: false, x: null, y: null, kind: 'msg', filter: 'all', attach: false },
@@ -2001,7 +2001,7 @@
     if (key === stKey) return;
     stKey = key;
     const Dc = n === D.t.length ? D : sliceD(D, n);
-    stR = { ranges: R.on ? ST.ranges(Dc, { minLen: R.minLen, maxAtr: R.maxAtr, minTests: R.minTests }).slice(-R.count) : [],
+    stR = { ranges: R.on ? ST.ranges(Dc, { minLen: R.minLen, maxAtr: R.maxAtr, minTests: R.minTests }).filter(r => !R.solid || (r.testsTop >= 3 && r.testsBot >= 3 && r.i1 - r.i0 >= Math.max(25, R.minLen))).slice(-R.count) : [],
             forks: F.on ? ST.forks(Dc, { k: F.k || TL.zigK(S.tf, TF_SEC[S.tf]), count: F.count, type: F.type }) : [] };
   }
   class StructLayer {
@@ -2061,7 +2061,7 @@
     const sw = (k, label) => `<div class="it" style="cursor:default"><span class="grow">${label}</span>${swatch(k, X[k])}</div>`;
     const html = what === 'range'
       ? `${cb('on', '<b>Range a BOS</b><br><small>zvýrazní pásmo bočného trhu (vrch a spodok) a označí prerazenie – BOS</small>')}
-        <div class="sec">Ako hľadať range</div>${rng('minLen', 8, 100, 1, 'Min. dĺžka (sviečok)')}${rng('maxAtr', 1.5, 8, 0.5, 'Max. výška (× ATR)')}${rng('minTests', 1, 5, 1, 'Min. dotykov každej hrany')}${rng('count', 1, 30, 1, 'Koľko posledných range ukázať')}
+        <div class="sec">Ako hľadať range</div>${cb('solid', 'Len pevne usadené range (každá hrana 3+ dotyky, aspoň 25 sviečok)')}${rng('minLen', 8, 100, 1, 'Min. dĺžka (sviečok)')}${rng('maxAtr', 1.5, 8, 0.5, 'Max. výška (× ATR)')}${rng('minTests', 1, 5, 1, 'Min. dotykov každej hrany')}${rng('count', 1, 30, 1, 'Koľko posledných range ukázať')}
         <div class="sec">Vzhľad</div>${cb('bos', 'Značka BOS pri prerazení')}${cb('mid', 'Stredná čiara (polovica range)')}${rng('fill', 0, 40, 1, 'Výplň', ' %')}${rng('ext', 0, 200, 5, 'Predĺženie živého range doprava')}
         ${sw('color', 'Farba range')}${sw('up', 'BOS nahor')}${sw('down', 'BOS nadol')}`
       : `${cb('on', '<b>Vidly (pitchfork)</b><br><small>z troch posledných swingov: v uptrende smerom hore, v downtrende dole</small>')}

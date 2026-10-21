@@ -33,7 +33,8 @@ body.lab-wide #labSide { width: min(1100px, 75vw); }
 .lab-row { display: flex; gap: 8px; align-items: center; padding: 5px 6px; border-bottom: 1px solid var(--border); cursor: pointer; font-size: 12px; }
 .lab-row:hover { background: var(--panel2); }
 .lab-row .k { width: 18px; text-align: center; }
-.lab-row .res { margin-left: auto; white-space: nowrap; }
+.lab-row .res { margin-left: auto; text-align: right; }
+.lab-row .wh { white-space: nowrap; }
 .lab-form { display: flex; flex-direction: column; gap: 6px; }
 .lab-form input, .lab-form textarea { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 6px; font: inherit; }
 .lab-prog { height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; margin: 6px 0; } .lab-prog i { display: block; height: 100%; background: #34d399; }

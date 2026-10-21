@@ -6,7 +6,7 @@
   const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const LSK = 'nxlab', load = () => { try { return JSON.parse(localStorage.getItem(LSK)) || null; } catch (e) { return null; } };
   const DEF = { tabs: [{ id: 't1', symbol: 'XAUUSD', tf: '1h', panels: ['rsi', 'macd'] }], active: 't1', side: 'learn', bars: 3000,
-                show: { event: true, tl: true, range: true, case: true, match: true, lines: true }, el: { kind: 'event' }, scanned: {} };
+                show: { event: true, tl: false, range: true, case: true, match: true, lines: true }, el: { kind: 'event' }, scanned: {} };
   const S = Object.assign(JSON.parse(JSON.stringify(DEF)), load() || {});
   const save = () => { try { localStorage.setItem(LSK, JSON.stringify(S)); } catch (e) {} };
   const author = (() => { try { return JSON.parse(localStorage.getItem('nx2') || '{}').labeler || ''; } catch (e) { return ''; } })();
@@ -206,7 +206,7 @@
         ${s.now.length ? `<div class="lab-card"><h4>Na tejto sviečke</h4>${s.now.map(r => `${LAB.KINDS[r.kind]} ${r.dir > 0 ? '▲' : '▼'}`).join('<br>')}</div>` : ''}
         <div class="sec">Najpodobnejšie situácie z minulosti</div>
         ${(s.near || []).slice(0, 12).map(({ r, d }) => `<div class="lab-row" data-go="${r.symbol}|${r.timeframe}|${r.t0}"><span class="k">${{ event: '⚡', tl: '📐', range: '▭', case: '✂' }[r.kind]}</span>
-          <span>${r.symbol} ${r.timeframe} · ${when(r.t0)} ${r.dir > 0 ? '▲' : '▼'}</span><span class="muted">${LAB.simPct(d)} %</span><span class="res" style="color:${OUT(r)}">${res(r)}</span></div>`).join('')}
+          <span class="wh">${r.symbol} ${r.timeframe} ${r.dir > 0 ? '▲' : '▼'}<br><small class="muted">${when(r.t0)} · podobnosť ${LAB.simPct(d)} %</small></span><span class="res" style="color:${OUT(r)}">${res(r)}</span></div>`).join('')}
         <div class="sec">Podobné ako uložené pohyby v histórii grafu (🎯)</div>
         <div class="muted">${matches.length ? `${matches.length} sviečok s podobnosťou ≥ 72 %. Pozri na grafe, či z nich išla cena ako v tvojom pohybe.` : 'Žiadne – ulož pohyb cez ✂ Uložiť pohyb.'}</div>`;
     } else if (S.side === 'moves') {
