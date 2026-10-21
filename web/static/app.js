@@ -47,13 +47,22 @@
     magnet: 'off', drawings: {}, toolDefaults: {}, legendOpen: true, labeler: '',
     idea: { open: false, x: null, y: null, tab: 'alerts', blind: false, tfs: ['1m', '5m', '15m'], notified: true, unlabeled: true, order: 'new' },
     flow: { open: false, x: null, y: null }, folders: [],
+    layout: { n: 1, two: 'h', sync: true, panes: [{ tf: '15m' }, { tf: '1h' }, { tf: '4h' }] },
     nexus: { hudX: null, hudY: null, avatar: '', quote: 0 },
     account: { start: 10000, positions: [], history: [] },
     robot: { on: false, symbols: ['XAUUSD'], tfs: ['1m', '5m', '15m', '1h'], period: 10, sharpBars: 3, sharpAtr: 2, onSharp: 'both', paper: true, lots: 0.1, state: {}, log: [] },
     savedAt: 0,
   };
   const merge = (a, b) => { const o = { ...a }; for (const k in b || {}) o[k] = a && a[k] && typeof a[k] === 'object' && !Array.isArray(a[k]) && b[k] && typeof b[k] === 'object' && !Array.isArray(b[k]) ? merge(a[k], b[k]) : b[k]; return o; };
-  let S = merge(DEF, LS.get('nx2', {}));
+  // ?embed=2..4 = one of the extra charts of the multi-chart layout: its own settings key, no chat / robot / server sync
+  const QS = new URLSearchParams(location.search), EMBED = QS.get('embed'), KEY = EMBED ? 'nx2:pane' + EMBED : 'nx2';
+  let S = merge(DEF, LS.get(KEY, null) || LS.get('nx2', {}));
+  if (EMBED) {
+    if (QS.get('symbol')) S.symbol = QS.get('symbol');
+    if (QS.get('tf')) S.tf = QS.get('tf');
+    S.toolbar = 'top'; S.chat.open = S.news.open = S.idea.open = S.flow.open = false; S.robot = { ...S.robot, on: false };
+    document.body.classList.add('embed');
+  }
   if (!Array.isArray(S.studies)) S.studies = [{ type: 'volume' }];
   let studies = S.studies.map(KS.normalize).filter(Boolean);
   let syncT = null;
@@ -61,11 +70,12 @@
   function save() {
     S.studies = studies.filter(s => !s.temp).map(({ temp, ...s }) => s);
     S.savedAt = Date.now();
-    LS.set('nx2', S);
+    LS.set(KEY, S);
     record();
-    if (S.labeler) { clearTimeout(syncT); syncT = setTimeout(() => fetch(`api/prefs/${encodeURIComponent(S.labeler)}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(S) }).catch(() => {}), 1500); }
+    if (S.labeler && !EMBED) { clearTimeout(syncT); syncT = setTimeout(() => fetch(`api/prefs/${encodeURIComponent(S.labeler)}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(S) }).catch(() => {}), 1500); }
   }
   async function pullPrefs(name) {
+    if (EMBED) return false;
     try {
       const r = await (await fetch(`api/prefs/${encodeURIComponent(name)}`)).json();
       if (r && r.savedAt && r.savedAt > S.savedAt) { S = merge(DEF, { ...r, labeler: name }); studies = S.studies.map(KS.normalize).filter(Boolean); LS.set('nx2', S); return true; }
@@ -305,13 +315,7 @@
   const fmtVol = v => (v >= 1e6 ? (v / 1e6).toFixed(1) + 'M' : v >= 1e4 ? (v / 1e3).toFixed(0) + 'k' : v >= 1e3 ? (v / 1e3).toFixed(1) + 'k' : v >= 100 ? v.toFixed(0) : v >= 10 ? v.toFixed(1) : v.toFixed(2));
 
   // ---- chart --------------------------------------------------------------------------------------
-  let bubbles = null, posLines = [], posLineDefs = [];
-  // entry / SL / TP lines of the paper positions (only when switched on in the position card settings)
-  function drawPosLines() {
-    if (!main) return;
-    posLines.forEach(l => { try { main.removePriceLine(l); } catch (e) {} });
-    posLines = posLineDefs.map(d => main.createPriceLine({ price: d.price, color: d.color, lineWidth: 1, lineStyle: d.style ?? 2, axisLabelVisible: true, title: d.title }));
-  }
+  let bubbles = null;
   let chart = null, main = null, units = [], markersApi = null, alertMark = null;
   const el = $('#chart');
   const tzFmt = {};
@@ -337,6 +341,102 @@
   }
   const shown = s => s.visible && s.tfs[S.tf] !== false;
 
+  // ---- trades on the chart: SL / TP / partial TP lines you drag with the mouse, entry → exit connectors -------
+  // The data comes from NEXUS (in a small chart of the 4-chart layout: from the main window's NEXUS).
+  const NX = () => (EMBED ? (parent.NEXUS || null) : window.NEXUS);
+  function logicalOf(t) {
+    const T = D ? D.t : [], n = T.length, bs = TF_SEC[S.tf];
+    if (!n) return 0;
+    if (t <= T[0]) return (t - T[0]) / bs;
+    if (t >= T[n - 1]) return n - 1 + (t - T[n - 1]) / bs;
+    let lo = 0, hi = n - 1;
+    while (hi - lo > 1) { const m = (lo + hi) >> 1; if (T[m] <= t) lo = m; else hi = m; }
+    return lo + (t - T[lo]) / (T[hi] - T[lo]);
+  }
+  class TradeLines {
+    constructor() { this.p = null; this.hits = []; this.hover = null; this.drag = null; }
+    attached(p) { this.p = p; } detached() { this.p = null; }
+    update() { if (this.p) this.p.requestUpdate(); }
+    updateAllViews() {}
+    paneViews() { return [{ zOrder: () => 'top', renderer: () => ({ draw: target => this.draw(target) }) }]; }
+    draw(target) {
+      const nx = NX();
+      this.hits = [];
+      if (!this.p || !nx || !nx.chartLines || !D) return;
+      const series = this.p.series, ts = this.p.chart.timeScale(), lines = nx.chartLines(S.symbol), segs = nx.chartTrades(S.symbol);
+      target.useMediaCoordinateSpace(({ context: ctx, mediaSize: { width: W } }) => {
+        // closed trades: a dotted connector from the entry to the exit, green = profit, red = loss
+        for (const s of segs) {
+          const x1 = ts.logicalToCoordinate(logicalOf(s.t1)), x2 = ts.logicalToCoordinate(logicalOf(s.t2)), y1 = series.priceToCoordinate(s.p1), y2 = series.priceToCoordinate(s.p2);
+          if ([x1, x2, y1, y2].some(v => v === null)) continue;
+          ctx.strokeStyle = s.win ? S.look.up : S.look.down; ctx.lineWidth = 1.5; ctx.setLineDash([3, 3]);
+          ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke(); ctx.setLineDash([]);
+          for (const [x, y] of [[x1, y1], [x2, y2]]) { ctx.beginPath(); ctx.arc(x, y, 3, 0, 2 * Math.PI); ctx.fillStyle = ctx.strokeStyle; ctx.fill(); }
+        }
+        ctx.font = '600 11px system-ui'; ctx.textBaseline = 'middle';
+        for (const l of lines) {
+          const y = series.priceToCoordinate(l.price);
+          if (y === null) continue;
+          const key = lineKey(l), hot = this.hover === key || (this.drag && this.drag.key === key);
+          ctx.strokeStyle = l.color; ctx.lineWidth = hot ? 2 : 1; ctx.setLineDash(l.solid ? [] : [6, 4]); ctx.globalAlpha = l.plan ? 0.85 : 1;
+          ctx.beginPath(); ctx.moveTo(0, Math.round(y) + 0.5); ctx.lineTo(W, Math.round(y) + 0.5); ctx.stroke(); ctx.setLineDash([]);
+          // the label with the money result, a grip to drag and ✕ to remove
+          const text = (l.drag ? '⇕ ' : '') + l.text, tw = ctx.measureText(text).width, bw = tw + 14 + (l.del || l.plan ? 18 : 0), bx = W - bw - 70, by = Math.round(y) - 9;
+          ctx.fillStyle = l.color; ctx.globalAlpha = hot ? 1 : 0.92;
+          ctx.beginPath(); ctx.roundRect ? ctx.roundRect(bx, by, bw, 18, 4) : ctx.rect(bx, by, bw, 18); ctx.fill(); ctx.globalAlpha = 1;
+          ctx.fillStyle = '#fff'; ctx.fillText(text, bx + 7, by + 9.5);
+          if (l.del || l.plan) { ctx.fillStyle = 'rgba(0,0,0,.25)'; ctx.fillRect(bx + bw - 18, by, 18, 18); ctx.fillStyle = '#fff'; ctx.fillText('✕', bx + bw - 13, by + 9.5); }
+          this.hits.push({ l, y, x0: bx + bw - 18, x1: bx + bw, del: !!(l.del || l.plan) });
+        }
+      });
+    }
+    lineAt(x, y) {
+      let best = null;
+      for (const h of this.hits) if (h.l.drag && Math.abs(h.y - y) <= 6 && (!best || Math.abs(h.y - y) < Math.abs(best.y - y))) best = h;
+      return best;
+    }
+  }
+  let tradeLines = null;
+  const lineKey = l => `${l.pid}|${l.kind}|${l.idx ?? ''}`;
+  function refreshTrades(markers) {
+    if (tradeLines) tradeLines.update();
+    if (markers) updateMarkers();
+  }
+  window.NX_refreshTrades = refreshTrades;
+  // drag a level: capture on the wrapper, before the drawing tools and the chart's own panning
+  $('#chartWrap').addEventListener('pointerdown', e => {
+    const nx = NX();
+    if (!tradeLines || !nx || !chart || e.button !== 0 || e.target.closest('.no-chart')) return;
+    const r = el.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top;
+    if (x > chart.paneSize(0).width) return;
+    const h = tradeLines.lineAt(x, y) || tradeLines.hits.find(q => q.del && Math.abs(q.y - y) <= 9 && x >= q.x0 && x <= q.x1);
+    if (!h) return;
+    e.stopPropagation(); e.preventDefault();
+    if (h.del && x >= h.x0 && x <= h.x1) { nx.removeLine(h.l.pid, h.l.kind, h.l.idx); refreshTrades(true); return; }
+    tradeLines.drag = { key: lineKey(h.l), l: h.l };
+    chart.applyOptions({ handleScroll: false, handleScale: false });
+    const move = ev => {
+      const yy = ev.clientY - el.getBoundingClientRect().top, price = main.coordinateToPrice(yy);
+      if (price === null) return;
+      nx.moveLine(h.l.pid, h.l.kind, h.l.idx, price, false); tradeLines.update();
+    };
+    const up = ev => {
+      window.removeEventListener('pointermove', move, true); window.removeEventListener('pointerup', up, true);
+      const yy = ev.clientY - el.getBoundingClientRect().top, price = main.coordinateToPrice(yy);
+      if (price !== null) nx.moveLine(h.l.pid, h.l.kind, h.l.idx, price, true);
+      tradeLines.drag = null; el.style.cursor = '';
+      const o = chartOptions(); chart.applyOptions({ handleScroll: o.handleScroll, handleScale: o.handleScale });
+      refreshTrades(false);
+    };
+    window.addEventListener('pointermove', move, true); window.addEventListener('pointerup', up, true);
+  }, true);
+  $('#chartWrap').addEventListener('pointermove', e => {
+    if (!tradeLines || !chart || tradeLines.drag) return;
+    const r = el.getBoundingClientRect(), h = tradeLines.lineAt(e.clientX - r.left, e.clientY - r.top);
+    const key = h ? lineKey(h.l) : null;
+    if (key !== tradeLines.hover) { tradeLines.hover = key; el.style.cursor = h ? 'ns-resize' : ''; tradeLines.update(); }
+  });
+
   function buildChart(keepRange) {
     // undefined = keep the current zoom; null = new data, start fresh (alert focus or the newest bars)
     const range = keepRange === undefined ? (chart ? chart.timeScale().getVisibleLogicalRange() : null) : keepRange;
@@ -345,7 +445,6 @@
     disp = transform(src()); D = toD(disp);
     chart = LW.createChart(el, chartOptions());
     main = mainSeries(chart);
-    posLines = []; drawPosLines();
     main.setData(mainData());
     markersApi = LW.createSeriesMarkers(main, []);
     units = [];
@@ -361,6 +460,7 @@
     if (panes.length > 1) { panes[0].setStretchFactor(Math.max(2, 6 - panes.length)); for (let i = 1; i < panes.length; i++) panes[i].setStretchFactor(1); }
     autoLayer = new AutoLayer(); main.attachPrimitive(autoLayer);
     bubbles = new Bubbles(); main.attachPrimitive(bubbles);
+    tradeLines = new TradeLines(); main.attachPrimitive(tradeLines);
     computeTL(); checkNewIdeas();
     updateMarkers();
     draw.attach(main);
@@ -489,6 +589,16 @@
       const list = S.ideas.history ? tlIdeas : tlIdeas.slice(-1);
       for (const x of list) m.push({ time: x.time, position: x.dir > 0 ? 'belowBar' : 'aboveBar', color: x.dir > 0 ? S.look.up : S.look.down,
         shape: x.dir > 0 ? 'arrowUp' : 'arrowDown', text: '⚡' + (x.result === null ? '' : x.result > 0 ? '✓' : '✗'), size: 1 });
+    }
+    // your paper trades: BUY / SELL with the lots at the entry, ✕ with the result at the exit
+    const nx = NX();
+    if (nx && nx.chartMarkers && D && D.t.length) {
+      const T = D.t, barAt = t => { if (t < T[0]) return null; let lo = 0, hi = T.length - 1; while (lo < hi) { const k = (lo + hi + 1) >> 1; if (T[k] <= t) lo = k; else hi = k - 1; } return T[lo]; };
+      for (const x of nx.chartMarkers(S.symbol)) {
+        const time = barAt(x.time); if (time === null) continue;
+        if (x.kind === 'in') m.push({ time, position: x.dir > 0 ? 'belowBar' : 'aboveBar', color: x.dir > 0 ? '#00c853' : '#ff1744', shape: x.dir > 0 ? 'arrowUp' : 'arrowDown', text: x.text, size: 1.6 });
+        else m.push({ time, position: x.dir > 0 ? 'aboveBar' : 'belowBar', color: x.win ? '#00c853' : '#ff1744', shape: 'square', text: x.text, size: 1 });
+      }
     }
     if (alertMark) {
       const i = disp.findIndex(b => b.time >= alertMark.time);
@@ -645,7 +755,7 @@
     fitToolbar();
   }
   // ---- undo / redo: drawings, indicators, symbol, timeframe, chart type, look… (not window positions) ----
-  const HIST_SKIP = ['savedAt', 'chat', 'news', 'idea', 'labeler', 'legendOpen', 'lastToolbar', 'flow', 'folders', 'nexus', 'account', 'robot'];
+  const HIST_SKIP = ['layout', 'savedAt', 'chat', 'news', 'idea', 'labeler', 'legendOpen', 'lastToolbar', 'flow', 'folders', 'nexus', 'account', 'robot'];
   function snap() { const o = { ...S }; HIST_SKIP.forEach(k => delete o[k]); return JSON.stringify(o, (k, v) => (k[0] === '_' ? undefined : v)); }
   function pushHist() {
     clearTimeout(histT); histT = null;
@@ -674,7 +784,12 @@
   $('#bUndo').onclick = () => stepHist(-1);
   $('#bRedo').onclick = () => stepHist(1);
 
-  function setAndReload(changes) { Object.assign(S, changes); save(); applyToolbar(); exitReplay(); view = { mode: 'live' }; alertMark = null; ideaPos = null; load(); FLOW.setSymbol({ id: S.symbol, ...sym() }); }
+  function setAndReload(changes) { Object.assign(S, changes); save(); applyToolbar(); exitReplay(); view = { mode: 'live' }; alertMark = null; ideaPos = null; load(); FLOW.setSymbol({ id: S.symbol, ...sym() });
+    if (EMBED) { if (parent.NX_paneChanged) parent.NX_paneChanged(+EMBED, { symbol: S.symbol, tf: S.tf }); }
+    else if (S.layout.sync && changes.symbol) $$('#paneGrid iframe.pane').forEach(f => { try { f.contentWindow.NX_setSymbol(S.symbol); } catch (e) {} });
+  }
+  window.NX_setSymbol = s => { if (s !== S.symbol) setAndReload({ symbol: s }); };
+  window.NX_setTf = tf => { if (tf !== S.tf) setAndReload({ tf }); };
 
   $('#bSymbol').onclick = e => openMenu(e.currentTarget, META.symbols.map(s => `<div class="it ${s.id === S.symbol ? 'on' : ''}" data-s="${s.id}"><span class="ic">◆</span><span class="grow">${esc(s.name)}<br><small>${esc(s.desc)}</small></span></div>`).join(''),
     m => $$('[data-s]', m).forEach(x => x.onclick = () => { closeMenu(); setAndReload({ symbol: x.dataset.s }); }), { side: side() });
@@ -1638,6 +1753,48 @@
   }
   $('#bFlow').onclick = e => flowMenu(e.currentTarget);
 
+  // ---- 1–4 charts on one screen: the extra ones are small copies of this page (?embed=2..4) ---------------
+  const LAYOUTS = [['1', 1, 'h', 'Jeden graf'], ['2h', 2, 'h', 'Dva vedľa seba'], ['2v', 2, 'v', 'Dva pod sebou'], ['3', 3, 'h', 'Tri (veľký vľavo)'], ['4', 4, 'h', 'Štyri (2 × 2)']];
+  const layoutIcon = k => `<svg viewBox="0 0 24 16" width="26" height="18" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="1" y="1" width="22" height="14" rx="1.5"/>${
+    { '2h': '<path d="M12 1v14"/>', '2v': '<path d="M1 8h22"/>', 3: '<path d="M14 1v14M14 8h9"/>', 4: '<path d="M12 1v14M1 8h22"/>' }[k] || ''}</svg>`;
+  function applyLayout() {
+    if (EMBED) return;
+    const L = S.layout, wrap = $('#chartWrap');
+    let grid = $('#paneGrid');
+    if (!grid) { grid = document.createElement('div'); grid.id = 'paneGrid'; wrap.parentNode.insertBefore(grid, wrap); grid.appendChild(wrap); }
+    grid.className = 'lay-' + (L.n === 2 ? '2' + L.two : L.n);
+    const want = Math.max(0, Math.min(3, L.n - 1)), frames = $$('iframe.pane', grid);
+    frames.forEach((f, i) => { if (i >= want) f.remove(); });
+    for (let i = frames.length; i < want; i++) {
+      const p = L.panes[i] = L.panes[i] || { tf: ['15m', '1h', '4h'][i] };
+      const f = document.createElement('iframe');
+      f.className = 'pane'; f.dataset.i = i; f.title = `Graf ${i + 2}`;
+      f.src = `./?embed=${i + 2}&symbol=${encodeURIComponent(L.sync ? S.symbol : p.symbol || S.symbol)}&tf=${encodeURIComponent(p.tf)}`;
+      grid.appendChild(f);
+    }
+    $('#bLayout').classList.toggle('on', L.n > 1);
+    setTimeout(fitToolbar, 50);
+  }
+  window.NX_paneChanged = (n, x) => { const p = S.layout.panes[n - 2]; if (p) { Object.assign(p, x); save(); } };
+  function layoutMenu(anchor) {
+    const L = S.layout, cur = () => (L.n === 2 ? '2' + L.two : String(L.n));
+    const html = () => `<div class="sec">Rozloženie grafov</div><div class="lay-pick">${LAYOUTS.map(([k, , , n]) => `<span data-ly="${k}" class="${cur() === k ? 'on' : ''}" title="${n}">${layoutIcon(k)}<small>${n}</small></span>`).join('')}</div>
+      ${L.n > 1 ? `<label class="it"><input type="checkbox" data-sync ${L.sync ? 'checked' : ''}><span class="grow">Rovnaký symbol vo všetkých grafoch</span></label>
+      ${L.panes.slice(0, L.n - 1).map((p, i) => `<div class="lbl" style="padding:0 12px">Graf ${i + 2} – timeframe</div><div class="tchips">${['1m', '5m', '15m', '30m', '1h', '4h', '1d', '1w'].map(tf => `<span data-pane="${i}" data-ptf="${tf}" class="${p.tf === tf ? 'on' : ''}">${tf}</span>`).join('')}</div>`).join('')}
+      <div class="muted" style="font-size:11px;padding:4px 12px 6px">V každom grafe môžeš zmeniť aj symbol, typ a indikátory jeho vlastným panelom. Obchody a čiary SL / TP vidíš vo všetkých.</div>` : ''}`;
+    const bind = m => {
+      $$('[data-ly]', m).forEach(x => x.onclick = () => { const [, n, two] = LAYOUTS.find(l => l[0] === x.dataset.ly); L.n = n; L.two = two; save(); applyLayout(); m.innerHTML = html(); bind(m); });
+      const sy = $('[data-sync]', m); if (sy) sy.onchange = () => { L.sync = sy.checked; save(); if (L.sync) $$('#paneGrid iframe.pane').forEach(f => { try { f.contentWindow.NX_setSymbol(S.symbol); } catch (e) {} }); };
+      $$('[data-ptf]', m).forEach(x => x.onclick = () => {
+        const i = +x.dataset.pane; L.panes[i].tf = x.dataset.ptf; save();
+        const f = $(`#paneGrid iframe.pane[data-i="${i}"]`); try { f.contentWindow.NX_setTf(x.dataset.ptf); } catch (e) {}
+        m.innerHTML = html(); bind(m);
+      });
+    };
+    openMenu(anchor, html(), bind, { side: side(), cls: 'lay-menu' });
+  }
+  $('#bLayout').onclick = e => layoutMenu(e.currentTarget);
+
   // ---- styles: chart backgrounds (seasons) and colour themes ---------------------------------------
   const bgLayer = $('#bgLayer'), bgDim = $('#bgDim');
   const bgId = () => (S.bgImg.auto ? seasonId() : S.bgImg.id);
@@ -2111,7 +2268,9 @@
     if (!SYM[S.symbol]) S.symbol = 'XAUUSD';
     if (S.labeler) await pullPrefs(S.labeler);
     applyPanel(); applyBg(); applyBright(); applyToolbar();
+    applyLayout();
     await load();
+    if (EMBED) { hist = [snap()]; hpos = 0; paintHist(); return; }
     if (S.idea.open) toggleIdea(true);
     if (S.chat.open) toggleChat(true); else pollChat(true);
     if (S.news.open) toggleNews(true);
@@ -2129,7 +2288,7 @@
       onRobot: () => {},
       chartSymbol: () => S.symbol,
       livePrice: id => (id === S.symbol && view.mode === 'live' && !view.replay && raw.length ? raw[raw.length - 1].close : NaN),
-      setLines: defs => { posLineDefs = defs; drawPosLines(); },
+      onTrades: markers => { refreshTrades(markers); $$('#paneGrid iframe.pane').forEach(f => { try { f.contentWindow.NX_refreshTrades(markers); } catch (e) {} }); },
     });
   })();
 })();

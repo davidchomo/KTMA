@@ -622,3 +622,59 @@ body:has(#nexusPage.open) #posLayer, body:has(#libPage.open) #posLayer, body:has
 .nx-ctl { display: inline-flex; gap: 0; opacity: .4; margin-left: 6px; }
 .nx-card > header:hover .nx-ctl { opacity: 1; }
 .nx-ctl .ib { font-size: 11px; padding: 1px 4px; }
+
+/* ---- 1–4 charts ---- */
+#paneGrid { flex: 1 1 auto; min-width: 0; min-height: 0; display: grid; gap: 3px; background: var(--border); }
+#paneGrid > * { min-width: 0; min-height: 0; }
+#paneGrid iframe.pane { width: 100%; height: 100%; border: 0; display: block; background: var(--bg); }
+#paneGrid.lay-1 { grid-template: 1fr / 1fr; }
+#paneGrid.lay-2h { grid-template: 1fr / 1fr 1fr; }
+#paneGrid.lay-2v { grid-template: 1fr 1fr / 1fr; }
+#paneGrid.lay-3 { grid-template: 1fr 1fr / 1.6fr 1fr; } #paneGrid.lay-3 #chartWrap { grid-row: span 2; }
+#paneGrid.lay-4 { grid-template: 1fr 1fr / 1fr 1fr; }
+.lay-pick { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; padding: 4px 10px 8px; }
+.lay-pick span { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 6px 2px; border-radius: 6px; cursor: pointer; color: var(--muted); border: 1px solid var(--border); }
+.lay-pick span small { font-size: 9px; text-align: center; line-height: 1.1; }
+.lay-pick span:hover { color: var(--text); } .lay-pick span.on { color: var(--text); border-color: var(--accent); background: rgba(41,98,255,.15); }
+.dd.lay-menu { width: 380px; }
+.dd.lay-menu label.it input { margin: 0 8px 0 2px; accent-color: var(--accent); }
+body.embed #tbMid, body.embed #tbRight, body.embed .tb-div, body.embed #nexusHud, body.embed #posLayer, body.embed #showToolbar { display: none !important; }
+body.embed #toolbar { padding: 1px 3px; }
+
+/* ---- position card: stats, partial take profits, expected result ---- */
+.pc-stats { display: flex; gap: 10px; font-size: 11px; color: #9598a1; margin-bottom: 6px; font-variant-numeric: tabular-nums; }
+.pc-stats .pc-best { color: #4cd6b5; } .pc-stats .pc-worst { color: #ff7b86; } .pc-stats .pc-dur { color: #d1d4dc; }
+.pc-add { display: flex; gap: 4px; margin-bottom: 5px; }
+.pc-add button { flex: 1; background: rgba(255,255,255,.04); border: 1px dashed rgba(255,255,255,.2); color: #b2b5be; border-radius: 5px; padding: 2px 5px; cursor: pointer; font-size: 11px; }
+.pc-add button:hover { border-color: var(--pc); color: #fff; }
+.pc-ptps div { display: flex; align-items: center; gap: 4px; font-size: 11px; margin-bottom: 3px; color: #b2b5be; }
+.pc-ptps input { width: 42px; background: rgba(0,0,0,.35); color: #e8eaf0; border: 1px solid rgba(255,255,255,.12); border-radius: 4px; padding: 1px 3px; font: inherit; }
+.pc-ptps button { margin-left: auto; background: none; border: 0; color: #9598a1; cursor: pointer; }
+.pc-exp { font-size: 11px; color: #9598a1; margin: 2px 0 6px; }
+.pc-exp b.up, .pc-ptps b.up { color: #4cd6b5; } .pc-exp b.dn { color: #ff7b86; }
+
+/* ---- 💹 trade ticket ---- */
+#ticket { position: absolute; pointer-events: auto; transform-origin: top left; width: 250px; border-radius: 12px; font-size: 12px; color: #e8eaf0;
+          background: rgba(18, 21, 30, .96); border: 1px solid rgba(255,255,255,.12); box-shadow: 0 10px 30px rgba(0,0,0,.55); }
+.tk-h { display: flex; align-items: center; gap: 4px; padding: 6px 6px 6px 10px; cursor: grab; user-select: none; border-bottom: 1px solid rgba(255,255,255,.07); font-weight: 600; }
+.tk-h button { background: none; border: 0; color: #9598a1; cursor: pointer; padding: 0 4px; font-size: 13px; }
+.tk-h button:hover { color: #fff; }
+#ticket.min .tk-b { display: none; }
+.tk-b { padding: 8px 10px 10px; }
+.tk-lots { display: flex; align-items: center; gap: 4px; }
+.tk-lots button { width: 28px; height: 28px; border-radius: 6px; border: 1px solid rgba(255,255,255,.12); background: rgba(255,255,255,.05); color: #fff; font-size: 16px; cursor: pointer; }
+.tk-lots input { flex: 1; min-width: 0; height: 28px; text-align: center; background: rgba(0,0,0,.35); color: #fff; border: 1px solid rgba(255,255,255,.12); border-radius: 6px; font: 700 14px system-ui; }
+.tk-q { display: flex; gap: 3px; margin: 6px 0 8px; }
+.tk-q span { flex: 1; text-align: center; font-size: 11px; padding: 2px 0; border-radius: 10px; border: 1px solid rgba(255,255,255,.1); color: #9598a1; cursor: pointer; }
+.tk-q span.on { border-color: #5b9cf6; color: #fff; background: rgba(41,98,255,.25); }
+.tk-bs { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.tk-bs button { border: 0; border-radius: 8px; padding: 7px 4px; color: #fff; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 1px; }
+.tk-bs button small { font-size: 10px; letter-spacing: .08em; opacity: .9; } .tk-bs button b { font-size: 15px; font-variant-numeric: tabular-nums; }
+.tk-sell { background: linear-gradient(180deg, #ff4d5e, #c81e2c); } .tk-buy { background: linear-gradient(180deg, #19b394, #067a63); }
+.tk-bs button:hover { filter: brightness(1.12); } .tk-bs button:active { transform: translateY(1px); }
+.tk-lv { display: flex; gap: 12px; margin: 8px 0 4px; }
+.tk-lv label { display: flex; align-items: center; gap: 4px; cursor: pointer; }
+.tk-lv input { accent-color: #5b9cf6; }
+.tk-exp { font-size: 11px; min-height: 16px; }
+.tk-exp b.up { color: #4cd6b5; } .tk-exp b.dn { color: #ff7b86; }
+.tk-hint { font-size: 10px; margin-top: 4px; line-height: 1.3; }

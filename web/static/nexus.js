@@ -36,6 +36,7 @@ const NEXUS = (() => {
   const A = () => S().account;
   function openPos(o) {
     const p = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 5), time: Date.now(), ...o };
+    p.lots0 = p.lots0 || p.lots;
     A().positions.push(p); ctx.save(); if (layer) paintCards(); return p;
   }
   function closePos(p, price, reason) {
@@ -61,11 +62,7 @@ const NEXUS = (() => {
         const bars = await ctx.fetchBars(id, '1m', null, 10), b = bars[bars.length - 1];
         if (!b) continue;
         prices[id] = b.close;
-        for (const p of [...A().positions].filter(x => x.symbol === id)) {
-          const hitSL = p.sl && (p.dir > 0 ? b.low <= p.sl : b.high >= p.sl), hitTP = p.tp && (p.dir > 0 ? b.high >= p.tp : b.low <= p.tp);
-          if (hitSL) { closePos(p, p.sl, 'stop loss'); ctx.toast(`🛑 ${sym(id).name}: stop loss ${f2(p.sl, id)}`); }
-          else if (hitTP) { closePos(p, p.tp, 'take profit'); ctx.toast(`🎯 ${sym(id).name}: take profit ${f2(p.tp, id)}`); }
-        }
+        if (!Number.isFinite(ctx.livePrice(id))) checkHits(id, b.close, b.close);   // the open chart is checked on every tick
       } catch (e) {}
     }
     if (page && page.classList.contains('open')) paintLive();
@@ -183,11 +180,13 @@ const NEXUS = (() => {
       const m = UI.openMenu(b, `<div class="sec">◆ NEXUS</div><div class="lbl" style="padding:0 12px">Veľkosť</div>
         <span class="op" style="padding:0 12px 8px"><input type="range" min="36" max="220" value="${size()}" data-hs><b>${size()} px</b></span>
         <div class="it" data-ho><span class="ic">◆</span><span class="grow">Otvoriť Nexus</span></div>
+        <div class="it" data-ht><span class="ic">💹</span><span class="grow">${PL().open ? 'Skryť' : 'Zobraziť'} obchodný panel (kúpiť / predať)</span></div>
         <div class="it" data-hr><span class="ic">↺</span><span class="grow">Vrátiť dole do stredu, pôvodná veľkosť</span></div>`, null, { side: b.getBoundingClientRect().top > innerHeight / 2 ? 'up' : undefined });
       if (!m) return;
       const r = $('[data-hs]', m);
       r.oninput = () => { N.hudSize = +r.value; r.nextElementSibling.textContent = r.value + ' px'; place(); later(); };
       $('[data-ho]', m).onclick = () => { UI.closeMenu(); open(); };
+      $('[data-ht]', m).onclick = () => { UI.closeMenu(); const P = PL(); P.open = !P.open; ctx.save(); paintTicket(); ctx.onTrades(); };
       $('[data-hr]', m).onclick = () => { N.hudX = N.hudY = null; N.hudSize = 64; place(); ctx.save(); UI.closeMenu(); };
     });
     window.addEventListener('resize', place);
@@ -217,7 +216,10 @@ const NEXUS = (() => {
     return `<div class="pc-h" data-drag><span class="pc-dir ${p.dir > 0 ? 'l' : 's'}">${p.dir > 0 ? '▲ LONG' : '▼ SHORT'}</span><b>${esc(s.name)}</b><small class="pc-lots"></small>
         <span class="grow"></span><b class="pc-mini"></b><button data-a="min" title="Zbaliť / rozbaliť">–</button><button data-a="cfg" title="Vzhľad (veľkosť, farba, čiary)">⚙</button></div>
       <div class="pc-body"><div class="pc-pnl"></div><div class="pc-sub"></div>
+        <div class="pc-stats"><span title="Najväčší zisk počas obchodu">▲ <b class="pc-best"></b></span><span title="Najväčšia strata počas obchodu">▼ <b class="pc-worst"></b></span><span title="Ako dlho je obchod otvorený">⏱ <b class="pc-dur"></b></span></div>
         <div class="pc-sltp"><label>SL <input data-f="sl" type="number" step="any"></label><label>TP <input data-f="tp" type="number" step="any"></label></div>
+        <div class="pc-add"><button data-a="addsl" title="Pridať stop loss (potom ho ťaháš v grafe)">+ SL</button><button data-a="addtp" title="Pridať take profit">+ TP</button><button data-a="addptp" title="Čiastočný take profit – zavrie časť pozície">+ čiastočný TP</button></div>
+        <div class="pc-ptps"></div><div class="pc-exp"></div>
         <div class="pc-btns"><button data-a="be" title="Posunúť stop loss na vstupnú cenu (break-even)">SL → BE</button><button data-a="part" title="Zavrieť časť pozície">Časť ▾</button><button data-a="close" class="pc-x">Zavrieť</button></div>
         <div class="pc-part"><button data-p="25">25 %</button><button data-p="50">50 %</button><button data-p="75">75 %</button><input data-pl type="number" step="0.01" min="0.01" placeholder="lotov"><button data-p="lots">OK</button></div>
         ${p.src === 'robot' ? `<div class="pc-note">🤖 ${esc(p.note || 'robot')}</div>` : ''}</div>`;
@@ -239,16 +241,24 @@ const NEXUS = (() => {
       el.style.transform = `scale(${C.scale / 100})`;
       el.classList.toggle('min', !!u.min); el.classList.toggle('win', v > 0); el.classList.toggle('loss', v < 0);
       $('.pc-lots', el).textContent = `${p.lots} lot`;
-      const money = Number.isFinite(v) ? (v >= 0 ? '+' : '') + usd(v) : '…';
-      $('.pc-pnl', el).textContent = money; $('.pc-mini', el).textContent = money;
+      const cash = Number.isFinite(v) ? (v >= 0 ? '+' : '') + usd(v) : '…';
+      $('.pc-pnl', el).textContent = cash; $('.pc-mini', el).textContent = cash;
       $('.pc-sub', el).textContent = `${f2(p.entry, p.symbol)} → ${f2(price, p.symbol)} · ${Number.isFinite(pts) ? (pts >= 0 ? '+' : '') + f2(pts, p.symbol) + ' b' : ''}`;
-      for (const k of ['sl', 'tp']) { const inp = $(`[data-f=${k}]`, el); if (document.activeElement !== inp) inp.value = p[k] ?? ''; }
+      for (const k of ['sl', 'tp']) { const inp = $(`[data-f=${k}]`, el); if (document.activeElement !== inp) inp.value = p[k] == null ? '' : (+p[k]).toFixed(sym(p.symbol).digits ?? 2); }
+      $('.pc-best', el).textContent = money(p.best); $('.pc-worst', el).textContent = money(p.worst); $('.pc-dur', el).textContent = dur(Date.now() - p.time);
+      $('[data-a=addsl]', el).style.display = p.sl ? 'none' : ''; $('[data-a=addtp]', el).style.display = p.tp ? 'none' : '';
+      const pt = $('.pc-ptps', el), sig = JSON.stringify(p.tps || []);
+      // rebuilt only when the partial targets change (a rebuild under the mouse would swallow clicks)
+      if (pt.dataset.sig !== sig && !pt.contains(document.activeElement)) {
+        pt.dataset.sig = sig;
+        pt.innerHTML = (p.tps || []).map((t, k) => `<div>TP${k + 1} <b>${f2(t.price, p.symbol)}</b> <input type="number" min="1" max="100" value="${t.pct}" data-pct="${k}"> % · ${ptpLots(p, t)} lot · <b class="up">${money(lotsAt(p, ptpLots(p, t))(t.price))}</b><button data-dt="${k}" title="Zmazať">✕</button></div>`).join('');
+      }
+      const e = expected(p);
+      $('.pc-exp', el).innerHTML = e.sl !== null || e.tp !== null ? `Pri SL <b class="dn">${e.sl === null ? '—' : money(e.sl)}</b> · pri TP <b class="up">${e.tp === null ? '—' : money(e.tp)}</b>${e.rr ? ` · R:R 1:${e.rr.toFixed(2)}` : ''}` : '<span class="muted">Bez SL a TP – pridaj ich a ťahaj čiary v grafe</span>';
     });
-    // optional entry / SL / TP lines on the chart (off by default – they get in the way)
-    const defs = C.lines ? list.filter(p => p.symbol === ctx.chartSymbol()).flatMap(p => [{ price: p.entry, color: UIP(p.id).color || C.color, title: `${p.dir > 0 ? 'LONG' : 'SHORT'} ${p.lots}`, style: 0 },
-      ...(p.sl ? [{ price: p.sl, color: '#f23645', title: 'SL', style: 2 }] : []), ...(p.tp ? [{ price: p.tp, color: '#089981', title: 'TP', style: 2 }] : [])]) : [];
-    const sig = JSON.stringify(defs);
-    if (sig !== lineSig) { lineSig = sig; ctx.setLines(defs); }
+    // the chart layer redraws the SL / TP lines; markers only when trades change
+    const ms = JSON.stringify(chartMarkers(ctx.chartSymbol()));
+    ctx.onTrades(ms !== lineSig); lineSig = ms;
   }
   function bindCard(el, p) {
     const u = UIP(p.id), head = $('[data-drag]', el);
@@ -264,6 +274,10 @@ const NEXUS = (() => {
     el.addEventListener('click', e => {
       const a = e.target.dataset.a, pp = e.target.dataset.p;
       if (a === 'min') { u.min = !u.min; ctx.save(); paintCards(); }
+      else if (a === 'addsl') addLevel(p, 'sl');
+      else if (a === 'addtp') addLevel(p, 'tp');
+      else if (a === 'addptp') addLevel(p, 'ptp');
+      else if (e.target.dataset.dt !== undefined) { p.tps.splice(+e.target.dataset.dt, 1); ctx.save(); paintCards(); }
       else if (a === 'cfg') cardSettings(p);
       else if (a === 'part') el.classList.toggle('parting');
       else if (a === 'be') {
@@ -281,6 +295,7 @@ const NEXUS = (() => {
         closePart(p, part, price, 'ručne (graf)'); el.classList.remove('parting'); ctx.toast(`Zavretá časť: ${part} lot`); paintCards(); paintLive();
       }
     });
+    el.addEventListener('change', e => { const k = e.target.dataset.pct; if (k === undefined) return; p.tps[+k].pct = Math.max(1, Math.min(100, Math.round(+e.target.value || 50))); ctx.save(); $('.pc-ptps', el).dataset.sig = ''; e.target.blur(); paintCards(); });
     $$('[data-f]', el).forEach(inp => inp.onchange = () => { const v = +inp.value; p[inp.dataset.f] = inp.value === '' || !Number.isFinite(v) ? null : v; ctx.save(); paintCards(); });
   }
   function cardSettings(p) {
@@ -305,6 +320,216 @@ const NEXUS = (() => {
     $$('[data-uc]', d).forEach(x => x.onclick = () => { u.color = x.dataset.uc || undefined; $$('[data-uc]', d).forEach(y => y.classList.toggle('on', y === x)); upd(); });
     $('[data-stack]', d).onclick = () => { shownPositions().forEach((q, i) => Object.assign(UIP(q.id), { x: 70, y: 110 + i * (UIP(q.id).min ? 40 : 160) * C.scale / 100 })); upd(); };
     $$('[data-x]', d).forEach(x => x.onclick = UI.closeDialog);
+  }
+
+  // ---- trade tracking: best / worst P/L during the trade, partial take profits, expected results ------------
+  const dur = ms => { const m = Math.max(0, Math.round(ms / 60000)); return m < 60 ? `${m} min` : m < 1440 ? `${Math.floor(m / 60)} h ${m % 60} min` : `${Math.floor(m / 1440)} d ${Math.floor((m % 1440) / 60)} h`; };
+  const money = v => (Number.isFinite(v) ? (v >= 0 ? '+' : '') + usd(v) : '—');
+  const tickOf = id => 1 / 10 ** (sym(id).digits ?? 2);
+  const rnd = (id, v) => +(+v).toFixed(sym(id).digits ?? 2);   // a price on the symbol's tick, without float noise
+  const lotsAt = (p, lots) => (price) => (price - p.entry) * p.dir * lots * (LOT[p.symbol] || 1);
+  const ptpLots = (p, t) => Math.round((p.lots0 || p.lots) * t.pct) / 100;
+  let trackSave = 0;
+  function track(p, price) {
+    const v = pnlOf(p, price);
+    if (!Number.isFinite(v)) return;
+    if (p.best === undefined || v > p.best) { p.best = v; p.bestPx = price; }
+    if (p.worst === undefined || v < p.worst) { p.worst = v; p.worstPx = price; }
+    if (Date.now() - trackSave > 5000) { trackSave = Date.now(); ctx.save(); }
+  }
+  // what the trade makes if the stop loss is hit, and if every take profit is hit (partials first)
+  function expected(p) {
+    const parts = (p.tps || []).reduce((s, t) => s + ptpLots(p, t), 0), rest = Math.max(0, Math.round((p.lots - parts) * 100) / 100);
+    const sl = p.sl ? lotsAt(p, p.lots)(p.sl) : null;
+    const tp = p.tp || (p.tps || []).length ? (p.tps || []).reduce((s, t) => s + lotsAt(p, ptpLots(p, t))(t.price), 0) + (p.tp ? lotsAt(p, rest)(p.tp) : 0) : null;
+    return { sl, tp, rr: sl && tp ? tp / Math.abs(sl) : null, rest };
+  }
+  // hi / lo = the highest and lowest price since the last check
+  function checkHits(id, hi, lo) {
+    for (const p of [...A().positions].filter(x => x.symbol === id)) {
+      track(p, hi); track(p, lo);
+      if (p.sl && (p.dir > 0 ? lo <= p.sl : hi >= p.sl)) { closePos(p, p.sl, 'stop loss'); ctx.toast(`🛑 ${sym(id).name}: stop loss ${f2(p.sl, id)}`); continue; }
+      for (const t of [...(p.tps || [])]) {
+        if (!(p.dir > 0 ? hi >= t.price : lo <= t.price)) continue;
+        p.tps = p.tps.filter(x => x !== t);
+        const lots = Math.min(p.lots, ptpLots(p, t));
+        closePart(p, lots, t.price, `čiastočný TP ${t.pct} %`); ctx.toast(`🎯 ${sym(id).name}: čiastočný TP ${f2(t.price, id)} · ${lots} lot`);
+        if (!A().positions.includes(p)) break;
+      }
+      if (!A().positions.includes(p)) continue;
+      if (p.tp && (p.dir > 0 ? hi >= p.tp : lo <= p.tp)) { closePos(p, p.tp, 'take profit'); ctx.toast(`🎯 ${sym(id).name}: take profit ${f2(p.tp, id)}`); }
+    }
+  }
+
+  // ---- what the chart draws: SL / TP / partial TP lines (draggable), entries and exits -----------------------
+  function chartLines(symbol) {
+    const out = [], C = CC(), now = priceOf(symbol);
+    for (const p of A().positions.filter(x => x.symbol === symbol)) {
+      const col = UIP(p.id).color || C.color, e = expected(p), tag = `${p.dir > 0 ? 'BUY' : 'SELL'} ${p.lots}`;
+      if (C.lines) out.push({ pid: p.id, kind: 'entry', price: p.entry, color: col, text: `${tag} · ${money(pnlOf(p, now))}`, solid: true });
+      if (p.sl) out.push({ pid: p.id, kind: 'sl', price: p.sl, color: '#f23645', text: `SL ${tag} · ${money(e.sl)}`, drag: true, del: true });
+      (p.tps || []).forEach((t, i) => out.push({ pid: p.id, kind: 'ptp', idx: i, price: t.price, color: '#26c6da', text: `TP${i + 1} ${t.pct} % · ${money(lotsAt(p, ptpLots(p, t))(t.price))}`, drag: true, del: true }));
+      if (p.tp) out.push({ pid: p.id, kind: 'tp', price: p.tp, color: '#089981', text: `TP ${tag} · ${money(lotsAt(p, e.rest)(p.tp))}`, drag: true, del: true });
+    }
+    const P = PL();
+    if (P.open && symbol === ctx.chartSymbol() && Number.isFinite(now)) {
+      const pv = planView(now);
+      if (P.slOn) out.push({ pid: 'plan', kind: 'sl', price: pv.sl, color: '#ff8a65', text: `Plán SL · ${pv.dir > 0 ? 'BUY' : 'SELL'} ${P.lots} · ${money(pv.slMoney)}`, drag: true, plan: true });
+      if (P.tpOn) out.push({ pid: 'plan', kind: 'tp', price: pv.tp, color: '#69f0ae', text: `Plán TP · ${pv.dir > 0 ? 'BUY' : 'SELL'} ${P.lots} · ${money(pv.tpMoney)}`, drag: true, plan: true });
+    }
+    return out;
+  }
+  function chartTrades(symbol) {
+    return A().history.filter(h => h.symbol === symbol && Number.isFinite(h.exit)).slice(0, 80)
+      .map(h => ({ t1: h.time / 1000, p1: h.entry, t2: h.exitTime / 1000, p2: h.exit, win: h.pnl > 0, dir: h.dir }));
+  }
+  function chartMarkers(symbol) {
+    const out = [];
+    for (const p of A().positions.filter(x => x.symbol === symbol)) out.push({ time: p.time / 1000, dir: p.dir, kind: 'in', text: `${p.dir > 0 ? 'BUY' : 'SELL'} ${p.lots0 || p.lots}` });
+    for (const h of A().history.filter(x => x.symbol === symbol).slice(0, 80)) {
+      out.push({ time: h.time / 1000, dir: h.dir, kind: 'in', text: `${h.dir > 0 ? 'BUY' : 'SELL'} ${h.lots}` });
+      out.push({ time: h.exitTime / 1000, dir: h.dir, kind: 'out', win: h.pnl > 0, text: `✕ ${money(h.pnl)}` });
+    }
+    return out;
+  }
+  function moveLine(pid, kind, idx, price, final) {
+    const sy = pid === 'plan' ? ctx.chartSymbol() : (A().positions.find(x => x.id === pid) || {}).symbol;
+    if (!sy) return;
+    const tk = tickOf(sy); price = rnd(sy, price);
+    if (pid === 'plan') { const P = PL(), now = priceOf(sy); P[kind + 'D'] = Math.abs(price - now); P[kind + 'Side'] = Math.sign(price - now) || 1; if (final) ctx.save(); paintTicket(); return; }
+    const p = A().positions.find(x => x.id === pid), now = priceOf(p.symbol);
+    // a stop or a target on the wrong side of the price would fire at once: keep it on its own side
+    if (Number.isFinite(now)) {
+      if (kind === 'sl') price = p.dir > 0 ? Math.min(price, now - tk) : Math.max(price, now + tk);
+      else price = p.dir > 0 ? Math.max(price, now + tk) : Math.min(price, now - tk);
+    }
+    price = rnd(p.symbol, price);
+    if (kind === 'ptp') p.tps[idx].price = price; else p[kind] = price;
+    if (final) ctx.save();
+    paintCards();
+  }
+  function removeLine(pid, kind, idx) {
+    if (pid === 'plan') { PL()[kind + 'On'] = false; ctx.save(); paintTicket(); return; }
+    const p = A().positions.find(x => x.id === pid); if (!p) return;
+    if (kind === 'ptp') p.tps.splice(idx, 1); else p[kind] = null;
+    ctx.save(); paintCards();
+  }
+  // default distance for a new stop / target: 0.3 % / 0.6 % of the price, or the last one you dragged
+  function addLevel(p, kind) {
+    const now = priceOf(p.symbol); if (!Number.isFinite(now)) return;
+    const d = now * (kind === 'sl' ? 0.003 : 0.006);
+    if (kind === 'sl') p.sl = now - p.dir * d;
+    else if (kind === 'tp') p.tp = now + p.dir * d;
+    else {
+      p.tps = p.tps || []; p.lots0 = p.lots0 || p.lots;
+      const far = p.tp || now + p.dir * d;
+      p.tps.push({ price: now + (far - now) / 2, pct: 50 });
+    }
+    ['sl', 'tp'].forEach(k => { if (p[k]) p[k] = rnd(p.symbol, p[k]); });
+    (p.tps || []).forEach(t => { t.price = rnd(p.symbol, t.price); });
+    ctx.save(); paintCards();
+  }
+
+  // ---- trade ticket: lot size, BUY / SELL, stop loss and target planned by dragging lines on the chart -----------
+  const PLAN_DEF = { open: true, lots: 0.1, slOn: false, tpOn: false, slD: 0, tpD: 0, slSide: -1, tpSide: 1, x: null, y: null, scale: 100, min: false };
+  const PL = () => { const N = S().nexus, c = N.plan = N.plan || {}; for (const k in PLAN_DEF) if (c[k] === undefined) c[k] = PLAN_DEF[k]; return c; };
+  // the planned lines keep their distance from the moving price; their side says whether it is a BUY or a SELL plan
+  function planView(now) {
+    const P = PL(), sy = ctx.chartSymbol(), tk = tickOf(sy);
+    if (!P.slD) P.slD = now * 0.003; if (!P.tpD) P.tpD = now * 0.006;
+    const dir = P.slOn ? -P.slSide : P.tpOn ? P.tpSide : 1;
+    const sl = rnd(sy, now - dir * P.slD), tp = rnd(sy, now + dir * P.tpD);
+    const lot = (LOT[sy] || 1) * P.lots;
+    return { dir, sl, tp, slMoney: (sl - now) * dir * lot, tpMoney: (tp - now) * dir * lot };
+  }
+  let ticket = null;
+  function buildTicket() {
+    ticket = document.createElement('div'); ticket.id = 'ticket';
+    ticket.innerHTML = `<div class="tk-h" data-drag><span class="tk-sym"></span><span class="grow"></span><button data-t="min" title="Zbaliť">–</button><button data-t="cfg" title="Veľkosť panelu">⚙</button><button data-t="x" title="Skryť (vrátiš ho pravým klikom na ◆ NEXUS)">✕</button></div>
+      <div class="tk-b"><div class="tk-lots"><button data-l="-">−</button><input data-lots type="number" min="0.01" step="0.01"><button data-l="+">+</button><span class="muted">lot</span></div>
+        <div class="tk-q">${[0.01, 0.05, 0.1, 0.5, 1].map(v => `<span data-q="${v}">${v}</span>`).join('')}</div>
+        <div class="tk-bs"><button class="tk-sell" data-side="-1"><small>PREDAŤ</small><b data-px></b></button><button class="tk-buy" data-side="1"><small>KÚPIŤ</small><b data-px></b></button></div>
+        <div class="tk-lv"><label><input type="checkbox" data-on="slOn"> Stop loss</label><label><input type="checkbox" data-on="tpOn"> Take profit</label></div>
+        <div class="tk-exp"></div><div class="tk-hint muted">Čiary SL / TP ťaháš myšou v grafe. Strana SL určuje smer (pod cenou = BUY).</div></div>`;
+    layer.appendChild(ticket);
+    const P = PL(), head = $('[data-drag]', ticket);
+    let d = null;
+    head.addEventListener('pointerdown', e => { if (e.target.closest('button')) return; const r = ticket.getBoundingClientRect(); d = { x: e.clientX - r.left, y: e.clientY - r.top }; head.setPointerCapture(e.pointerId); e.preventDefault(); });
+    head.addEventListener('pointermove', e => { if (!d) return; P.x = e.clientX - d.x; P.y = e.clientY - d.y; placeTicket(); });
+    head.addEventListener('pointerup', () => { if (d) { d = null; ctx.save(); } });
+    ticket.addEventListener('wheel', e => { if (!e.target.closest('[data-drag]')) return; e.preventDefault(); P.scale = Math.max(60, Math.min(200, P.scale + (e.deltaY < 0 ? 10 : -10))); placeTicket(); ctx.save(); }, { passive: false });
+    const lotsIn = $('[data-lots]', ticket);
+    const setLots = v => { P.lots = Math.max(0.01, Math.round(v * 100) / 100); lotsIn.value = P.lots; ctx.save(); paintTicket(); };
+    lotsIn.onchange = () => setLots(+lotsIn.value || 0.01);
+    ticket.addEventListener('click', e => {
+      const t = e.target.closest('[data-t],[data-l],[data-q],[data-side]'); if (!t) return;
+      if (t.dataset.t === 'min') { P.min = !P.min; placeTicket(); ctx.save(); }
+      else if (t.dataset.t === 'x') { P.open = false; ctx.save(); paintTicket(); ctx.onTrades(); }
+      else if (t.dataset.t === 'cfg') ticketSettings();
+      else if (t.dataset.l) setLots(P.lots + (t.dataset.l === '+' ? 1 : -1) * (P.lots >= 1 ? 0.1 : 0.01));
+      else if (t.dataset.q) setLots(+t.dataset.q);
+      else if (t.dataset.side) placeOrder(+t.dataset.side);
+    });
+    $$('[data-on]', ticket).forEach(c => c.onchange = () => {
+      P[c.dataset.on] = c.checked;
+      // a new plan line goes on the side that matches the other one (or below the price = a BUY plan)
+      if (c.checked && c.dataset.on === 'slOn') P.slSide = P.tpOn ? -P.tpSide : -1;
+      if (c.checked && c.dataset.on === 'tpOn') P.tpSide = P.slOn ? -P.slSide : 1;
+      ctx.save(); paintTicket(); ctx.onTrades();
+    });
+  }
+  function ticketSettings() {
+    const P = PL();
+    const d = UI.openDialog(`<div class="dlg-h"><span>⚙ Obchodný panel</span><button class="ib" data-x>✕</button></div><div class="dlg-b">
+      <div class="fld"><span>Veľkosť panelu</span><span class="op" style="width:240px"><input type="range" min="60" max="200" value="${P.scale}" data-ts><b>${P.scale} %</b></span></div>
+      <div class="fld"><span>Pôvodná poloha</span><button class="btn sm" data-tr>Vrátiť vpravo dole</button></div>
+      <div class="muted" style="font-size:11px">Koliesko myši nad hlavičkou panelu tiež mení veľkosť.</div></div>
+      <div class="dlg-f"><span class="grow"></span><button class="btn pri" data-x>Hotovo</button></div>`);
+    $('[data-ts]', d).oninput = e => { P.scale = +e.target.value; e.target.nextElementSibling.textContent = P.scale + ' %'; placeTicket(); ctx.save(); };
+    $('[data-tr]', d).onclick = () => { P.x = P.y = null; placeTicket(); ctx.save(); };
+    $$('[data-x]', d).forEach(x => x.onclick = UI.closeDialog);
+  }
+  function placeTicket() {
+    if (!ticket) return;
+    const P = PL();
+    ticket.style.transform = `scale(${P.scale / 100})`; ticket.classList.toggle('min', !!P.min);
+    const w = ticket.offsetWidth * P.scale / 100, h = ticket.offsetHeight * P.scale / 100;
+    const x = P.x ?? 16, y = P.y ?? innerHeight - h - 50;
+    ticket.style.left = Math.max(0, Math.min(innerWidth - 40, x)) + 'px'; ticket.style.top = Math.max(0, Math.min(innerHeight - 30, y)) + 'px';
+  }
+  function paintTicket() {
+    if (!layer) return;
+    const P = PL();
+    if (!P.open) { if (ticket) ticket.style.display = 'none'; return; }
+    if (!ticket) buildTicket();
+    ticket.style.display = '';
+    const sy = ctx.chartSymbol(), now = priceOf(sy);
+    $('.tk-sym', ticket).textContent = '💹 ' + sym(sy).name;
+    const li = $('[data-lots]', ticket); if (document.activeElement !== li) li.value = P.lots;
+    $$('[data-px]', ticket).forEach(b => { b.textContent = f2(now, sy); });
+    $$('[data-on]', ticket).forEach(c => { c.checked = !!P[c.dataset.on]; });
+    $$('[data-q]', ticket).forEach(q => q.classList.toggle('on', +q.dataset.q === P.lots));
+    const ex = $('.tk-exp', ticket);
+    if (Number.isFinite(now) && (P.slOn || P.tpOn)) {
+      const v = planView(now);
+      ex.innerHTML = `<b class="${v.dir > 0 ? 'up' : 'dn'}">${v.dir > 0 ? 'Plán BUY' : 'Plán SELL'}</b>${P.slOn ? ` · SL <b class="dn">${money(v.slMoney)}</b>` : ''}${P.tpOn ? ` · TP <b class="up">${money(v.tpMoney)}</b>` : ''}${P.slOn && P.tpOn ? ` · R:R 1:${(Math.abs(v.tpMoney / v.slMoney) || 0).toFixed(2)}` : ''}`;
+    } else ex.innerHTML = `<span class="muted">1 pip pohybu = ${usd(tickOf(sy) * (LOT[sy] || 1) * P.lots)} · zapni SL / TP a ťahaj čiary v grafe</span>`;
+    placeTicket();
+  }
+  function placeOrder(dir) {
+    const P = PL(), sy = ctx.chartSymbol(), now = priceOf(sy);
+    if (!Number.isFinite(now)) { ctx.toast('Cena sa ešte načítava…'); return; }
+    let sl = null, tp = null;
+    if (P.slOn || P.tpOn) {
+      const v = planView(now);
+      // the plan was drawn for the other direction: mirror the levels around the price
+      sl = P.slOn ? (v.dir === dir ? v.sl : 2 * now - v.sl) : null;
+      tp = P.tpOn ? (v.dir === dir ? v.tp : 2 * now - v.tp) : null;
+      if (v.dir !== dir) { P.slSide = -dir; P.tpSide = dir; }
+    }
+    openPos({ symbol: sy, dir, lots: P.lots, lots0: P.lots, entry: now, sl, tp, src: 'ručne' });
+    ctx.toast(`${dir > 0 ? '▲ KÚPENÉ' : '▼ PREDANÉ'} ${P.lots} lot ${sym(sy).name} @ ${f2(now, sy)}${sl ? ' · SL ' + f2(sl, sy) : ''}${tp ? ' · TP ' + f2(tp, sy) : ''}`);
+    P.slOn = P.tpOn = false; ctx.save(); paintTicket(); ctx.onTrades(); pollPrices();
   }
 
   // ---- page ----------------------------------------------------------------------------------------------
@@ -366,17 +591,18 @@ const NEXUS = (() => {
     const hs = $('#nxHeadSum'); if (hs) hs.innerHTML = `Equity <b>${usd(T.equity)}</b> · otvorené pozície ${a.positions.length} · robot ${R.on ? '<b class="up">beží</b>' : 'vypnutý'}`;
     const pl = $('#nxPosList');
     if (pl) {
-      pl.innerHTML = a.positions.length ? `<table class="tt nx-t"><tr><th>Symbol</th><th>Smer</th><th>Loty</th><th>Vstup</th><th>Teraz</th><th>SL / TP</th><th>P/L</th><th></th></tr>
+      pl.innerHTML = a.positions.length ? `<table class="tt nx-t"><tr><th>Symbol</th><th>Smer</th><th>Loty</th><th>Vstup</th><th>Teraz</th><th>SL / TP</th><th>Pri SL / TP</th><th>Max ▲ / ▼</th><th>Čas</th><th>P/L</th><th></th></tr>
         ${a.positions.map(p => { const v = pnlOf(p, prices[p.symbol]); return `<tr><td>${esc(sym(p.symbol).name)}${p.src === 'robot' ? ' <small class="muted">🤖 ' + esc(p.note || '') + '</small>' : ''}</td>
           <td><span class="pill ${p.dir > 0 ? 'win' : 'loss'}">${p.dir > 0 ? 'LONG' : 'SHORT'}</span></td><td>${p.lots}</td><td>${f2(p.entry, p.symbol)}</td><td>${f2(prices[p.symbol], p.symbol)}</td>
-          <td>${p.sl ? f2(p.sl, p.symbol) : '–'} / ${p.tp ? f2(p.tp, p.symbol) : '–'}</td><td class="${v >= 0 ? 'up' : 'dn'}"><b>${usd(v)}</b></td><td><button class="btn sm" data-cl="${p.id}">Zavrieť</button></td></tr>`; }).join('')}</table>`
+          <td>${p.sl ? f2(p.sl, p.symbol) : '–'} / ${p.tp ? f2(p.tp, p.symbol) : '–'}</td><td>${(e => `<span class="dn">${e.sl === null ? '–' : money(e.sl)}</span> / <span class="up">${e.tp === null ? '–' : money(e.tp)}</span>`)(expected(p))}</td>
+          <td><span class="up">${money(p.best)}</span> / <span class="dn">${money(p.worst)}</span></td><td>${dur(Date.now() - p.time)}</td><td class="${v >= 0 ? 'up' : 'dn'}"><b>${usd(v)}</b></td><td><button class="btn sm" data-cl="${p.id}">Zavrieť</button></td></tr>`; }).join('')}</table>`
         : '<div class="muted">Žiadne otvorené pozície.</div>';
       $$('[data-cl]', pl).forEach(b => b.onclick = () => { const p = a.positions.find(x => x.id === b.dataset.cl); if (p) { closePos(p, prices[p.symbol] ?? p.entry, 'ručne'); paintLive(); } });
     }
     const hl = $('#nxHistList');
-    if (hl) hl.innerHTML = a.history.length ? `<table class="tt nx-t"><tr><th>Zavreté</th><th>Symbol</th><th>Smer</th><th>Loty</th><th>Vstup → výstup</th><th>P/L</th><th>Dôvod</th></tr>
+    if (hl) hl.innerHTML = a.history.length ? `<table class="tt nx-t"><tr><th>Zavreté</th><th>Symbol</th><th>Smer</th><th>Loty</th><th>Vstup → výstup</th><th>P/L</th><th>Max ▲ / ▼</th><th>Trvanie</th><th>Dôvod</th></tr>
       ${a.history.slice(0, 60).map(h => `<tr><td>${when(h.exitTime)}</td><td>${esc(sym(h.symbol).name)}${h.src === 'robot' ? ' 🤖' : ''}</td><td><span class="pill ${h.dir > 0 ? 'win' : 'loss'}">${h.dir > 0 ? 'LONG' : 'SHORT'}</span></td>
-        <td>${h.lots}</td><td>${f2(h.entry, h.symbol)} → ${f2(h.exit, h.symbol)}</td><td class="${h.pnl >= 0 ? 'up' : 'dn'}"><b>${usd(h.pnl)}</b></td><td class="muted">${esc(h.reason || '')}</td></tr>`).join('')}</table>`
+        <td>${h.lots}</td><td>${f2(h.entry, h.symbol)} → ${f2(h.exit, h.symbol)}</td><td class="${h.pnl >= 0 ? 'up' : 'dn'}"><b>${usd(h.pnl)}</b></td><td><span class="up">${money(h.best)}</span> / <span class="dn">${money(h.worst)}</span></td><td>${dur(h.exitTime - h.time)}</td><td class="muted">${esc(h.reason || '')}</td></tr>`).join('')}</table>`
       : '<div class="muted">Zatiaľ žiadne uzavreté obchody.</div>';
     const bt = $('#nxBotTable');
     if (bt) {
@@ -489,7 +715,7 @@ const NEXUS = (() => {
     init(c) {
       ctx = c; S = c.S; page = $('#nexusPage');
       layer = document.createElement('div'); layer.id = 'posLayer'; document.body.appendChild(layer);
-      hud(); pollPrices(); paintCards();
+      hud(); pollPrices(); paintCards(); paintTicket();
       if (S().robot.on) robotTick();
       document.addEventListener('keydown', e => { if (e.key === 'Escape' && page.classList.contains('open') && !UI.dialogOpen() && !/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) { e.stopImmediatePropagation(); close(); } }, true);
     },
@@ -501,13 +727,13 @@ const NEXUS = (() => {
       const id = ctx.chartSymbol(), price = ctx.livePrice(id);
       if (Number.isFinite(price)) {
         prices[id] = price;
-        for (const p of [...A().positions].filter(x => x.symbol === id)) {
-          if (p.sl && (p.dir > 0 ? price <= p.sl : price >= p.sl)) { closePos(p, p.sl, 'stop loss'); ctx.toast(`🛑 ${sym(id).name}: stop loss ${f2(p.sl, id)}`); }
-          else if (p.tp && (p.dir > 0 ? price >= p.tp : price <= p.tp)) { closePos(p, p.tp, 'take profit'); ctx.toast(`🎯 ${sym(id).name}: take profit ${f2(p.tp, id)}`); }
-        }
+        checkHits(id, price, price);
       }
-      paintCards();
+      paintCards(); paintTicket();
     },
+    chartLines: s => (ctx ? chartLines(s) : []), chartTrades: s => (ctx ? chartTrades(s) : []), chartMarkers: s => (ctx ? chartMarkers(s) : []),
+    moveLine, removeLine,
     chartChanged() { if (!ctx) return; lineSig = ''; paintCards(); },
   };
 })();
+window.NEXUS = NEXUS;   // reachable from the extra charts of the multi-chart layout (parent.NEXUS)
