@@ -625,6 +625,7 @@ const NEXUS = (() => {
     bot: '<rect x="5" y="8" width="14" height="11" rx="2"/><path d="M12 4v4M9 13h.01M15 13h.01M9 16h6"/><circle cx="12" cy="3.5" r="1"/>',
     ideas: '<path d="M9 18h6M10 21h4"/><path d="M12 3a6 6 0 0 0-4 10.5c.8.8 1 1.5 1 2.5h6c0-1 .2-1.7 1-2.5A6 6 0 0 0 12 3z"/>',
     fold: '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
+    saves: '<path d="M5 3h11l3 3v13a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M7 3v5h8V3M7 21v-7h10v7"/>',
     board: '<rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 9h8M8 13h8M8 17h5"/>',
     chat: '<path d="M4 5h16v11H9l-5 4z"/>',
     lib: '<path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M4 21V5M8 7h7"/>',
@@ -645,6 +646,7 @@ const NEXUS = (() => {
     ticket: ['Obchod', 'linear-gradient(135deg,#ef4444,#16a34a)', 'Zobrazí / skryje obchodný panel v grafe'],
     elec: ['Electricals', 'linear-gradient(135deg,#fde047,#ea580c)', 'Štatistiky z Nexus Lab: čo sa stalo pri akej hodnote RSI, MACD a všetkých indikátorov'],
     lab: ['Nexus Lab', 'linear-gradient(135deg,#34d399,#0f766e)', 'Druhý grafový systém: karty grafov, skener pohybov, učenie (otvorí sa v novej karte)'],
+    saves: ['Uloženia', 'linear-gradient(135deg,#818cf8,#312e81)', 'Uložené rozloženia grafov – každé s vlastným názvom, dátumom a časom (Ctrl+S)'],
   };
   const ACTIONS = { lab: () => window.open('lab', '_blank'), chat: () => ctx.openChat(), lib: () => { close(); LIB.open(); }, ticket: () => { const P = PL(); P.open = !P.open; ctx.save(); paintTicket(); ctx.onTrades(); ctx.toast(P.open ? '💹 Obchodný panel zobrazený v grafe' : 'Obchodný panel skrytý'); } };
   const DK = () => {
@@ -705,10 +707,13 @@ const NEXUS = (() => {
         <div class="muted" style="font-size:11px;margin-top:6px">Robot kontroluje trh každých 30 s a koná raz za každú uzavretú sviečku daného timeframu. Beží, kým je stránka otvorená.</div>`; },
     ideas: () => '<div id="nxIdeaBox"></div>',
     fold: () => '<div id="nxFolders"></div>',
+    saves: () => `<div class="nx-new"><input class="idea-in" id="svName" maxlength="60" placeholder="${esc(ctx.saves.defaultName())}" style="flex:1"><button class="btn sm pri" id="svAdd">💾 Uložiť</button></div>
+        <div class="muted" style="font-size:11px;margin:-2px 0 6px">Uloží plochy, grafy, indikátory, kresby, funkcie a vzhľad. Bez názvu = dátum a čas. ${ctx.saves.remote() ? `Uložené na serveri pod menom <b>${esc(S().labeler)}</b> – nájdeš ich na každom zariadení.` : 'Bez mena v Nexus → Účet sa ukladá len v tomto prehliadači.'}</div>
+        <input class="idea-in" id="svFind" placeholder="🔍 Hľadať…" style="width:100%;margin-bottom:6px"><div id="nxSaves" class="nx-saves"><div class="muted">Načítavam…</div></div>`,
     elec: () => '<div class="bd-bar"><button class="btn sm pri" data-elab>🧪 Otvoriť Nexus Lab</button><button class="btn sm" data-ere>↻ Obnoviť</button><span class="grow"></span><span class="muted">Dáta pribúdajú skenovaním v Labe · vidí ich aj Claude v chate</span></div><div id="nxElec" class="nx-elec"></div>',
     board: () => '<div class="bd-bar"><button class="btn sm" data-bd="note">＋ Poznámka</button><button class="btn sm" data-bd="list">＋ Zoznam úloh</button><span class="grow"></span><span class="muted bd-count"></span></div><div class="bd-area" id="bdArea"></div>',
   };
-  const WIN_SIZE = { acc: [430, 560], pos: [760, 380], hist: [820, 560], bot: [820, 560], ideas: [480, 460], fold: [480, 520], board: [880, 600], elec: [1040, 660] };
+  const WIN_SIZE = { acc: [430, 560], pos: [760, 380], hist: [820, 560], bot: [820, 560], ideas: [480, 460], fold: [480, 520], saves: [520, 560], board: [880, 600], elec: [1040, 660] };
   let histFilter = 'all';
   function winHtml(id) {
     const w = DK().wins[id], [name, bg] = APPS[id], [dw, dh] = WIN_SIZE[id] || [500, 420];
@@ -750,7 +755,7 @@ const NEXUS = (() => {
     if (id === 'fold') paintFolders();
     else if (id === 'ideas') paintIdeas();
     else if (id === 'board') paintBoard();
-    else if (id === 'elec') return;
+    else if (id === 'elec' || id === 'saves') return;
     else paintLive();
   }
   function paint() {
@@ -844,7 +849,33 @@ const NEXUS = (() => {
     elecSt.open = r => window.open(`lab?symbol=${r.symbol}&tf=${r.timeframe}&t=${r.t0}`, '_blank');
     LAB.show(box, elecSt, force);
   }
+  // saves (💾 Uloženia): the list comes from app.js (ctx.saves: server per name, or this browser)
+  let saveList = [];
+  const svTime = t => new Date(t).toLocaleString('sk-SK', { day: 'numeric', month: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  async function paintSaves(reload) {
+    const box = $('#nxSaves'); if (!box) return;
+    if (reload !== false) { try { saveList = await ctx.saves.list(); } catch (e) { box.innerHTML = `<div class="muted">Uloženia sa nedajú načítať: ${esc(e.message)}</div>`; return; } }
+    const q = (($('#svFind') || {}).value || '').trim().toLowerCase(), list = saveList.filter(x => !q || x.name.toLowerCase().includes(q));
+    box.innerHTML = list.map(x => { const i = x.info || {}, ch = x.updated_at && x.updated_at.slice(0, 16) !== x.created_at.slice(0, 16);
+      return `<div class="nx-save" data-sv="${x.id}"><div class="grow"><b>${esc(x.name)}</b><small>📅 ${svTime(x.created_at)}${ch ? ` · upravené ${svTime(x.updated_at)}` : ''}</small>
+        <small>${esc(sym(i.symbol).name || i.symbol || '')} ${esc(i.tf || '')} · ${i.ws || 1} ${(i.ws || 1) === 1 ? 'plocha' : 'plochy'} · ${i.charts || 1} gr. · ${i.studies || 0} ind. · ${i.drawings || 0} kresieb</small></div>
+        <span class="nx-acc-b"><button class="btn sm pri" data-svl="${x.id}" title="Načítať toto rozloženie (nahradí aktuálne)">↺ Načítať</button><button class="ib" data-svo="${x.id}" title="Prepísať aktuálnym rozložením">💾</button>
+          <button class="ib" data-svr="${x.id}" title="Premenovať">✎</button><button class="ib" data-svd="${x.id}" title="Zmazať">🗑</button></span></div>`; }).join('')
+      || `<div class="muted">${q ? 'Nič sa nenašlo.' : 'Zatiaľ žiadne uloženie. Napíš názov a klikni 💾 Uložiť.'}</div>`;
+    const it = id => saveList.find(x => String(x.id) === id), fail = e => ctx.toast('⚠ ' + e.message);
+    $$('[data-svl]', box).forEach(b => b.onclick = () => { const x = it(b.dataset.svl); if (confirm(`Načítať „${x.name}“?
+Aktuálne plochy, grafy, indikátory a kresby sa nahradia (ak ich chceš zachovať, najprv ich ulož).`)) ctx.saves.load(x.id).catch(fail); });
+    $$('[data-svo]', box).forEach(b => b.onclick = () => { const x = it(b.dataset.svo); if (confirm(`Prepísať „${x.name}“ aktuálnym rozložením?`)) ctx.saves.overwrite(x.id).then(() => paintSaves()).catch(fail); });
+    $$('[data-svr]', box).forEach(b => b.onclick = () => { const x = it(b.dataset.svr), n = prompt('Nový názov', x.name); if (n && n.trim()) ctx.saves.rename(x.id, n).then(() => paintSaves()).catch(fail); });
+    $$('[data-svd]', box).forEach(b => b.onclick = () => { const x = it(b.dataset.svd); if (confirm(`Zmazať uloženie „${x.name}“?`)) ctx.saves.del(x.id).then(() => paintSaves()).catch(fail); });
+  }
   const BIND = {
+    saves: el => {
+      const add = () => { const i = $('#svName', el); ctx.saves.create(i.value).then(() => { i.value = ''; i.placeholder = ctx.saves.defaultName(); paintSaves(); }).catch(e => ctx.toast('⚠ ' + e.message)); };
+      $('#svAdd', el).onclick = add; $('#svName', el).onkeydown = e => { if (e.key === 'Enter') add(); };
+      $('#svFind', el).oninput = () => paintSaves(false);
+      paintSaves();
+    },
     elec: el => { $('[data-elab]', el).onclick = () => window.open('lab', '_blank'); $('[data-ere]', el).onclick = () => paintElec(true); paintElec(); },
     acc: el => {
       $('#nxName', el).onchange = e => { ctx.setName(e.target.value.trim()); paint(); };

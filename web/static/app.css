@@ -1006,3 +1006,5 @@ table.al-t tr.bad { opacity: .62; }
 #mirrorBar { position: fixed; left: 50%; top: 52px; transform: translateX(-50%); z-index: 40; background: rgba(41,98,255,.9); color: #fff; padding: 5px 8px 5px 12px; border-radius: 10px; font-size: 12px; display: flex; gap: 10px; align-items: center; box-shadow: 0 4px 16px rgba(0,0,0,.4); }
 .st-t td:nth-child(2) { text-align: left; min-width: 230px; } .st-t th:nth-child(2) { text-align: left; }
 .func-menu { overflow-x: hidden; }
+.nx-save { display: flex; align-items: center; gap: 8px; padding: 8px 10px; margin: 5px 0; border-radius: 8px; border: 1px solid var(--border); border-left: 3px solid #818cf8; background: var(--bg); }
+.nx-save .grow { display: flex; flex-direction: column; min-width: 0; } .nx-save small { color: var(--muted); font-size: 11px; } .nx-save b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

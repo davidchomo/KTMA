@@ -306,6 +306,70 @@ def put_prefs(name: str, value: dict = Body(...)):
     return {"ok": True}
 
 
+# ---- saves: named snapshots of the whole chart setup (workspaces, charts, indicators, drawings, look) per person ----
+STORE.conn.execute("""CREATE TABLE IF NOT EXISTS web_saves (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, author TEXT, name TEXT, info TEXT, data TEXT, created_at TEXT, updated_at TEXT)""")
+STORE.conn.execute("CREATE INDEX IF NOT EXISTS web_saves_author ON web_saves (author)")
+STORE.conn.commit()
+
+
+def _save_row(author: str, sid: int) -> dict:
+    r = STORE.conn.execute("SELECT * FROM web_saves WHERE id=? AND author=?", (sid, author.strip().lower())).fetchone()
+    if r is None:
+        raise HTTPException(404, "uloženie neexistuje")
+    return dict(r)
+
+
+def _save_public(d: dict) -> dict:
+    return {k: d[k] for k in ("id", "name", "created_at", "updated_at")} | {"info": json.loads(d["info"] or "{}")}
+
+
+@app.get("/api/saves/{author}")
+def saves_list(author: str):
+    rows = STORE.conn.execute("SELECT id, name, info, created_at, updated_at FROM web_saves WHERE author=? ORDER BY created_at DESC",
+                              (author.strip().lower(),)).fetchall()
+    return [_save_public(dict(r)) for r in rows]
+
+
+@app.get("/api/saves/{author}/{sid}")
+def saves_get(author: str, sid: int):
+    d = _save_row(author, sid)
+    return _save_public(d) | {"data": json.loads(d["data"] or "{}")}
+
+
+@app.post("/api/saves/{author}")
+def saves_create(author: str, body: dict = Body(...)):
+    name, now = str(body.get("name") or "").strip()[:60], pd.Timestamp.now(tz="UTC").isoformat(timespec="seconds")
+    if not author.strip() or not name or not isinstance(body.get("data"), dict):
+        raise HTTPException(400, "chýba meno, názov alebo dáta")
+    cur = STORE.conn.execute("INSERT INTO web_saves (author, name, info, data, created_at, updated_at) VALUES (?,?,?,?,?,?)",
+                             (author.strip().lower(), name, json.dumps(body.get("info") or {}), json.dumps(body["data"]), now, now))
+    STORE.conn.commit()
+    return _save_public(_save_row(author, cur.lastrowid))
+
+
+@app.put("/api/saves/{author}/{sid}")
+def saves_update(author: str, sid: int, body: dict = Body(...)):
+    """Rename (`name`) and / or overwrite with the current setup (`data`, `info`)."""
+    _save_row(author, sid)
+    fields = {"updated_at": pd.Timestamp.now(tz="UTC").isoformat(timespec="seconds")}
+    if str(body.get("name") or "").strip():
+        fields["name"] = str(body["name"]).strip()[:60]
+    if isinstance(body.get("data"), dict):
+        fields["data"], fields["info"] = json.dumps(body["data"]), json.dumps(body.get("info") or {})
+    STORE.conn.execute(f"UPDATE web_saves SET {', '.join(k + '=?' for k in fields)} WHERE id=?", (*fields.values(), sid))
+    STORE.conn.commit()
+    return _save_public(_save_row(author, sid))
+
+
+@app.delete("/api/saves/{author}/{sid}")
+def saves_delete(author: str, sid: int):
+    _save_row(author, sid)
+    STORE.conn.execute("DELETE FROM web_saves WHERE id=?", (sid,))
+    STORE.conn.commit()
+    return {"ok": True}
+
+
 # ---- chat: notes for the developers and trading ideas ------------------------------------------------
 STORE.conn.execute("""CREATE TABLE IF NOT EXISTS web_chat (
     id INTEGER PRIMARY KEY AUTOINCREMENT, author TEXT, kind TEXT, text TEXT,

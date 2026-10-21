@@ -2391,7 +2391,7 @@
       <div class="ws-list">${S.workspaces.map((w, k) => `<div class="ws-it ${w === ws ? 'on' : ''}" data-ws="${w.id}"><b>${k + 1}</b><span class="grow">${w.own ? '◻ ' : ''}${esc(w.name)}</span><small>${w.layout.n} ${w.layout.n === 1 ? 'graf' : 'gr.'}</small>
         <button class="ib" data-wsr="${w.id}" title="Premenovať">✎</button>${S.workspaces.length > 1 ? `<button class="ib" data-wsd="${w.id}" title="Zmazať plochu">🗑</button>` : ''}</div>`).join('')}
         <div class="ws-it add" data-wsnew>＋ Nová plocha</div><div class="ws-it add" data-wsclean title="Bez indikátorov, auto čiar, stratégií a kresieb – čo tu zapneš, platí len pre túto plochu">◻ Čistý graf (prázdne plátno)</div>
-        <div class="ws-it add" data-wslab>🧪 Nexus Lab – druhý grafový systém</div></div>
+        <div class="ws-it add" data-wslab>🧪 Nexus Lab – druhý grafový systém</div><div class="ws-it add" data-wssave>💾 Uložiť / načítať rozloženie… <small class="muted">Ctrl+S</small></div></div>
       <div class="sec">Počet grafov na tejto ploche</div>
       <div class="lay-pick">${['1', '2h', '2v', '3', '4', '5', '6', '7', '8', '9', '10'].map(k => `<span data-ly="${k}" class="${cur === k ? 'on' : ''}">${k === '2h' ? '2 ⇆' : k === '2v' ? '2 ⇅' : k}</span>`).join('')}</div>
       <label class="it"><input type="checkbox" data-dock ${(S.wsDock || {}).on !== false ? 'checked' : ''}><span class="grow">Prepínač plôch priamo na obrazovke (dok)</span></label>
@@ -2412,6 +2412,7 @@
       $('[data-wsnew]', m).onclick = () => { newWorkspace(false); rerender(m); };
       $('[data-wsclean]', m).onclick = () => { newWorkspace(true); rerender(m); };
       $('[data-wslab]', m).onclick = () => { closeMenu(); window.open('lab', '_blank'); };
+      $('[data-wssave]', m).onclick = () => { closeMenu(); NEXUS.openApp('saves'); };
       $('[data-dockcfg]', m).onclick = () => { const D = dockCfg(); D.on = true; save(); paintDock(); closeMenu(); dockMenu($('#bLayout')); };
       $$('[data-ly]', m).forEach(x => x.onclick = () => { const k = x.dataset.ly; L().n = k === '2h' || k === '2v' ? 2 : +k; L().two = k === '2v' ? 'v' : 'h'; save(); applyLayout(); rerender(m); });
       $$('[data-vw]', m).forEach(x => x.onchange = () => {
@@ -2426,6 +2427,62 @@
     openMenu(anchor, html(), bind, { side: side(), cls: 'lay-menu' });
   }
   $('#bLayout').onclick = e => layoutMenu(e.currentTarget);
+  // ---- 💾 saves: the whole chart setup (workspaces, charts, indicators, drawings, look) under a name and date/time ------
+  // On the server per name (api/saves/{labeler}); without a name only in this browser (localStorage nxsaves).
+  // Accounts, chat, board, robot and window positions are not part of a save and stay as they are when one is loaded.
+  const SAVE_SKIP = ['accounts', 'accountId', 'account', 'chat', 'news', 'board', 'robot', 'labeler', 'savedAt', 'idea', 'folders', 'nexus', 'algo', 'mirrorOf', 'flow'];
+  const saveName = () => `Uloženie ${new Date().toLocaleString('sk-SK', { day: 'numeric', month: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })}`;
+  function snapSave() {
+    const cur = workspaces(); cur.main = { symbol: S.symbol, tf: S.tf }; if (cur.own) cur.own = snapOwn();
+    save();
+    const state = JSON.parse(JSON.stringify(persisted(), (k, v) => (k[0] === '_' ? undefined : v))); SAVE_SKIP.forEach(k => delete state[k]);
+    const ids = S.workspaces.map(w => `nx2:pane${w.id}-`), panes = {};    // the small charts of every workspace keep their own settings
+    for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (ids.some(p => k.startsWith(p))) panes[k] = localStorage.getItem(k); }
+    const info = { symbol: S.symbol, tf: S.tf, ws: S.workspaces.length, charts: S.workspaces.reduce((n, w) => n + (w.layout.n || 1), 0),
+      studies: studies.filter(s => !s.temp).length, drawings: Object.values(S.drawings || {}).reduce((n, a) => n + (Array.isArray(a) ? a.length : 0), 0) };
+    return { data: { v: 1, state, panes }, info };
+  }
+  const SV = {
+    remote: () => !!S.labeler,
+    url: id => `api/saves/${encodeURIComponent(S.labeler)}${id ? '/' + id : ''}`,
+    local: () => LS.get('nxsaves', []),
+    async req(method, id, body) {
+      const r = await fetch(SV.url(id), { method, headers: { 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined });
+      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.status);
+      return r.json();
+    },
+    async list() { return SV.remote() ? SV.req('GET') : SV.local().map(({ data, ...x }) => x); },
+    async get(id) { return SV.remote() ? SV.req('GET', id) : SV.local().find(x => x.id === id); },
+    async put(id, body) {      // id = null → a new save
+      if (SV.remote()) return id ? SV.req('PUT', id, body) : SV.req('POST', null, body);
+      const L = SV.local(), now = new Date().toISOString();
+      let x = id && L.find(y => y.id === id);
+      if (!x) { x = { id: Date.now().toString(36), created_at: now }; L.unshift(x); }
+      Object.assign(x, body, { updated_at: now });
+      try { localStorage.setItem('nxsaves', JSON.stringify(L)); } catch (e) { throw new Error('v prehliadači už nie je miesto – zadaj meno v Nexus → Účet, uloženia pôjdu na server'); }
+      const { data, ...pub } = x; return pub;
+    },
+    async del(id) { if (SV.remote()) return SV.req('DELETE', id); LS.set('nxsaves', SV.local().filter(x => x.id !== id)); },
+  };
+  const saves = {
+    remote: SV.remote, list: SV.list, defaultName: saveName,
+    async create(name) { const x = await SV.put(null, { name: (name || '').trim().slice(0, 60) || saveName(), ...snapSave() }); toast(`💾 Uložené: ${x.name}`); return x; },
+    async overwrite(id) { const x = await SV.put(id, snapSave()); toast(`💾 Prepísané: ${x.name}`); return x; },
+    rename: (id, name) => SV.put(id, { name: name.trim().slice(0, 60) }),
+    del: SV.del,
+    async load(id) {
+      const x = await SV.get(id); if (!x || !x.data || !x.data.state) throw new Error('uloženie je prázdne');
+      if (mirror) { clearInterval(mirror.t); Object.assign(S, mirror.own); mirror = null; }
+      const keep = Object.fromEntries(SAVE_SKIP.filter(k => k in S).map(k => [k, S[k]]));
+      S = merge(DEF, { ...x.data.state, ...keep, mirrorOf: '', savedAt: Date.now() });
+      studies = (S.studies || []).map(KS.normalize).filter(Boolean);
+      Object.keys(localStorage).filter(k => k.startsWith('nx2:pane')).forEach(k => localStorage.removeItem(k));
+      Object.entries(x.data.panes || {}).forEach(([k, v]) => { try { localStorage.setItem(k, v); } catch (e) {} });
+      LS.set(KEY, S);
+      if (S.labeler) await fetch(`api/prefs/${encodeURIComponent(S.labeler)}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(S) }).catch(() => {});
+      toast(`↺ Načítavam: ${x.name}…`); setTimeout(() => location.reload(), 300);
+    },
+  };
   // ---- Text: notes, pins, a table, callouts, pictures, posts and ideas on the chart ---------------------------
   $('#bText').onclick = e => {
     const sec = (g, name) => `<div class="sec">${name}</div>${Object.values(DR.TOOLS).filter(t => t.group === g).map(t => `<div class="it ${draw.mode === t.id ? 'on' : ''}" data-tool="${t.id}"><span class="ic tx-ic">${t.icon}</span><span class="grow">${esc(t.name)}</span></div>`).join('')}`;
@@ -2436,7 +2493,7 @@
 
   // ---- ⊞ every function in one place, by category; choose which buttons stay on the toolbar -------------------
   const FUNCS = [
-    ['Graf', [['bSymbol', '◆', 'Symbol', 'Vyber trh'], ['bType', '🕯', 'Typ grafu', 'Sviečky, Heikin Ashi, Renko…'], ['bTf', '⏱', 'Timeframe', '1 s až 1 mesiac'], ['bLayout', '▦', 'Rozloženie a plochy', '1–10 grafov, prepínanie plôch']]],
+    ['Graf', [['bSymbol', '◆', 'Symbol', 'Vyber trh'], ['bType', '🕯', 'Typ grafu', 'Sviečky, Heikin Ashi, Renko…'], ['bTf', '⏱', 'Timeframe', '1 s až 1 mesiac'], ['bLayout', '▦', 'Rozloženie a plochy', '1–10 grafov, prepínanie plôch'], ['saves', '💾', 'Uloženia', 'Ulož rozloženie pod názvom (s dátumom a časom), načítaj neskôr · Ctrl+S']]],
     ['Kreslenie a text', [['bDraw', '✎', 'Kreslenie', 'Čiary, Fibonacci, vzory, tvary'], ['bText', 'T', 'Text', 'Poznámky, pin, tabuľka, obrázok, nápad']]],
     ['Analýza', [['bInd', 'ƒx', 'Indikátory', 'RSI, MACD, kĺzavé priemery, vzory'], ['bFunc', '🧩', 'Funkcie', 'Čiary, objem, stratégie, pozadie podľa Technicals'], ['lines', '📐', 'Čiary', 'Auto trendové čiary a úrovne'], ['volume', '🫧', 'Objem', 'Bubliny, delta, tok obchodov'], ['strats', '⚡', 'Stratégie nápadov', 'Zapnúť / vypnúť, R:R, stop'], ['bAlgo', '🧠', 'Algo', 'Overené stratégie, test, živé signály'],
       ['tech', '📊', 'Technicals', 'Súhrn pre všetky timeframy (v Knižnici)'], ['bScan', '🔍', 'Skenovať', 'Hľadá vstupy na trhoch'], ['bReplay', '⏯', 'Replay', 'Tréning na histórii'],
@@ -2458,6 +2515,7 @@
         if (id === 'nexus') return NEXUS.open();
         if (id === 'lab') return window.open('lab', '_blank');
         if (id === 'elec') return NEXUS.openApp('elec');
+        if (id === 'saves') return NEXUS.openApp('saves');
         if (id === 'ticket') return NEXUS.toggleTicket();
         if (id === 'styles') return stylesDialog();
         if (id === 'lines') return autoMenu($('#bFunc'));
@@ -3207,6 +3265,7 @@
     if (e.key === 'Escape') { if ($('#pop').classList.contains('open')) { closePop(); return; } if (dialogOpen()) { cancelDialog(); return; } if ($('.dd')) { closeMenu(); return; } if (techEl.classList.contains('open')) { closeTech(); return; } closeMenu(); if (replayPick) { stopPick(); return; } }
     if (dialogOpen()) return;
     if ((e.ctrlKey || e.metaKey) && !typing && !e.altKey && (e.code === 'KeyZ' || e.code === 'KeyY')) { e.preventDefault(); stepHist(e.code === 'KeyY' || e.shiftKey ? 1 : -1); return; }
+    if ((e.ctrlKey || e.metaKey) && !e.altKey && !EMBED && e.code === 'KeyS') { e.preventDefault(); NEXUS.openApp('saves'); setTimeout(() => { const i = $('#svName'); if (i) i.focus(); }, 50); return; }
     if (e.ctrlKey && e.key === 'Enter' && S.idea.open && current) { e.preventDefault(); if (e.shiftKey) openAlert(qi + 1); else saveLabel(); return; }
     if (e.altKey && !typing && e.code === 'KeyR' && !e.shiftKey) { e.preventDefault(); if (view.replay) exitReplay(); else startReplay(true); return; }
     if (e.altKey && !typing && e.code === 'KeyA' && !e.shiftKey) { e.preventDefault(); toggleAuto(); return; }
@@ -3246,7 +3305,7 @@
     NEXUS.init({
       mirror: owner => setMirror(owner), mirroring: () => mirror && mirror.owner,
       S: () => S, save, toast, fetchBars, symbols: () => META.symbols || [], chatMsgs: () => chatMsgs, kinds: () => KINDS,
-      newFolder, folderColors: () => FOLDER_COLORS,
+      newFolder, folderColors: () => FOLDER_COLORS, saves,
       openChat: filter => { if (filter) S.chat.filter = filter; toggleChat(true); renderChatFilter(); renderChatList(); },
       setName: name => { S.labeler = name; save(); if (S.chat.open) renderChat(); },
       liveIdeas: () => (scanRes || []).map((x, i) => ({ ...x, i })).filter(x => x.kind === 'idea'),
