@@ -588,6 +588,11 @@ def lab_page():
     return FileResponse(STATIC / "lab.html", headers={"Cache-Control": "no-cache"})
 
 
+@app.get("/overgrown")
+def overgrown_page():
+    return FileResponse(STATIC / "overgrown.html", headers={"Cache-Control": "no-cache"})
+
+
 # ---- shared paper accounts: the owner invites friends with a code (view only, or view and trade) ------------------
 STORE.conn.execute("""CREATE TABLE IF NOT EXISTS web_accounts (
     id TEXT PRIMARY KEY, name TEXT, owner TEXT, data TEXT, rev INTEGER, members TEXT,

@@ -105,14 +105,16 @@ const NEXUS = (() => {
     if (Number.isFinite(price)) go(price);
     else ctx.fetchBars(o.symbol, '1m', null, 10).then(b => b.length && go(b[b.length - 1].close)).catch(() => {});
   }
-  function openPos(o) {
-    if (!guard()) return null;
+  function openPos(o, acc) {
+    const a = acc || A();
+    if (!canTrade(a)) { ctx.toast(`👀 Účet „${a.name}“ môžeš iba sledovať`); return null; }
     const p = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 5), time: Date.now(), by: me(), ...o };
     p.lots0 = p.lots0 || p.lots; p.chk = p.time;
-    A().positions.push(p); ctx.save(); if (layer) paintCards(); return p;
+    a.positions.push(p); ctx.save(); if (layer) paintCards(); return p;
   }
   const accOf = p => (S().accounts || []).find(a => a.positions.includes(p)) || A();
   const openAll = () => (S().accounts || []).filter(a => canTrade(a)).flatMap(a => a.positions);
+  const tradableOrders = () => (S().accounts || []).filter(a => canTrade(a)).flatMap(a => a.orders || []);
   const touched = p => { p.chk = Math.max(p.chk || 0, Date.now()); };   // a level changed: older wicks must not fire it
   function closePos(p, price, reason) {
     const a = accOf(p); if (!a.positions.includes(p)) return;
@@ -131,15 +133,20 @@ const NEXUS = (() => {
   // last prices (and stop loss / take profit checks) every few seconds while something needs them
   async function pollPrices() {
     clearTimeout(priceT);
-    const pos = openAll(), need = new Set([...pos.map(p => p.symbol), ...A().positions.map(p => p.symbol), ...(page && page.classList.contains('open') ? ctx.symbols().map(s => s.id) : [])]);
+    const pos = openAll(), ords = tradableOrders(), need = new Set([...pos.map(p => p.symbol), ...ords.map(q => q.symbol), ...A().positions.map(p => p.symbol), ...(page && page.classList.contains('open') ? ctx.symbols().map(s => s.id) : [])]);
     for (const id of need) {
       try {
-        const mine = pos.filter(p => p.symbol === id), since = Math.min(Date.now(), ...mine.map(p => p.chk || p.time || Date.now()));
+        const mine = pos.filter(p => p.symbol === id), myOrd = ords.filter(q => q.symbol === id), since = Math.min(Date.now(), ...[...mine, ...myOrd].map(p => p.chk || p.time || Date.now()));
         const bars = await ctx.fetchBars(id, '1m', null, Math.max(10, Math.min(1000, Math.ceil((Date.now() - since) / 60000) + 3))), b = bars[bars.length - 1];
         if (!b) continue;
         prices[id] = b.close;
         // every closed 1-minute bar that began after the position was last checked: its real high / low, even if the
         // page was closed or another chart was open (the last bar is still forming – ticks and this poll cover it)
+        for (const q of myOrd) for (const k of bars.slice(0, -1)) {
+          const t0 = k.time * 1000;
+          if (t0 < (q.chk || q.time) || !allOrders().includes(q)) continue;
+          hitOrder(q, k.high, k.low, k.open); q.chk = t0 + 60000;
+        }
         for (const p of mine) for (const k of bars.slice(0, -1)) {
           const t0 = k.time * 1000;
           if (t0 < (p.chk || p.time) || !accOf(p).positions.includes(p)) continue;
@@ -278,7 +285,7 @@ const NEXUS = (() => {
   }
 
   // ---- positions on the chart: draggable cards with live P/L, close all / part, stop loss to break-even ----
-  const CARD_DEF = { scale: 100, color: '#2962ff', opacity: 94, lines: false, robot: true, all: false };
+  const CARD_DEF = { scale: 100, color: '#2962ff', opacity: 94, lines: false, ctl: true, robot: true, all: false };
   const CC = () => { const N = S().nexus, c = N.card = N.card || {}; for (const k in CARD_DEF) if (c[k] === undefined) c[k] = CARD_DEF[k]; return c; };
   const UIP = id => { const m = S().nexus.cards = S().nexus.cards || {}; return (m[id] = m[id] || {}); };
   let layer = null, lineSig = '';
@@ -304,10 +311,10 @@ const NEXUS = (() => {
       <div class="pc-body"><div class="pc-pnl"></div><div class="pc-sub"></div>
         <div class="pc-stats"><span title="Najväčší zisk počas obchodu">▲ <b class="pc-best"></b></span><span title="Najväčšia strata počas obchodu">▼ <b class="pc-worst"></b></span><span title="Ako dlho je obchod otvorený">⏱ <b class="pc-dur"></b></span></div>
         <div class="pc-sltp"><label>SL <input data-f="sl" type="number" step="any"></label><label>TP <input data-f="tp" type="number" step="any"></label></div>
-        <div class="pc-add"><button data-a="addsl" title="Pridať stop loss (potom ho ťaháš v grafe)">+ SL</button><button data-a="addtp" title="Pridať take profit">+ TP</button><button data-a="addptp" title="Čiastočný take profit – v zisku zavrie zadaný počet lotov">+ čiast. TP</button><button data-a="addpsl" title="Čiastočný stop – keď cena ide proti tebe, zavrie zadaný počet lotov">+ čiast. SL</button></div>
+        <div class="pc-add"><button data-a="addsl" title="Stop loss myšou: klikni do grafu">+ SL 🖱</button><button data-a="addtp" title="Take profit myšou: klikni do grafu">+ TP 🖱</button><button data-a="addptp" title="Čiastočný take profit – v zisku zavrie zadaný počet lotov">+ čiast. TP</button><button data-a="addpsl" title="Čiastočný stop – keď cena ide proti tebe, zavrie zadaný počet lotov">+ čiast. SL</button></div>
         <label class="pc-abe"><input type="checkbox" data-abe> 🛡 BE po prvom čiastočnom TP</label>
         <div class="pc-ptps"></div><div class="pc-exp"></div>
-        <div class="pc-btns"><button data-a="be" title="Posunúť stop loss na vstupnú cenu (break-even) · znova = zrušiť">SL → BE</button><button data-a="part" title="Zavrieť časť pozície">Časť ▾</button><button data-a="close" class="pc-x">Zavrieť</button></div>
+        <div class="pc-btns"><button data-a="be" title="Break-even: keď je zapnutý a cena sa vráti na vstup (zhora aj zdola), obchod sa zavrie · vypnutý = nerobí nič">🛡 BE</button><button data-a="part" title="Zavrieť časť pozície">Časť ▾</button><button data-a="close" class="pc-x">Zavrieť</button></div>
         <div class="pc-part"><button data-p="25">25 %</button><button data-p="50">50 %</button><button data-p="75">75 %</button><input data-pl type="number" step="0.01" min="0.01" placeholder="lotov"><button data-p="lots">OK</button></div>
         ${p.src === 'robot' || p.src === 'algo' ? `<div class="pc-note">${p.src === 'algo' ? '🧠' : '🤖'} ${esc(p.note || 'robot')}</div>` : ''}${p.by && p.by !== me() ? `<div class="pc-note">👤 otvoril ${esc(p.by)}</div>` : ''}</div>`;
   }
@@ -334,7 +341,7 @@ const NEXUS = (() => {
       for (const k of ['sl', 'tp']) { const inp = $(`[data-f=${k}]`, el); if (document.activeElement !== inp) inp.value = p[k] == null ? '' : (+p[k]).toFixed(sym(p.symbol).digits ?? 2); }
       $('.pc-best', el).textContent = money(p.best); $('.pc-worst', el).textContent = money(p.worst); $('.pc-dur', el).textContent = dur(Date.now() - p.time);
       $('[data-a=addsl]', el).style.display = p.sl ? 'none' : ''; $('[data-a=addtp]', el).style.display = p.tp ? 'none' : '';
-      const be = $('[data-a=be]', el); be.textContent = p.beFrom !== undefined ? '↩ Zrušiť BE' : 'SL → BE'; be.classList.toggle('on', p.beFrom !== undefined);
+      const be = $('[data-a=be]', el), beOn = p.be || p.beFrom !== undefined; be.textContent = p.beFrom !== undefined ? '↩ Zrušiť BE' : p.be ? '🛡 BE zapnutý' : '🛡 BE'; be.classList.toggle('on', beOn);
       $('[data-abe]', el).checked = !!p.autoBE;
       const pt = $('.pc-ptps', el), sig = JSON.stringify([p.tps || [], p.sls || [], p.lots]);
       // rebuilt only when the partial targets change (a rebuild under the mouse would swallow clicks)
@@ -363,24 +370,18 @@ const NEXUS = (() => {
     el.addEventListener('click', e => {
       const a = e.target.dataset.a, pp = e.target.dataset.p;
       if (a === 'min') { u.min = !u.min; ctx.save(); paintCards(); }
-      else if (a === 'addsl') addLevel(p, 'sl');
-      else if (a === 'addtp') addLevel(p, 'tp');
-      else if (a === 'addptp') addLevel(p, 'ptp');
-      else if (a === 'addpsl') addLevel(p, 'psl');
+      else if (a === 'addsl') mouseLevel(p, 'sl');
+      else if (a === 'addtp') mouseLevel(p, 'tp');
+      else if (a === 'addptp') mouseLevel(p, 'ptp');
+      else if (a === 'addpsl') mouseLevel(p, 'psl');
       else if (e.target.dataset.dt !== undefined) { const [arr, k] = e.target.dataset.dt.split('|'); (p[arr] || []).splice(+k, 1); touched(p); ctx.save(); paintCards(); }
       else if (a === 'cfg') cardSettings(p);
       else if (a === 'part') el.classList.toggle('parting');
       else if (a === 'be' && p.beFrom !== undefined) {
         p.sl = p.beFrom; delete p.beFrom; touched(p); ctx.save(); paintCards();
         ctx.toast(p.sl ? `↩ Break-even zrušený – SL späť na ${f2(p.sl, p.symbol)}` : '↩ Break-even zrušený – bez stop lossu');
-      } else if (a === 'be') {
-        const price = now();
-        if (Number.isFinite(price) && (price - p.entry) * p.dir <= 0) { ctx.toast('Pozícia nie je v zisku – SL na vstupe by sa hneď spustil'); return; }
-        p.beFrom = p.sl ?? null; p.sl = p.entry; touched(p); ctx.save(); paintCards(); ctx.toast(`🛡 SL posunutý na break-even ${f2(p.entry, p.symbol)} (znova klik = zrušiť)`);
-      } else if (a === 'close') {
-        const price = now(); if (!Number.isFinite(price)) return;
-        const v = pnlOf(p, price); closePos(p, price, 'ručne (graf)'); ctx.toast(`Zavreté ${sym(p.symbol).name} · ${v >= 0 ? '+' : ''}${usd(v)}`); paintCards(); paintLive();
-      } else if (pp) {
+      } else if (a === 'be') toggleBE(p);
+      else if (a === 'close') closeNow(p, 'ručne (graf)'); else if (pp) {
         const price = now(); if (!Number.isFinite(price)) return;
         const lots = pp === 'lots' ? +$('[data-pl]', el).value : p.lots * +pp / 100;
         if (!(lots > 0)) { ctx.toast('Zadaj počet lotov'); return; }
@@ -445,6 +446,7 @@ const NEXUS = (() => {
   }
   // hi / lo = the highest and lowest price since the last check; open = the first price of that stretch (a gap fills there)
   function checkHits(id, hi, lo, open) {
+    for (const q of tradableOrders().filter(x => x.symbol === id)) hitOrder(q, hi, lo, open);
     for (const a of (S().accounts || []).filter(x => canTrade(x))) for (const p of a.positions.filter(x => x.symbol === id)) hitPos(p, hi, lo, open);
   }
   function hitPos(p, hi, lo, open) {
@@ -461,13 +463,22 @@ const NEXUS = (() => {
       if (!alive()) return;
     }
     if (p.sl && lossHit(p.sl)) { const px = lossFill(p.sl), be = p.beFrom !== undefined && p.sl === p.entry; closePos(p, px, be ? 'break-even' : 'stop loss'); ctx.toast(`${be ? '🛡' : '🛑'} ${sym(id).name}: ${be ? 'break-even' : 'stop loss'} ${f2(px, id)}`); return; }
+    // break-even on: the price touches the entry again (after it has been away from it) → closed at the entry
+    if (p.be) {
+      const mid = (hi + lo) / 2, away = p.entry * 0.0002;
+      if (p.beAway && ((lo <= p.entry && hi >= p.entry) || (Number.isFinite(p.bePx) && (p.bePx - p.entry) * (mid - p.entry) < 0))) {
+        closePos(p, p.entry, 'break-even'); ctx.toast(`🛡 ${sym(id).name}: break-even – zavreté na vstupe ${f2(p.entry, id)}`); return;
+      }
+      if (Math.max(Math.abs(hi - p.entry), Math.abs(lo - p.entry)) >= away && !(lo <= p.entry && hi >= p.entry)) p.beAway = true;
+      p.bePx = mid;
+    }
     for (const t of [...(p.tps || [])].sort((x, y) => d * (x.price - y.price))) {
       if (!winHit(t.price)) continue;
       const lots = ptpLots(p, t), px = winFill(t.price);
       p.tps = p.tps.filter(x => x !== t);
       closePart(p, lots, px, 'čiastočný TP'); ctx.toast(`🎯 ${sym(id).name}: čiastočný TP ${f2(px, id)} · −${lots} lot`);
       if (!alive()) return;
-      if (p.autoBE && p.beFrom === undefined && (!p.sl || (p.sl - p.entry) * d < 0)) { p.beFrom = p.sl ?? null; p.sl = p.entry; ctx.toast(`🛡 ${sym(id).name}: SL posunutý na break-even ${f2(p.entry, id)}`); }
+      if (p.autoBE && !p.be) { p.be = true; p.beAway = true; p.bePx = px; ctx.toast(`🛡 ${sym(id).name}: break-even zapnutý po TP – pri návrate na ${f2(p.entry, id)} sa zavrie`); }
     }
     if (p.tp && winHit(p.tp)) { const px = winFill(p.tp); closePos(p, px, 'take profit'); ctx.toast(`🎯 ${sym(id).name}: take profit ${f2(px, id)}`); }
   }
@@ -477,11 +488,20 @@ const NEXUS = (() => {
     const out = [], C = CC(), now = priceOf(symbol);
     for (const p of A().positions.filter(x => x.symbol === symbol)) {
       const col = UIP(p.id).color || C.color, e = expected(p), tag = `${p.dir > 0 ? 'BUY' : 'SELL'} ${p.lots}`;
-      if (C.lines) out.push({ pid: p.id, kind: 'entry', price: p.entry, color: col, text: `${tag} · ${money(pnlOf(p, now))}`, solid: true });
+      if (C.lines || C.ctl) out.push({ pid: p.id, kind: 'entry', price: p.entry, color: p.be ? '#ffb300' : col, text: `${tag} · ${money(pnlOf(p, now))}${p.be ? ' · 🛡 BE' : ''}`, solid: true,
+        btns: C.ctl ? [['sl', '🛑 SL'], ['tp', '🎯 TP'], ['ptp', '½ TP'], ['psl', '½ SL'], ['be', p.be ? '🛡 BE ✓' : '🛡 BE'], ['x', '✕ Zavrieť']] : null });
       if (p.sl) out.push({ pid: p.id, kind: 'sl', price: p.sl, color: '#f23645', text: `${p.beFrom !== undefined && p.sl === p.entry ? 'BE' : 'SL'} ${tag} · ${money(lotsAt(p, e.restSl)(p.sl))}`, drag: true, del: true });
-      (p.sls || []).forEach((t, i) => out.push({ pid: p.id, kind: 'psl', idx: i, price: t.price, color: '#ff7043', text: `SL${i + 1} −${ptpLots(p, t)} lot · ${money(lotsAt(p, ptpLots(p, t))(t.price))}`, drag: true, del: true }));
-      (p.tps || []).forEach((t, i) => out.push({ pid: p.id, kind: 'ptp', idx: i, price: t.price, color: '#26c6da', text: `TP${i + 1} −${ptpLots(p, t)} lot · ${money(lotsAt(p, ptpLots(p, t))(t.price))}`, drag: true, del: true }));
+      (p.sls || []).forEach((t, i) => out.push({ pid: p.id, kind: 'psl', idx: i, price: t.price, color: '#ff7043', text: `SL${i + 1} −${ptpLots(p, t)} lot · ${money(lotsAt(p, ptpLots(p, t))(t.price))}`, drag: true, del: true, btns: [['lots', `${ptpLots(p, t)} lot ⟳`]] }));
+      (p.tps || []).forEach((t, i) => out.push({ pid: p.id, kind: 'ptp', idx: i, price: t.price, color: '#26c6da', text: `TP${i + 1} −${ptpLots(p, t)} lot · ${money(lotsAt(p, ptpLots(p, t))(t.price))}`, drag: true, del: true, btns: [['lots', `${ptpLots(p, t)} lot ⟳`]] }));
       if (p.tp) out.push({ pid: p.id, kind: 'tp', price: p.tp, color: '#089981', text: `TP ${tag} · ${money(lotsAt(p, e.rest)(p.tp))}`, drag: true, del: true });
+    }
+    for (const q of ordersOf(A()).filter(x => x.symbol === symbol)) {
+      const L = LOT[symbol] || 1, left = q.expire ? Math.max(0, Math.round((q.expire - Date.now()) / 60000)) : null;
+      out.push({ pid: q.id, kind: 'ord', price: q.price, color: '#b388ff', text: `🕒 ${q.kind === 'limit' ? 'LIMIT' : 'STOP'} ${q.dir > 0 ? 'BUY' : 'SELL'} ${q.lots}${q.be || q.autoBE ? ' · 🛡' : ''}${left !== null ? ` · ⌛ ${left} min` : ''}`, drag: true, del: true,
+        btns: [['sl', '🛑 SL'], ['tp', '🎯 TP'], ['be', q.be ? '🛡 BE ✓' : '🛡 BE']] });
+      if (q.sl) out.push({ pid: q.id, kind: 'osl', price: q.sl, color: 'rgba(242,54,69,.75)', text: `SL príkazu · ${money((q.sl - q.price) * q.dir * q.lots * L)}`, drag: true, del: true });
+      if (q.tp) out.push({ pid: q.id, kind: 'otp', price: q.tp, color: 'rgba(8,153,129,.8)', text: `TP príkazu · ${money((q.tp - q.price) * q.dir * q.lots * L)}`, drag: true, del: true });
+      (q.tps || []).forEach((t, i) => out.push({ pid: q.id, kind: 'optp', idx: i, price: t.price, color: 'rgba(38,198,218,.7)', text: `TP${i + 1} príkazu −${t.lots} lot` }));
     }
     const P = PL();
     if (P.open && symbol === ctx.chartSymbol() && Number.isFinite(now)) {
@@ -507,6 +527,13 @@ const NEXUS = (() => {
     return out;
   }
   function moveLine(pid, kind, idx, price, final) {
+    const q = allOrders().find(x => x.id === pid);
+    if (q) {
+      price = rnd(q.symbol, price);
+      if (kind === 'ord') { const now = priceOf(q.symbol); q.price = price; q.kind = Number.isFinite(now) && (price - now) * q.dir > 0 ? 'stop' : 'limit'; q.lastPx = now; }
+      else if (kind === 'osl' || kind === 'otp') q[kind === 'osl' ? 'sl' : 'tp'] = price;
+      if (final) ctx.save(); return;
+    }
     if (pid !== 'plan' && !canTrade()) return;
     const sy = pid === 'plan' ? ctx.chartSymbol() : (A().positions.find(x => x.id === pid) || {}).symbol;
     if (!sy) return;
@@ -531,6 +558,8 @@ const NEXUS = (() => {
     paintCards();
   }
   function removeLine(pid, kind, idx) {
+    const q = allOrders().find(x => x.id === pid);
+    if (q) { if (kind === 'ord') cancelOrder(q); else if (kind === 'osl' || kind === 'otp') { q[kind === 'osl' ? 'sl' : 'tp'] = null; ctx.save(); } return; }
     if (pid !== 'plan' && !guard()) return;
     if (pid === 'plan') { const P = PL(); if (kind === 'ptp' || kind === 'psl') P[kind + 's'].splice(idx, 1); else P[kind + 'On'] = false; ctx.save(); paintTicket(); return; }
     const p = A().positions.find(x => x.id === pid); if (!p) return;
@@ -559,6 +588,300 @@ const NEXUS = (() => {
     touched(p);
     ctx.save(); paintCards();
   }
+
+  // ---- closing at the current price (fetched first when the chart doesn't show that market) -------------------------
+  async function closeNow(p, reason) {
+    let price = priceOf(p.symbol);
+    if (!Number.isFinite(price)) { try { const b = await ctx.fetchBars(p.symbol, '1m', null, 10); price = prices[p.symbol] = b[b.length - 1].close; } catch (e) {} }
+    if (!Number.isFinite(price)) { ctx.toast('Cena sa nedá načítať – skús o chvíľu'); return; }
+    if (!canTrade(accOf(p))) { ctx.toast(`👀 Účet „${accOf(p).name}“ môžeš iba sledovať`); return; }
+    const v = pnlOf(p, price); closePos(p, price, reason || 'ručne');
+    ctx.toast(`Zavreté ${sym(p.symbol).name} ${p.lots} lot · ${v >= 0 ? '+' : ''}${usd(v)}`); paintCards(); paintLive(); ctx.onTrades(true);
+  }
+  // ---- break-even: when on, the trade closes as soon as the price comes back to (or up to) the entry -------------------
+  // from above or from below – a trade in loss closes at the entry on the way up, a trade in profit on the way back
+  function toggleBE(p, on = !p.be) {
+    if (!canTrade(accOf(p))) return;
+    p.be = on; p.bePx = priceOf(p.symbol); p.beAway = Number.isFinite(p.bePx) && Math.abs(p.bePx - p.entry) >= p.entry * 0.0002; touched(p); ctx.save(); paintCards(); ctx.onTrades();
+    ctx.toast(on ? `🛡 Break-even zapnutý: keď cena príde na vstup ${f2(p.entry, p.symbol)}, obchod sa zavrie` : '🛡 Break-even vypnutý – nerobí nič');
+  }
+
+  // ---- pending orders: buy / sell limit or stop at a price in the future, with SL / TP / partial exits / BE --------------
+  // limit = a better price than now (buy below, sell above), stop = a breakout price (buy above, sell below)
+  const ordersOf = a => (a.orders = a.orders || []);
+  const allOrders = () => (S().accounts || []).flatMap(a => ordersOf(a));
+  function placeOrderAt(o, acc) {
+    const a = acc || A();
+    if (!canTrade(a)) { ctx.toast(`👀 Účet „${a.name}“ môžeš iba sledovať`); return null; }
+    const now = priceOf(o.symbol) ?? prices[o.symbol];
+    const q = { lots: 0.1, src: 'ručne', ...o, id: 'o' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), time: Date.now(), by: me(), chk: Date.now(), lastPx: now };
+    q.price = rnd(q.symbol, q.price);
+    q.kind = Number.isFinite(now) && (q.price - now) * q.dir > 0 ? 'stop' : 'limit';
+    if (o.expireMin) q.expire = Date.now() + o.expireMin * 60000;
+    ordersOf(a).push(q); ctx.save(); ctx.onTrades(true); pollPrices();
+    ctx.toast(`🕒 ${q.kind === 'limit' ? 'Limit' : 'Stop'} ${q.dir > 0 ? 'BUY' : 'SELL'} ${q.lots} lot ${sym(q.symbol).name} @ ${f2(q.price, q.symbol)}${q.sl ? ' · SL ' + f2(q.sl, q.symbol) : ''}${q.tp ? ' · TP ' + f2(q.tp, q.symbol) : ''}`);
+    return q;
+  }
+  function cancelOrder(q, quiet) {
+    for (const a of S().accounts || []) { const L = ordersOf(a), k = L.indexOf(q); if (k >= 0) L.splice(k, 1); }
+    ctx.save(); ctx.onTrades(true); if (!quiet) ctx.toast(`✕ Príkaz zrušený: ${sym(q.symbol).name} ${q.dir > 0 ? 'BUY' : 'SELL'} @ ${f2(q.price, q.symbol)}`);
+  }
+  function fillOrder(q, px) {
+    const a = (S().accounts || []).find(x => ordersOf(x).includes(q)); if (!a) return;
+    a.orders = a.orders.filter(x => x !== q);
+    const { id, kind, price, chk, lastPx, expire, time, by, ...rest } = q;
+    const p = openPos({ ...rest, entry: px, lots0: q.lots, tps: q.tps || [], sls: q.sls || [] }, a);
+    if (p && p.be) p.bePx = px;
+    ctx.toast(`✅ ${kind === 'limit' ? 'Limit' : 'Stop'} ${q.dir > 0 ? 'BUY' : 'SELL'} vyplnený: ${sym(q.symbol).name} ${q.lots} lot @ ${f2(px, q.symbol)}`, 5000);
+    ctx.onTrades(true);
+  }
+  // hi / lo since the last check; a crossing between two ticks counts too; a gap through the price fills at the open
+  function hitOrder(q, hi, lo, open) {
+    if (q.expire && Date.now() > q.expire) { cancelOrder(q, true); ctx.toast(`⌛ Príkaz ${sym(q.symbol).name} ${q.dir > 0 ? 'BUY' : 'SELL'} @ ${f2(q.price, q.symbol)} vypršal`); return; }
+    const mid = (hi + lo) / 2, crossed = (lo <= q.price && hi >= q.price) || (Number.isFinite(q.lastPx) && (q.lastPx - q.price) * (mid - q.price) < 0);
+    q.lastPx = mid;
+    if (!crossed) return;
+    const better = Number.isFinite(open) && (q.kind === 'limit' ? (open - q.price) * q.dir < 0 : (open - q.price) * q.dir > 0);
+    fillOrder(q, better ? open : q.price);
+  }
+
+  // ---- levels with the mouse only: the line follows the mouse, a click puts it there (Esc = cancel) ----------------------
+  const halfLots = p => Math.max(0.01, Math.round(p.lots * 50) / 100);
+  async function mouseLevel(p, kind) {
+    if (!ctx.pickPrice || !canTrade(accOf(p))) return;
+    const lots = kind === 'ptp' || kind === 'psl' ? halfLots(p) : kind === 'sl' ? expected(p).restSl : expected(p).rest;
+    const name = { sl: 'stop loss', tp: 'take profit', ptp: `čiastočný TP (−${lots} lot)`, psl: `čiastočný SL (−${lots} lot)` }[kind];
+    const price = await ctx.pickPrice(`🖱 ${sym(p.symbol).name} ${p.dir > 0 ? 'BUY' : 'SELL'}: klikni do grafu na ${name}`, pr => `${name.split(' (')[0]} · ${money(lotsAt(p, lots)(pr))}`);
+    if (price == null || !accOf(p).positions.includes(p)) return;
+    const now = priceOf(p.symbol), side = (price - now) * p.dir, loss = kind === 'sl' || kind === 'psl';
+    if (Number.isFinite(now) && (loss ? side >= 0 : side <= 0)) { ctx.toast(`${loss ? 'Stop' : 'Cieľ'} pri ${p.dir > 0 ? 'BUY' : 'SELL'} musí byť ${loss === p.dir > 0 ? 'pod' : 'nad'} cenou ${f2(now, p.symbol)}`); return; }
+    if (kind === 'ptp' || kind === 'psl') { const arr = kind === 'ptp' ? (p.tps = p.tps || []) : (p.sls = p.sls || []); arr.push({ price: rnd(p.symbol, price), lots }); }
+    else p[kind] = rnd(p.symbol, price);
+    touched(p); ctx.save(); paintCards(); ctx.onTrades(true);
+    ctx.toast(`✔ ${name}: ${f2(price, p.symbol)}`);
+  }
+  async function mouseOrderLevel(q, kind) {
+    const price = await ctx.pickPrice(`🖱 Príkaz ${q.dir > 0 ? 'BUY' : 'SELL'} @ ${f2(q.price, q.symbol)}: klikni na ${kind === 'sl' ? 'stop loss' : 'take profit'}`,
+      pr => `${kind.toUpperCase()} · ${money((pr - q.price) * q.dir * q.lots * (LOT[q.symbol] || 1))}`);
+    if (price == null || !allOrders().includes(q)) return;
+    const side = (price - q.price) * q.dir;
+    if (kind === 'sl' ? side >= 0 : side <= 0) { ctx.toast(`${kind === 'sl' ? 'Stop' : 'Cieľ'} musí byť na druhej strane od ceny príkazu`); return; }
+    q[kind] = rnd(q.symbol, price); ctx.save(); ctx.onTrades(true);
+  }
+  // the little buttons on the chart lines (app.js draws them, this does what they say)
+  function lineAction(pid, act, kind, idx) {
+    const q = allOrders().find(x => x.id === pid);
+    if (q) { if (act === 'x') cancelOrder(q); else if (act === 'sl' || act === 'tp') mouseOrderLevel(q, act); else if (act === 'be') { q.be = !q.be; ctx.save(); ctx.onTrades(true); } return; }
+    const p = A().positions.find(x => x.id === pid); if (!p) return;
+    if (act === 'x') return closeNow(p, 'ručne (graf)');
+    if (act === 'be') return toggleBE(p);
+    if (act === 'lots') {        // a partial exit: 25 → 50 → 75 → 100 % of the position, then around again
+      const t = (kind === 'ptp' ? p.tps : p.sls || [])[idx]; if (!t) return;
+      const steps = [0.25, 0.5, 0.75, 1].map(f => Math.max(0.01, Math.round(p.lots * f * 100) / 100)), cur = ptpLots(p, t);
+      t.lots = steps.find(v => v > cur + 1e-9) ?? steps[0]; delete t.pct; touched(p); ctx.save(); paintCards(); ctx.onTrades(true); return;
+    }
+    if (['sl', 'tp', 'ptp', 'psl'].includes(act)) mouseLevel(p, act);
+  }
+
+  // ---- quick BUY / SELL on the chart: one click at the lots shown (can be hidden) --------------------------------------
+  const QT = () => { const N = S().nexus, q = N.qt = N.qt || {}; if (q.on === undefined) q.on = true; if (!q.lots) q.lots = 0.1; return q; };
+  let qtEl = null;
+  function buildQuick() {
+    qtEl = document.createElement('div'); qtEl.id = 'qtBar';
+    qtEl.innerHTML = `<span class="qt-grip" data-qdrag title="Potiahni a presuň">⋮⋮</span><button class="qt-s" data-qs="-1" title="Predať hneď za trhovú cenu"><small>🐻 SELL</small><b data-qpx></b></button>
+      <span class="qt-l"><button data-ql="-">−</button><input data-qlots type="number" min="0.01" step="0.01" title="Loty (koliesko myši = +/−)"><button data-ql="+">+</button></span>
+      <button class="qt-b" data-qs="1" title="Kúpiť hneď za trhovú cenu"><small>🐂 BUY</small><b data-qpx></b></button>
+      <button class="qt-m" data-qm title="Limit / stop myšou: klikni do grafu na cenu príkazu">🖱</button><button class="qt-x" data-qx title="Skryť (zapneš v 🧰 Tools alebo v 🎛 Prehľade funkcií)">✕</button>`;
+    layer.appendChild(qtEl);
+    const Q = QT(), grip = $('[data-qdrag]', qtEl), lotsIn = $('[data-qlots]', qtEl);
+    let d = null;
+    grip.addEventListener('pointerdown', e => { const r = qtEl.getBoundingClientRect(); d = { x: e.clientX - r.left, y: e.clientY - r.top }; grip.setPointerCapture(e.pointerId); e.preventDefault(); });
+    grip.addEventListener('pointermove', e => { if (!d) return; Q.x = e.clientX - d.x; Q.y = e.clientY - d.y; placeQuick(); });
+    grip.addEventListener('pointerup', () => { if (d) { d = null; ctx.save(); } });
+    const setLots = v => { Q.lots = Math.max(0.01, r2(v)); lotsIn.value = Q.lots; ctx.save(); };
+    lotsIn.onchange = () => setLots(+lotsIn.value || 0.01);
+    lotsIn.addEventListener('wheel', e => { e.preventDefault(); setLots(Q.lots + (e.deltaY < 0 ? 1 : -1) * (Q.lots >= 1 ? 0.1 : 0.01)); }, { passive: false });
+    qtEl.addEventListener('click', e => {
+      const t = e.target.closest('[data-qs],[data-ql],[data-qx],[data-qm]'); if (!t) return;
+      if (t.dataset.ql) setLots(Q.lots + (t.dataset.ql === '+' ? 1 : -1) * (Q.lots >= 1 ? 0.1 : 0.01));
+      else if (t.dataset.qx !== undefined) { Q.on = false; ctx.save(); paintQuick(); ctx.toast('Rýchle tlačidlá skryté – zapneš ich v 🧰 Tools alebo 🎛 Prehľade funkcií'); }
+      else if (t.dataset.qm !== undefined) limitByMouse(null, Q.lots);
+      else marketOrder(+t.dataset.qs, Q.lots);
+    });
+  }
+  function placeQuick() { if (!qtEl) return; const Q = QT(), w = qtEl.offsetWidth || 330; qtEl.style.left = Math.max(0, Math.min(innerWidth - 80, Q.x ?? innerWidth / 2 - w / 2)) + 'px'; qtEl.style.top = Math.max(0, Math.min(innerHeight - 40, Q.y ?? 46)) + 'px'; }
+  function paintQuick() {
+    if (!layer) return; const Q = QT();
+    if (!Q.on) { if (qtEl) qtEl.style.display = 'none'; return; }
+    if (!qtEl) buildQuick();
+    qtEl.style.display = '';
+    const sy = ctx.chartSymbol(), now = priceOf(sy);
+    $$('[data-qpx]', qtEl).forEach(b => { b.textContent = f2(now, sy); });
+    const li = $('[data-qlots]', qtEl); if (document.activeElement !== li) li.value = Q.lots;
+    placeQuick();
+  }
+  function marketOrder(dir, lots, sy = ctx.chartSymbol()) {
+    const now = priceOf(sy);
+    if (!Number.isFinite(now)) { ctx.toast('Cena sa ešte načítava…'); return null; }
+    const p = openPos({ symbol: sy, dir, lots, lots0: lots, entry: now, sl: null, tp: null, tps: [], sls: [], src: 'ručne' });
+    if (p) { ctx.toast(`${dir > 0 ? '🐂 KÚPENÉ' : '🐻 PREDANÉ'} ${lots} lot ${sym(sy).name} @ ${f2(now, sy)} · SL / TP pridáš tlačidlami na čiare vstupu`); ctx.onTrades(true); pollPrices(); }
+    return p;
+  }
+  // a pending order by mouse: the side comes from where you click (below the price = buy limit / sell stop … asked if unclear)
+  async function limitByMouse(dir, lots) {
+    const sy = ctx.chartSymbol(), now = priceOf(sy);
+    const price = await ctx.pickPrice(`🖱 Klikni do grafu na cenu príkazu ${dir ? (dir > 0 ? 'BUY' : 'SELL') : '(pod cenou = BUY limit, nad cenou = SELL limit)'}`, pr => `${dir ? (dir > 0 ? 'BUY' : 'SELL') : pr < now ? 'BUY' : 'SELL'} ${lots} lot`);
+    if (price == null) return null;
+    const d = dir || (price < now ? 1 : -1);
+    return placeOrderAt({ symbol: sy, dir: d, price, lots });
+  }
+
+  // ---- 🐂 / 🐻 from Tools: choose the lots, then (if you want) the stop and the target with the mouse --------------------
+  function quickDialog(dir) {
+    const Q = QT(), sy = ctx.chartSymbol();
+    let lots = Q.lots;
+    const d = UI.openDialog(`<div class="dlg-h"><span>${dir > 0 ? '🐂 Kúpiť' : '🐻 Predať'} ${esc(sym(sy).name)} · účet ${esc(A().name)}</span><button class="ib" data-x>✕</button></div><div class="dlg-b qd">
+      <div class="fld"><span>Veľkosť pozície (loty)</span><span class="ctl"><button class="btn sm" data-qd="-">−</button><input type="number" min="0.01" step="0.01" data-qdl value="${lots}" style="width:90px"><button class="btn sm" data-qd="+">+</button></span></div>
+      <div class="tk-q qd-q">${[0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 2, 5].map(v => `<span data-qq="${v}">${v}</span>`).join('')}</div>
+      <div class="fld"><span>Potom myšou nastaviť</span><span class="ctl"><label><input type="checkbox" data-qsl checked> 🛑 stop loss</label><label><input type="checkbox" data-qtp checked> 🎯 take profit</label><label><input type="checkbox" data-qbe> 🛡 break-even</label></span></div>
+      <div class="muted qd-info"></div></div>
+      <div class="dlg-f"><button class="btn" data-qlim title="Vstup v budúcnosti: klikni do grafu na cenu (limit alebo stop)">🖱 Limit / stop myšou</button><span class="grow"></span><button class="btn" data-x>Zrušiť</button><button class="btn pri ${dir > 0 ? 'qd-buy' : 'qd-sell'}" data-qgo></button></div>`);
+    const paint = () => {
+      const now = priceOf(sy); $('[data-qdl]', d).value = lots;
+      $$('[data-qq]', d).forEach(x => x.classList.toggle('on', +x.dataset.qq === lots));
+      $('[data-qgo]', d).textContent = `✔ ${dir > 0 ? 'KÚPIŤ' : 'PREDAŤ'} ${lots} lot @ ${f2(now, sy)}`;
+      $('.qd-info', d).textContent = `1 pip = ${usd(tickOf(sy) * (LOT[sy] || 1) * lots)} · pohyb o 1 % = ${usd(now * 0.01 * (LOT[sy] || 1) * lots)}`;
+    };
+    const set = v => { lots = Math.max(0.01, r2(v)); Q.lots = lots; ctx.save(); paint(); };
+    $$('[data-qd]', d).forEach(b => b.onclick = () => set(lots + (b.dataset.qd === '+' ? 1 : -1) * (lots >= 1 ? 0.1 : 0.01)));
+    $$('[data-qq]', d).forEach(b => b.onclick = () => set(+b.dataset.qq));
+    $('[data-qdl]', d).onchange = e => set(+e.target.value || 0.01);
+    $$('[data-x]', d).forEach(x => x.onclick = UI.closeDialog);
+    const after = async (p, order) => {
+      const wsl = $('[data-qsl]', d).checked, wtp = $('[data-qtp]', d).checked, wbe = $('[data-qbe]', d).checked; UI.closeDialog();
+      if (!p) return;
+      if (order) { if (wsl) await mouseOrderLevel(p, 'sl'); if (wtp) await mouseOrderLevel(p, 'tp'); if (wbe) { p.be = true; ctx.save(); } return; }
+      if (wsl) await mouseLevel(p, 'sl'); if (wtp) await mouseLevel(p, 'tp'); if (wbe) toggleBE(p, true);
+    };
+    $('[data-qgo]', d).onclick = () => after(marketOrder(dir, lots, sy));
+    $('[data-qlim]', d).onclick = async () => { const keep = { sl: $('[data-qsl]', d).checked, tp: $('[data-qtp]', d).checked, be: $('[data-qbe]', d).checked }; UI.closeDialog();
+      const q = await limitByMouse(dir, lots); if (!q) return;
+      if (keep.sl) await mouseOrderLevel(q, 'sl'); if (keep.tp) await mouseOrderLevel(q, 'tp'); if (keep.be) { q.be = true; ctx.save(); } };
+    paint();
+  }
+
+  // ---- 📜 Script: your own robots in JavaScript, run in this browser on the paper account -------------------------------
+  // A script gets `api` (see SCRIPT_DOC) and usually schedules itself with api.every(). The 🎬 Director template scans the
+  // markets, gives BUY / SELL signals and – when CFG.trade is true – places limit orders with SL, TP, a partial TP and BE.
+  const DIRECTOR = `// 🎬 Director – skenuje trhy, dáva signály BUY / SELL a (ak trade: true) sám kladie limitné príkazy.
+// Všetko na papierovom účte. Uprav CFG a daj ▶ Spustiť.
+const CFG = {
+  symbols: api.symbols(),          // napr. ['XAUUSD', 'BTCUSD']
+  tfs: ['5m', '15m', '1h'],        // timeframy, ktoré hlasujú (vyšší má väčšiu váhu)
+  minScore: 0.4,                   // 0.2 slabý … 0.6 silný signál
+  needStart: false,                // true = iba keď sa práve začína pohyb (prieraz čiary / range / štruktúry)
+  trade: false,                    // true = robot sám kladie príkazy
+  lots: 0.1, pullbackAtr: 0.3,     // limit o 0.3 ATR lepšie ako cena (počká na malý návrat)
+  slAtr: 1.5, tpAtr: 3, partialAtr: 1.5, expireMin: 30,
+  every: 30,                       // sekúnd medzi skenmi
+};
+const W = { '5m': 1, '15m': 1.3, '1h': 1.6, '4h': 2 };
+api.every(CFG.every * 1000, async () => {
+  for (const s of CFG.symbols) {
+    let sc = 0, w = 0, atr = null;
+    for (const tf of CFG.tfs) { const v = await api.signal(s, tf); sc += v.score * (W[tf] || 1); w += W[tf] || 1; if (tf === CFG.tfs[0]) atr = v.atr; }
+    sc /= w;
+    const dir = sc >= CFG.minScore ? 1 : sc <= -CFG.minScore ? -1 : 0;
+    if (!dir) continue;
+    const mv = await api.moves(s, CFG.tfs[0]), start = mv.starting.find(m => m.dir === dir);
+    if (CFG.needStart && !start) continue;
+    const key = s + dir;
+    if (api.state[key] && Date.now() - api.state[key] < 15 * 60000) continue;   // the same signal at most every 15 min
+    api.state[key] = Date.now();
+    const text = \`\${dir > 0 ? '🐂 BUY' : '🐻 SELL'} \${s} · sila \${Math.round(Math.abs(sc) * 100)} %\${start ? ' · ' + start.name : ''}\`;
+    api.log(text); api.notify(text);
+    if (CFG.trade && !api.positions(s).length && !api.orders(s).length) {
+      const px = api.price(s), entry = px - dir * CFG.pullbackAtr * atr;
+      api.limit({ symbol: s, dir, price: entry, lots: CFG.lots, sl: entry - dir * CFG.slAtr * atr, tp: entry + dir * CFG.tpAtr * atr,
+        tps: [{ price: entry + dir * CFG.partialAtr * atr, lots: Math.max(0.01, CFG.lots / 2) }], autoBE: true, expireMin: CFG.expireMin, note: 'Director' });
+    }
+  }
+});
+`;
+  const SCRIPT_DOC = `api.symbols()                      → ['XAUUSD', …]
+api.bars(symbol, tf, n)            → Promise<[{time, open, high, low, close, volume, buy}]>
+api.signal(symbol, tf)             → Promise<{dir: 1|-1|0, score −1…1, entry, sl, tp, atr, rsi, why[]}>
+api.moves(symbol, tf, {minAtr})    → Promise<{moves[], starting[], trend}>  (prierazy čiar / range / štruktúry, pips, objem, sila)
+api.price(symbol)                  → posledná cena
+api.buy({symbol, lots, sl, tp, tps:[{price, lots}], sls:[…], autoBE})   api.sell({…})   → pozícia
+api.limit({symbol, dir, price, lots, sl, tp, tps, sls, autoBE, be, expireMin})       → príkaz (limit / stop)
+api.cancel(orderId)  api.close(positionId)  api.breakEven(positionId, true|false)
+api.positions(symbol?)  api.orders(symbol?)
+api.log(text)  api.notify(text)  api.every(ms, async fn)  api.state (pamäť skriptu)`;
+  const running = {};
+  const SC = () => { const s = S(); if (!Array.isArray(s.scripts)) s.scripts = []; if (!s.scripts.length) s.scripts.push({ id: 'director', name: '🎬 Director', code: DIRECTOR, on: false }); return s.scripts; };
+  let scSel = 'director';
+  function slog(sc, text, kind) {
+    const R = running[sc.id] || (running[sc.id] = { timers: [], state: {}, log: [] });
+    R.log.unshift({ t: Date.now(), text: String(text), kind }); if (R.log.length > 300) R.log.length = 300;
+    if (scSel === sc.id) paintScriptLog();
+  }
+  function scriptApi(sc) {
+    const R = running[sc.id], mine = s => A().positions.filter(p => !s || p.symbol === s), ords = s => ordersOf(A()).filter(q => !s || q.symbol === s);
+    const market = (o, dir) => { const px = priceOf(o.symbol) ?? prices[o.symbol]; if (!Number.isFinite(px)) { slog(sc, `⚠ ${o.symbol}: cena ešte nie je známa (zavolaj najprv api.signal)`, 'err'); return null; }
+      return openPos({ lots: 0.1, tps: [], sls: [], ...o, dir, entry: px, lots0: o.lots || 0.1, src: 'script', note: o.note || sc.name }); };
+    return Object.freeze({
+      symbols: () => ctx.symbols().map(s => s.id),
+      bars: (s, tf, n) => ctx.fetchBars(s, tf, null, n || 500),
+      signal: async (s, tf) => { const v = await ctx.signal(s, tf); if (Number.isFinite(v.entry)) prices[s] = prices[s] ?? v.entry; return v; },
+      moves: (s, tf, o) => ctx.moves(s, tf, o),
+      price: s => priceOf(s) ?? prices[s],
+      buy: o => market(o, 1), sell: o => market(o, -1),
+      limit: o => placeOrderAt({ ...o, src: 'script', note: o.note || sc.name }),
+      cancel: id => { const q = allOrders().find(x => x.id === id); if (q) cancelOrder(q, true); },
+      close: id => { const p = A().positions.find(x => x.id === id); if (p) return closeNow(p, 'script ' + sc.name); },
+      breakEven: (id, on = true) => { const p = A().positions.find(x => x.id === id); if (p) toggleBE(p, on); },
+      positions: mine, orders: ords,
+      log: (...a) => slog(sc, a.join(' ')),
+      notify: t => { ctx.toast('🤖 ' + t, 6000); if (ctx.notify) ctx.notify(sc.name, String(t)); },
+      every: (ms, fn) => { const run = async () => { if (!running[sc.id] || running[sc.id] !== R) return; try { await fn(); } catch (e) { slog(sc, '⚠ ' + (e.message || e), 'err'); } };
+        R.timers.push(setInterval(run, Math.max(1000, ms))); run(); },
+      state: R.state,
+    });
+  }
+  function runScript(sc) {
+    stopScript(sc, true);
+    const old = running[sc.id] ? running[sc.id].log : [];
+    running[sc.id] = { timers: [], state: {}, log: old };
+    sc.on = true; ctx.save();
+    slog(sc, '▶ spustený', 'ok');
+    try { new Function('api', '"use strict";\n' + sc.code)(scriptApi(sc)); } catch (e) { slog(sc, '⚠ chyba: ' + (e.message || e), 'err'); stopScript(sc); }
+    paintScripts();
+  }
+  function stopScript(sc, quiet) {
+    const R = running[sc.id];
+    if (R) { R.timers.forEach(clearInterval); R.timers = []; }
+    if (!quiet) { sc.on = false; ctx.save(); slog(sc, '⏹ zastavený', 'ok'); paintScripts(); }
+  }
+  const scriptsRunning = () => SC().filter(x => x.on).length;
+  function paintScriptLog() {
+    const box = $('#scLog'); if (!box) return;
+    const R = running[scSel];
+    box.innerHTML = (R ? R.log : []).slice(0, 150).map(l => `<div class="${l.kind || ''}"><span class="muted">${new Date(l.t).toLocaleTimeString('sk-SK')}</span> ${esc(l.text)}</div>`).join('') || '<div class="muted">Zatiaľ nič.</div>';
+  }
+  function paintScripts() {
+    const list = $('#scList'); if (!list) return;
+    const L = SC(); if (!L.find(x => x.id === scSel)) scSel = L[0].id;
+    const cur = L.find(x => x.id === scSel);
+    list.innerHTML = L.map(x => `<div class="sc-it ${x.id === scSel ? 'on' : ''}" data-scid="${x.id}"><span class="sc-dot ${x.on ? 'run' : ''}"></span>${esc(x.name)}</div>`).join('') + '<div class="sc-it add" data-scnew>＋ Nový skript</div>';
+    const ed = $('#scCode'), nm = $('#scName');
+    if (ed.dataset.id !== cur.id) { ed.value = cur.code; nm.value = cur.name; ed.dataset.id = cur.id; }
+    $('[data-sc=run]').textContent = cur.on ? '↻ Reštart' : '▶ Spustiť'; $('[data-sc=stop]').disabled = !cur.on;
+    $$('[data-scid]', list).forEach(x => x.onclick = () => { keepEdit(); scSel = x.dataset.scid; paintScripts(); paintScriptLog(); });
+    $('[data-scnew]', list).onclick = () => { keepEdit(); const id = 's' + Date.now().toString(36); L.push({ id, name: `Skript ${L.length + 1}`, code: `// Môj robot\napi.every(60000, async () => {\n  const v = await api.signal('XAUUSD', '15m');\n  api.log('XAUUSD 15m', v.dir > 0 ? 'BUY' : v.dir < 0 ? 'SELL' : 'nič', Math.round(v.score * 100) + ' %');\n});\n`, on: false }); scSel = id; ctx.save(); paintScripts(); paintScriptLog(); };
+    paintScriptLog();
+  }
+  function keepEdit() { const ed = $('#scCode'), cur = SC().find(x => x.id === (ed && ed.dataset.id)); if (cur) { cur.code = ed.value; cur.name = ($('#scName').value || cur.name).slice(0, 40); ctx.save(); } }
 
   // ---- trade panel: 🐂 BUY / 🐻 SELL, lots, stop loss, take profit and partial exits ----------------------------------
   // Levels are kept as distances from the moving price (d) on the side of the chosen direction P.dir; they are drawn on
@@ -603,8 +926,10 @@ const NEXUS = (() => {
   }
   async function pickLevel(kind, idx) {
     if (!ctx.pickPrice) return;
-    const n = kind === 'ptp' || kind === 'psl' ? `${lvName(kind)} ${idx + 1}` : lvName(kind);
-    const price = await ctx.pickPrice(`🎯 Klikni do grafu na úroveň: ${n}`);
+    const P = PL(), now = priceOf(ctx.chartSymbol()), part = kind === 'ptp' || kind === 'psl', lots = part ? (P[kind + 's'][idx] || { lots: Math.max(0.01, r2(P.lots / 2)) }).lots : P.lots;
+    const n = part ? `${lvName(kind)} ${idx + 1}` : lvName(kind);
+    const price = await ctx.pickPrice(`🖱 Klikni do grafu na úroveň: ${n}`, pr => `${n} · ${money((pr - now) * P.dir * lots * (LOT[ctx.chartSymbol()] || 1))}`);
+    if (price != null && part && !P[kind + 's'][idx]) P[kind + 's'][idx] = { d: 0, lots };
     if (price != null) { setPlanLevel(kind, idx, price); ctx.toast(`🎯 ${n}: ${f2(price, ctx.chartSymbol())}`); }
   }
   function buildTicket() {
@@ -624,8 +949,8 @@ const NEXUS = (() => {
           <label class="tk-be"><input type="checkbox" data-abe> 🛡 Po prvom čiastočnom TP posunúť SL na break-even</label>
         </div>
         <div class="tk-exp"></div>
-        <button class="tk-go" data-go></button>
-        <div class="tk-hint muted">Úroveň: zapni a ťahaj čiaru v grafe · napíš cenu · alebo 🎯 a klikni do grafu (prichytí sa k high / low sviečky). Opätovný klik ju vypne, ✕ na čiare ju zmaže.</div>
+        <button class="tk-go" data-go></button><button class="tk-lim" data-lim title="Vstup v budúcnosti: klikni do grafu na cenu – pod cenou BUY limit / nad cenou BUY stop (pri SELL naopak). SL / TP z panela idú s ním.">🖱 Limit / stop myšou</button>
+        <div class="tk-hint muted">Všetko myšou: klik na SL / TP / ＋ čiastočný → čiara ide za myšou, klik do grafu ju položí (prichytí sa k high / low sviečky), potom ju ťaháš. Opätovný klik vypne, ✕ na čiare zmaže, ⟳ mení loty.</div>
       </div>`;
     layer.appendChild(ticket);
     const P = PL(), head = $('[data-drag]', ticket);
@@ -640,7 +965,7 @@ const NEXUS = (() => {
     lotsIn.onchange = () => setLots(+lotsIn.value || 0.01);
     const part = s => { const [k, i] = s.split('|'); return [k, +i]; };
     ticket.addEventListener('click', e => {
-      const t = e.target.closest('[data-t],[data-l],[data-q],[data-side],[data-go],[data-tog],[data-pick],[data-addp],[data-delp]'); if (!t) return;
+      const t = e.target.closest('[data-t],[data-l],[data-q],[data-side],[data-go],[data-tog],[data-pick],[data-addp],[data-delp],[data-pcy],[data-lim]'); if (!t) return;
       const now = priceOf(ctx.chartSymbol()), ds = t.dataset;
       if (ds.t === 'min') { P.min = !P.min; placeTicket(); ctx.save(); }
       else if (ds.t === 'x') { P.open = false; ctx.save(); paintTicket(); ctx.onTrades(); }
@@ -655,13 +980,11 @@ const NEXUS = (() => {
         else { $$('.tk-ani', ticket).forEach(b => b.classList.toggle('armed', b === t)); ctx.save(); paintTicket(); ctx.onTrades(); }
       }
       else if (ds.go !== undefined) placeOrder(P.dir);
-      else if (ds.tog) { P[ds.tog + 'On'] = !P[ds.tog + 'On']; ctx.save(); paintTicket(); ctx.onTrades(); }
+      else if (ds.tog) { if (P[ds.tog + 'On']) { P[ds.tog + 'On'] = false; ctx.save(); paintTicket(); ctx.onTrades(); } else pickLevel(ds.tog); }
+      else if (ds.pcy) { const [k, i] = part(ds.pcy), t = P[k + 's'][i], st = [0.25, 0.5, 0.75, 1].map(f => Math.max(0.01, r2(P.lots * f))); t.lots = st.find(v => v > t.lots + 1e-9) ?? st[0]; ctx.save(); paintTicket(); ctx.onTrades(); }
+      else if (ds.lim !== undefined) limitFromPlan();
       else if (ds.pick) { const [k, i] = ds.pick.includes('|') ? part(ds.pick) : [ds.pick, undefined]; pickLevel(k, i); }
-      else if (ds.addp) {
-        if (!Number.isFinite(now)) return;
-        const k = ds.addp, arr = P[k + 's'], d0 = k === 'ptp' ? (P.tpOn && P.tpD ? P.tpD / 2 : now * 0.003) : (P.slOn && P.slD ? P.slD / 2 : now * 0.0015);
-        arr.push({ d: d0 * (1 + arr.length * 0.3), lots: Math.max(0.01, r2(P.lots / 2)) }); ctx.save(); paintTicket(); ctx.onTrades();
-      }
+      else if (ds.addp) { if (Number.isFinite(now)) pickLevel(ds.addp, P[ds.addp + 's'].length); }
       else if (ds.delp) { const [k, i] = part(ds.delp); P[k + 's'].splice(i, 1); ctx.save(); paintTicket(); ctx.onTrades(); }
     });
     ticket.addEventListener('change', e => {
@@ -723,7 +1046,7 @@ const NEXUS = (() => {
     if (box.dataset.sig !== sig && !box.contains(document.activeElement)) {
       box.dataset.sig = sig;
       box.innerHTML = rows.map(([k, i]) => `<div class="tk-row tk-part ${k}"><span class="tk-pn">${k === 'ptp' ? 'TP' : 'SL'}${i + 1}</span><input data-pp="${k}|${i}" type="number" step="any">
-        <span class="muted">−</span><input data-plt="${k}|${i}" type="number" min="0.01" step="0.01" class="tk-pl"><span class="muted">lot</span><b class="tk-pm"></b>
+        <span class="muted">−</span><input data-plt="${k}|${i}" type="number" min="0.01" step="0.01" class="tk-pl"><button class="ib" data-pcy="${k}|${i}" title="25 → 50 → 75 → 100 % lotov">⟳</button><b class="tk-pm"></b>
         <button class="ib" data-pick="${k}|${i}" title="Vybrať kliknutím do grafu">🎯</button><button class="ib" data-delp="${k}|${i}" title="Zmazať">✕</button></div>`).join('');
     }
     rows.forEach(([k, i]) => {
@@ -741,6 +1064,17 @@ const NEXUS = (() => {
     go.className = `tk-go ${P.dir > 0 ? 'buy' : 'sell'}`; go.style.display = P.quick ? 'none' : '';
     go.textContent = `✔ ${P.dir > 0 ? '🐂 KÚPIŤ' : '🐻 PREDAŤ'} ${P.lots} lot @ ${f2(now, sy)}`;
     placeTicket();
+  }
+  const capParts = (arr, lots) => { let left = lots; return arr.map(t => { const l = r2(Math.min(t.lots, left)); left = r2(left - l); return { price: t.price, lots: l }; }).filter(t => t.lots > 0); };
+  async function limitFromPlan() {
+    const P = PL(), sy = ctx.chartSymbol(), now = priceOf(sy);
+    if (!Number.isFinite(now)) { ctx.toast('Cena sa ešte načítava…'); return; }
+    const price = await ctx.pickPrice(`🖱 Klikni na cenu príkazu ${P.dir > 0 ? '🐂 BUY' : '🐻 SELL'} ${P.lots} lot – SL / TP z panela sa posunú s ním`, pr => `${P.dir > 0 ? 'BUY' : 'SELL'} ${(pr - now) * P.dir < 0 ? 'LIMIT' : 'STOP'} ${P.lots} lot`);
+    if (price == null) return;
+    const v = planView(price);
+    const q = placeOrderAt({ symbol: sy, dir: P.dir, price, lots: P.lots, sl: P.slOn ? v.sl : null, tp: P.tpOn ? v.tp : null, tps: capParts(v.ptps, P.lots), sls: capParts(v.psls, P.lots), autoBE: !!P.autoBE });
+    if (q && !P.keep) { P.slOn = P.tpOn = false; P.ptps = []; P.psls = []; }
+    ctx.save(); paintTicket(); ctx.onTrades(true);
   }
   function placeOrder(dir) {
     if (!guard()) return;
@@ -782,6 +1116,8 @@ const NEXUS = (() => {
     ticket: '<path d="M4 18V9M10 18V5M16 18v-7M22 18H2"/>',
     elec: '<path d="M13 2L4 14h7l-1 8 9-12h-7z"/>',
     lab: '<path d="M9 3h6M10 3v6l-5 9a2 2 0 0 0 2 3h10a2 2 0 0 0 2-3l-5-9V3"/><path d="M7 15h10"/>',
+    script: '<path d="M8 7l-5 5 5 5M16 7l5 5-5 5M14 4l-4 16"/>',
+    og: '<path d="M12 21c0-7-6-8-8-14 5 0 8 3 8 8 0-6 3-10 8-10-1 7-8 8-8 16z"/>',
   };
   const APPS = {
     acc: ['Účet', 'linear-gradient(135deg,#3b82f6,#6d28d9)', 'Profil, zostatok a prepínanie účtov'],
@@ -796,9 +1132,11 @@ const NEXUS = (() => {
     ticket: ['Obchod', 'linear-gradient(135deg,#ef4444,#16a34a)', 'Zobrazí / skryje obchodný panel v grafe'],
     elec: ['Electricals', 'linear-gradient(135deg,#fde047,#ea580c)', 'Štatistiky z Nexus Lab: čo sa stalo pri akej hodnote RSI, MACD a všetkých indikátorov'],
     lab: ['Nexus Lab', 'linear-gradient(135deg,#34d399,#0f766e)', 'Druhý grafový systém: karty grafov, skener pohybov, učenie (otvorí sa v novej karte)'],
+    script: ['Script', 'linear-gradient(135deg,#0ea5e9,#312e81)', 'Tvoje roboty v JavaScripte: 🎬 Director skenuje trhy, dáva signály BUY / SELL a môže sám klásť príkazy so SL, TP a BE'],
+    og: ['Overgrown Lab', 'linear-gradient(135deg,#a3e635,#166534)', 'Tretí grafový systém: trend a čiary na všetkých timeframoch, kde sa začína pohyb (otvorí sa v novej karte)'],
     saves: ['Uloženia', 'linear-gradient(135deg,#818cf8,#312e81)', 'Uložené rozloženia grafov – každé s vlastným názvom, dátumom a časom (Ctrl+S)'],
   };
-  const ACTIONS = { lab: () => window.open('lab', '_blank'), chat: () => ctx.openChat(), lib: () => { close(); LIB.open(); }, ticket: () => { const P = PL(); P.open = !P.open; ctx.save(); paintTicket(); ctx.onTrades(); ctx.toast(P.open ? '💹 Obchodný panel zobrazený v grafe' : 'Obchodný panel skrytý'); } };
+  const ACTIONS = { og: () => window.open('overgrown', '_blank'), lab: () => window.open('lab', '_blank'), chat: () => ctx.openChat(), lib: () => { close(); LIB.open(); }, ticket: () => { const P = PL(); P.open = !P.open; ctx.save(); paintTicket(); ctx.onTrades(); ctx.toast(P.open ? '💹 Obchodný panel zobrazený v grafe' : 'Obchodný panel skrytý'); } };
   const DK = () => {
     const N = S().nexus, d = N.desk = N.desk || {};
     d.icons = d.icons || {}; d.wins = d.wins || {}; d.z = d.z || 10;
@@ -857,13 +1195,19 @@ const NEXUS = (() => {
         <div class="muted" style="font-size:11px;margin-top:6px">Robot kontroluje trh každých 30 s a koná raz za každú uzavretú sviečku daného timeframu. Beží, kým je stránka otvorená.</div>`; },
     ideas: () => '<div id="nxIdeaBox"></div>',
     fold: () => '<div id="nxFolders"></div>',
+    script: () => `<div class="sc-wrap"><div class="sc-list" id="scList"></div><div class="sc-main">
+      <div class="sc-bar"><input id="scName" class="idea-in" maxlength="40" title="Názov skriptu"><button class="btn sm pri" data-sc="run">▶ Spustiť</button><button class="btn sm" data-sc="stop">⏹ Zastaviť</button>
+        <button class="btn sm" data-sc="save" title="Ctrl+S">💾 Uložiť</button><button class="btn sm" data-sc="tpl" title="Vloží pôvodný kód Directora">🎬 Šablóna</button><button class="btn sm" data-sc="del">🗑</button></div>
+      <textarea id="scCode" spellcheck="false"></textarea>
+      <details class="sc-doc"><summary>📖 Čo môže skript robiť (api) · beží v tomto prehliadači, obchoduje iba na papierovom účte</summary><pre>${esc(SCRIPT_DOC)}</pre></details>
+      <div class="sc-log" id="scLog"></div></div></div>`,
     saves: () => `<div class="nx-new"><input class="idea-in" id="svName" maxlength="60" placeholder="${esc(ctx.saves.defaultName())}" style="flex:1"><button class="btn sm pri" id="svAdd">💾 Uložiť</button></div>
         <div class="muted" style="font-size:11px;margin:-2px 0 6px">Uloží plochy, grafy, indikátory, kresby, funkcie a vzhľad. Bez názvu = dátum a čas. ${ctx.saves.remote() ? `Uložené na serveri pod menom <b>${esc(S().labeler)}</b> – nájdeš ich na každom zariadení.` : 'Bez mena v Nexus → Účet sa ukladá len v tomto prehliadači.'}</div>
         <input class="idea-in" id="svFind" placeholder="🔍 Hľadať…" style="width:100%;margin-bottom:6px"><div id="nxSaves" class="nx-saves"><div class="muted">Načítavam…</div></div>`,
     elec: () => '<div class="bd-bar"><button class="btn sm pri" data-elab>🧪 Otvoriť Nexus Lab</button><button class="btn sm" data-ere>↻ Obnoviť</button><span class="grow"></span><span class="muted">Dáta pribúdajú skenovaním v Labe · vidí ich aj Claude v chate</span></div><div id="nxElec" class="nx-elec"></div>',
     board: () => '<div class="bd-bar"><button class="btn sm" data-bd="note">＋ Poznámka</button><button class="btn sm" data-bd="list">＋ Zoznam úloh</button><span class="grow"></span><span class="muted bd-count"></span></div><div class="bd-area" id="bdArea"></div>',
   };
-  const WIN_SIZE = { acc: [430, 560], pos: [760, 380], hist: [820, 560], bot: [820, 560], ideas: [480, 460], fold: [480, 520], saves: [520, 560], board: [880, 600], elec: [1040, 660] };
+  const WIN_SIZE = { acc: [430, 560], pos: [760, 380], hist: [820, 560], bot: [820, 560], ideas: [480, 460], fold: [480, 520], saves: [520, 560], script: [1000, 660], board: [880, 600], elec: [1040, 660] };
   let histFilter = 'all';
   function winHtml(id) {
     const w = DK().wins[id], [name, bg] = APPS[id], [dw, dh] = WIN_SIZE[id] || [500, 420];
@@ -905,7 +1249,7 @@ const NEXUS = (() => {
     if (id === 'fold') paintFolders();
     else if (id === 'ideas') paintIdeas();
     else if (id === 'board') paintBoard();
-    else if (id === 'elec' || id === 'saves') return;
+    else if (id === 'elec' || id === 'saves' || id === 'script') return;
     else paintLive();
   }
   function paint() {
@@ -1020,6 +1364,21 @@ Aktuálne plochy, grafy, indikátory a kresby sa nahradia (ak ich chceš zachova
     $$('[data-svd]', box).forEach(b => b.onclick = () => { const x = it(b.dataset.svd); if (confirm(`Zmazať uloženie „${x.name}“?`)) ctx.saves.del(x.id).then(() => paintSaves()).catch(fail); });
   }
   const BIND = {
+    script: el => {
+      paintScripts();
+      $$('[data-sc]', el).forEach(b => b.onclick = () => {
+        keepEdit(); const a = b.dataset.sc, cur = SC().find(x => x.id === scSel);
+        if (a === 'run') runScript(cur); else if (a === 'stop') stopScript(cur); else if (a === 'save') ctx.toast('💾 Skript uložený');
+        else if (a === 'tpl') { if (confirm('Nahradiť kód tohto skriptu šablónou 🎬 Director?')) { cur.code = DIRECTOR; $('#scCode').dataset.id = ''; ctx.save(); paintScripts(); } }
+        else if (a === 'del' && confirm(`Zmazať skript „${cur.name}“?`)) { stopScript(cur, true); delete running[cur.id]; S().scripts = SC().filter(x => x !== cur); ctx.save(); paintScripts(); }
+      });
+      const ed = $('#scCode', el);
+      ed.addEventListener('keydown', e => {
+        if (e.key === 'Tab') { e.preventDefault(); const p = ed.selectionStart; ed.setRangeText('  ', p, ed.selectionEnd, 'end'); }
+        if ((e.ctrlKey || e.metaKey) && e.code === 'KeyS') { e.preventDefault(); e.stopPropagation(); keepEdit(); ctx.toast('💾 Skript uložený'); }
+      });
+      ed.onchange = keepEdit; $('#scName', el).onchange = () => { keepEdit(); paintScripts(); };
+    },
     saves: el => {
       const add = () => { const i = $('#svName', el); ctx.saves.create(i.value).then(() => { i.value = ''; i.placeholder = ctx.saves.defaultName(); paintSaves(); }).catch(e => ctx.toast('⚠ ' + e.message)); };
       $('#svAdd', el).onclick = add; $('#svName', el).onkeydown = e => { if (e.key === 'Enter') add(); };
@@ -1132,7 +1491,17 @@ Aktuálne plochy, grafy, indikátory a kresby sa nahradia (ak ich chceš zachova
           <td>${p.sl ? f2(p.sl, p.symbol) : '–'} / ${p.tp ? f2(p.tp, p.symbol) : '–'}</td><td>${(e => `<span class="dn">${e.sl === null ? '–' : money(e.sl)}</span> / <span class="up">${e.tp === null ? '–' : money(e.tp)}</span>`)(expected(p))}</td>
           <td><span class="up">${money(p.best)}</span> / <span class="dn">${money(p.worst)}</span></td><td>${dur(Date.now() - p.time)}</td><td class="${v >= 0 ? 'up' : 'dn'}"><b>${usd(v)}</b></td><td><button class="btn sm" data-cl="${p.id}">Zavrieť</button></td></tr>`; }).join('')}</table>`
         : '<div class="muted">Žiadne otvorené pozície.</div>';
-      $$('[data-cl]', pl).forEach(b => b.onclick = () => { const p = a.positions.find(x => x.id === b.dataset.cl); if (p) { closePos(p, prices[p.symbol] ?? p.entry, 'ručne'); paintLive(); } });
+      const ol = ordersOf(a);
+      if (ol.length) pl.insertAdjacentHTML('beforeend', `<div class="nx-sub">🕒 Čakajúce príkazy</div><table class="tt nx-t"><tr><th>Symbol</th><th>Typ</th><th>Loty</th><th>Cena</th><th>Teraz</th><th>SL / TP</th><th>Platí</th><th></th></tr>
+        ${ol.map(q => `<tr><td>${esc(sym(q.symbol).name)}${q.src === 'script' ? ' <small class="muted">📜 ' + esc(q.note || '') + '</small>' : ''}</td><td><span class="pill ${q.dir > 0 ? 'win' : 'loss'}">${q.kind === 'limit' ? 'LIMIT' : 'STOP'} ${q.dir > 0 ? 'BUY' : 'SELL'}</span></td>
+          <td>${q.lots}</td><td>${f2(q.price, q.symbol)}</td><td>${f2(prices[q.symbol], q.symbol)}</td><td>${q.sl ? f2(q.sl, q.symbol) : '–'} / ${q.tp ? f2(q.tp, q.symbol) : '–'}</td>
+          <td>${q.expire ? Math.max(0, Math.round((q.expire - Date.now()) / 60000)) + ' min' : 'bez limitu'}</td><td><button class="btn sm" data-oc="${q.id}">Zrušiť</button></td></tr>`).join('')}</table>`);
+      pl.onpointerdown = e => {
+        const b = e.target.closest('[data-cl],[data-oc]'); if (!b) return;
+        e.preventDefault();
+        if (b.dataset.oc) { const q = ol.find(x => x.id === b.dataset.oc); if (q) { cancelOrder(q); paintLive(); } return; }
+        const p = a.positions.find(x => x.id === b.dataset.cl); if (p) closeNow(p, 'ručne');
+      };
     }
     const hl = $('#nxHistList');
     if (hl) {
@@ -1222,7 +1591,8 @@ Aktuálne plochy, grafy, indikátory a kresby sa nahradia (ak ich chceš zachova
       ctx = c; S = c.S; page = $('#nexusPage');
       (S().accounts || []).forEach(a => a.positions.forEach(p => { if (!p.chk) p.chk = Date.now(); }));
       layer = document.createElement('div'); layer.id = 'posLayer'; document.body.appendChild(layer);
-      hud(); pollPrices(); paintCards(); paintTicket();
+      hud(); pollPrices(); paintCards(); paintTicket(); paintQuick();
+      setTimeout(() => SC().filter(x => x.on).forEach(runScript), 2500);
       setInterval(syncShared, 4000);
       if (S().robot.on) robotTick();
       document.addEventListener('keydown', e => { if (e.key === 'Escape' && page.classList.contains('open') && !UI.dialogOpen() && !/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) { e.stopImmediatePropagation(); close(); } }, true);
@@ -1238,7 +1608,7 @@ Aktuálne plochy, grafy, indikátory a kresby sa nahradia (ak ich chceš zachova
         prices[id] = price;
         checkHits(id, price, price);
       }
-      paintCards(); paintTicket();
+      paintCards(); paintTicket(); paintQuick();
     },
     chartLines: s => (ctx ? chartLines(s) : []), chartTrades: s => (ctx ? chartTrades(s) : []), chartMarkers: s => (ctx ? chartMarkers(s) : []),
     moveLine, removeLine,
@@ -1246,6 +1616,14 @@ Aktuálne plochy, grafy, indikátory a kresby sa nahradia (ak ich chceš zachova
     renderBoard(el) { if (!ctx) return; el.innerHTML = BODY.board(); BIND.board(el); paintBoard(); },
     // prepare a trade in the panel (from the Buy / Sell scanner): side, stop and target as distances from the price
     plan(o) { if (!ctx) return; const P = PL(); P.open = true; P.dir = o.dir > 0 ? 1 : -1; if (o.slD) { P.slOn = true; P.slD = o.slD; } if (o.tpD) { P.tpOn = true; P.tpD = o.tpD; } ctx.save(); paintTicket(); ctx.onTrades(); },
+    lineAction, quickDialog, limitByMouse,
+    flags: () => (ctx ? { ticket: PL().open, quick: QT().on, lines: CC().lines, ctl: CC().ctl !== false, robot: !!S().robot.on, scripts: scriptsRunning(), orders: allOrders().length } : {}),
+    setFlag(k, v) {
+      if (!ctx) return;
+      if (k === 'ticket') { PL().open = v; paintTicket(); } else if (k === 'quick') { QT().on = v; paintQuick(); } else if (k === 'ctl' || k === 'lines') CC()[k] = v;
+      else if (k === 'robot') { S().robot.on = v; if (v) robotTick(); else clearTimeout(robotT); } else if (k === 'scripts' && !v) SC().filter(x => x.on).forEach(x => stopScript(x));
+      ctx.save(); ctx.onTrades(true);
+    },
     toggleTicket() { const P = PL(); P.open = !P.open; ctx.save(); paintTicket(); ctx.onTrades(); },
     chartChanged() { if (!ctx) return; lineSig = ''; paintCards(); },
   };

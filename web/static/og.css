@@ -1,0 +1,29 @@
+/* Nexus Overgrown Lab */
+body.og { background: radial-gradient(120% 90% at 0% 0%, #13211a, #0f1218 60%); }
+#ogApp { position: fixed; inset: 0; display: flex; flex-direction: column; }
+#ogTop { display: flex; align-items: center; gap: 10px; padding: 5px 10px; background: rgba(20,26,22,.92); border-bottom: 1px solid #23402d; flex-wrap: wrap; font-size: 12px; }
+#ogTop select, #ogTop input[type=number] { background: var(--panel2); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 3px 6px; font: inherit; }
+#ogTop input[type=number] { width: 64px; } #ogTop label { display: flex; align-items: center; gap: 4px; color: var(--muted); }
+.og-logo { color: #a3e635; text-decoration: none; font-weight: 600; } .og-logo b { color: #84cc16; } .og-lnk { color: var(--muted); text-decoration: none; }
+#ogMain { flex: 1; min-height: 0; display: flex; }
+#ogGrid { flex: 1; min-width: 0; display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: 1fr 1fr; gap: 4px; padding: 4px; }
+.og-cell { display: flex; flex-direction: column; min-height: 0; border: 1px solid #23302a; border-radius: 6px; background: rgba(15,20,18,.7); transition: box-shadow .3s; }
+.og-cell.flash { box-shadow: 0 0 0 2px #84cc16; }
+.og-h { display: flex; align-items: center; gap: 6px; padding: 3px 8px; font-size: 12px; border-bottom: 1px solid #23302a; }
+.og-ch { flex: 1; min-height: 0; position: relative; }
+#ogSide { width: 390px; flex: none; overflow: auto; padding: 6px; display: flex; flex-direction: column; gap: 6px; border-left: 1px solid #23302a; }
+.og-card { background: rgba(22,28,26,.9); border: 1px solid #23302a; border-radius: 8px; padding: 8px 10px; font-size: 12px; }
+.og-card h4 { margin: 0 0 6px; font-size: 13px; } .og-card h4 small { font-weight: 400; }
+.og-bd { display: inline-block; padding: 0 7px; border-radius: 9px; font-size: 11px; font-weight: 600; white-space: nowrap; }
+.og-bd.b { background: rgba(8,153,129,.25); color: #4cd6b5; } .og-bd.s { background: rgba(242,54,69,.25); color: #ff7b86; } .og-bd.n { background: rgba(255,255,255,.08); color: var(--muted); }
+.og-pow { display: flex; height: 20px; border-radius: 10px; overflow: hidden; font-size: 11px; font-weight: 700; margin: 4px 0 6px; }
+.og-pow span { display: flex; align-items: center; justify-content: center; min-width: 0; overflow: hidden; white-space: nowrap; transition: width .4s; }
+.og-pow .b { background: linear-gradient(90deg, #047857, #10b981); } .og-pow .s { background: linear-gradient(90deg, #e11d48, #9f1239); }
+.og-sum { margin-bottom: 6px; }
+.og-t { width: 100%; border-collapse: collapse; font-size: 11px; } .og-t th, .og-t td { padding: 3px 4px; border-bottom: 1px solid #23302a; text-align: left; }
+.og-t tr[data-sym] { cursor: pointer; } .og-t tr[data-sym]:hover { background: rgba(132,204,22,.08); }
+.og-mv { border-left: 3px solid; padding: 4px 8px; margin: 4px 0; border-radius: 4px; background: rgba(255,255,255,.03); cursor: pointer; }
+.og-mv.b { border-color: #26a69a; } .og-mv.s { border-color: #ef5350; } .og-mv:hover { background: rgba(132,204,22,.08); }
+.og-mv small { color: var(--muted); display: block; margin-top: 1px; } .og-mv small b { color: var(--text); }
+.og-st { color: #ffd600; letter-spacing: -1px; }
+@media (max-width: 1100px) { #ogMain { flex-direction: column; } #ogSide { width: auto; max-height: 45vh; border-left: 0; } #ogGrid { grid-template-columns: repeat(2, 1fr); grid-template-rows: repeat(3, 260px); overflow: auto; } }

@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="sk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nexus Overgrown Lab</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M8 15C8 9 3 8 2 3c4 0 6 2 6 6 0-4 2-7 6-7-1 5-6 6-6 13z' fill='%2384cc16'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="static/app.css?v=25">
+<link rel="stylesheet" href="static/og.css?v=25">
+</head>
+<body class="og">
+<div id="ogApp">
+  <header id="ogTop">
+    <a class="og-logo" href="./" title="Späť na hlavný graf (Nexus)">◆ Nexus <b>Overgrown</b> Lab</a>
+    <a class="og-lnk" href="lab" title="Nexus Lab – druhý grafový systém">🧪 Lab</a>
+    <select id="ogSym" title="Trh"></select>
+    <label title="Najmenší pohyb, ktorý sa ukáže v zozname (v ATR daného timeframu)">min. pohyb <input id="ogAtr" type="number" min="0.5" max="30" step="0.5"> ATR</label>
+    <label title="Najmenší pohyb v bodoch (pips) – napr. zlato: 2000 = 20 $">min. <input id="ogPips" type="number" min="0" step="100"> pips</label>
+    <label title="Každú minútu znova načítať a preskenovať"><input id="ogAuto" type="checkbox"> auto 1 min</label>
+    <button class="btn sm" id="ogRe">↻ Skenovať</button>
+    <button class="btn sm pri" id="ogAll" title="Všetky trhy na 5m, 15m a 1h: kde sa práve začína pohyb">🌐 Všetky trhy</button>
+    <span class="grow"></span><span id="ogStatus" class="muted"></span>
+  </header>
+  <main id="ogMain">
+    <section id="ogGrid"></section>
+    <aside id="ogSide">
+      <div class="og-card" id="ogTrend"></div>
+      <div class="og-card" id="ogNow"></div>
+      <div class="og-card og-moves"><h4>⚡ Pohyby <small class="muted">po prieraze čiary, úrovne, range alebo štruktúry</small></h4><div id="ogMoves"></div></div>
+    </aside>
+  </main>
+</div>
+<div id="modal"></div><div id="pop"></div><div id="toast"></div>
+<script src="lib/lightweight-charts-5.2.1.js"></script>
+<script src="static/ui.js?v=25"></script>
+<script src="static/studies.js?v=25"></script>
+<script src="static/autotl.js?v=25"></script>
+<script src="static/struct.js?v=25"></script>
+<script src="static/technicals.js?v=25"></script>
+<script src="static/moves.js?v=25"></script>
+<script src="static/overgrown.js?v=25"></script>
+</body>
+</html>
