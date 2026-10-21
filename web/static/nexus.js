@@ -36,7 +36,7 @@ const NEXUS = (() => {
   const A = () => S().account;
   function openPos(o) {
     const p = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 5), time: Date.now(), ...o };
-    A().positions.push(p); ctx.save(); return p;
+    A().positions.push(p); ctx.save(); if (layer) paintCards(); return p;
   }
   function closePos(p, price, reason) {
     const a = A(); if (!a.positions.includes(p)) return;
@@ -44,6 +44,7 @@ const NEXUS = (() => {
     a.history.unshift({ ...p, exit: price, exitTime: Date.now(), pnl: pnlOf(p, price), reason });
     if (a.history.length > 500) a.history.length = 500;
     ctx.save();
+    if (layer) paintCards();
   }
   function totals() {
     const a = A(), realized = a.history.reduce((s, h) => s + (Number.isFinite(h.pnl) ? h.pnl : 0), 0);
@@ -68,6 +69,7 @@ const NEXUS = (() => {
       } catch (e) {}
     }
     if (page && page.classList.contains('open')) paintLive();
+    paintCards();
     priceT = setTimeout(pollPrices, need.size ? 5000 : 20000);
   }
 
@@ -132,26 +134,177 @@ const NEXUS = (() => {
     robotT = setTimeout(robotTick, 30000);
   }
 
-  // ---- HUD button --------------------------------------------------------------------------------------
+  // ---- ◆ NEXUS diamond: drag it anywhere, mouse wheel or right click to resize ----------------------------
+  const DIAMOND = `<svg class="nx-dia" viewBox="0 0 100 90" aria-hidden="true">
+    <defs><linearGradient id="nxDg" x1="0" y1="0" x2=".3" y2="1"><stop offset="0" stop-color="#30343e"/><stop offset=".55" stop-color="#121419"/><stop offset="1" stop-color="#050608"/></linearGradient></defs>
+    <path d="M4 31 L27 7 L73 7 L96 31 L50 86 Z" fill="url(#nxDg)"/>
+    <path d="M27 7 L50 7 L38 31 Z" fill="rgba(255,255,255,.16)"/><path d="M4 31 L27 7 L19 31 Z" fill="rgba(255,255,255,.07)"/>
+    <path d="M62 31 L73 7 L81 31 Z" fill="rgba(255,255,255,.05)"/><path d="M19 31 L38 31 L50 86 Z" fill="rgba(255,255,255,.06)"/>
+    <g fill="none" stroke="#e9e9e9" stroke-linejoin="round" stroke-linecap="round">
+      <path d="M4 31 L27 7 L73 7 L96 31 L50 86 Z" stroke-width="2.4"/>
+      <g stroke-width="1" opacity=".72"><path d="M4 31 H96"/><path d="M27 7 L19 31 M27 7 L38 31 L50 7 L62 31 L73 7 L81 31"/>
+        <path d="M19 31 L50 86 M38 31 L50 86 M62 31 L50 86 M81 31 L50 86"/><path d="M4 31 L30 55 M96 31 L70 55" opacity=".6"/></g>
+    </g></svg><span class="nx-hud-t">NEXUS</span>`;
   function hud() {
     const b = $('#nexusHud'), N = S().nexus;
+    b.innerHTML = DIAMOND;
+    const size = () => Math.max(36, Math.min(220, N.hudSize || 64));
     const place = () => {
-      if (N.hudX === null || N.hudX === undefined) { b.style.left = '50%'; b.style.top = ''; b.style.bottom = '14px'; b.style.transform = 'translateX(-50%)'; return; }
-      b.style.transform = ''; b.style.bottom = '';
-      b.style.left = Math.max(0, Math.min(innerWidth - b.offsetWidth, N.hudX)) + 'px'; b.style.top = Math.max(0, Math.min(innerHeight - b.offsetHeight, N.hudY)) + 'px';
+      const w = size(), h = Math.round(w * 0.9) + 16;
+      b.style.width = w + 'px'; b.style.height = h + 'px'; b.style.fontSize = Math.max(8, w / 7) + 'px';
+      const x = N.hudX ?? (innerWidth - w) / 2, y = N.hudY ?? innerHeight - h - 10;
+      b.style.left = Math.max(0, Math.min(innerWidth - w, x)) + 'px'; b.style.top = Math.max(0, Math.min(innerHeight - h, y)) + 'px';
     };
-    let d = null, moved = false;
-    b.addEventListener('pointerdown', e => { const r = b.getBoundingClientRect(); d = { x: e.clientX - r.left, y: e.clientY - r.top, sx: e.clientX, sy: e.clientY }; moved = false; b.setPointerCapture(e.pointerId); });
+    let d = null, saveT = null;
+    const later = () => { clearTimeout(saveT); saveT = setTimeout(ctx.save, 400); };
+    b.addEventListener('pointerdown', e => {
+      if (e.button !== 0) return;
+      const r = b.getBoundingClientRect();
+      d = { dx: e.clientX - r.left, dy: e.clientY - r.top, sx: e.clientX, sy: e.clientY, moved: false };
+      b.setPointerCapture(e.pointerId); e.preventDefault();
+    });
     b.addEventListener('pointermove', e => {
       if (!d) return;
-      if (!moved && Math.hypot(e.clientX - d.sx, e.clientY - d.sy) < 5) return;
-      moved = true; N.hudX = e.clientX - d.x; N.hudY = e.clientY - d.y; place();
+      if (!d.moved && Math.hypot(e.clientX - d.sx, e.clientY - d.sy) < 4) return;
+      d.moved = true; b.classList.add('drag');
+      N.hudX = e.clientX - d.dx; N.hudY = e.clientY - d.dy; place();
     });
-    b.addEventListener('pointerup', () => { if (!d) return; d = null; if (moved) ctx.save(); else toggle(); });
-    b.addEventListener('dblclick', e => e.preventDefault());
-    b.addEventListener('contextmenu', e => { e.preventDefault(); N.hudX = N.hudY = null; place(); ctx.save(); ctx.toast('◆ NEXUS vrátený dole do stredu'); });
+    const end = () => { if (!d) return; const m = d.moved; d = null; b.classList.remove('drag'); if (m) ctx.save(); else toggle(); };
+    b.addEventListener('pointerup', end);
+    b.addEventListener('pointercancel', () => { d = null; b.classList.remove('drag'); });
+    b.addEventListener('wheel', e => {
+      e.preventDefault();
+      const r = b.getBoundingClientRect(), cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+      N.hudSize = Math.round(Math.max(36, Math.min(220, size() * (e.deltaY < 0 ? 1.1 : 0.9))));
+      N.hudX = cx - size() / 2; N.hudY = cy - (size() * 0.9 + 16) / 2; place(); later();
+    }, { passive: false });
+    b.addEventListener('contextmenu', e => {
+      e.preventDefault();
+      const m = UI.openMenu(b, `<div class="sec">◆ NEXUS</div><div class="lbl" style="padding:0 12px">Veľkosť</div>
+        <span class="op" style="padding:0 12px 8px"><input type="range" min="36" max="220" value="${size()}" data-hs><b>${size()} px</b></span>
+        <div class="it" data-ho><span class="ic">◆</span><span class="grow">Otvoriť Nexus</span></div>
+        <div class="it" data-hr><span class="ic">↺</span><span class="grow">Vrátiť dole do stredu, pôvodná veľkosť</span></div>`, null, { side: b.getBoundingClientRect().top > innerHeight / 2 ? 'up' : undefined });
+      if (!m) return;
+      const r = $('[data-hs]', m);
+      r.oninput = () => { N.hudSize = +r.value; r.nextElementSibling.textContent = r.value + ' px'; place(); later(); };
+      $('[data-ho]', m).onclick = () => { UI.closeMenu(); open(); };
+      $('[data-hr]', m).onclick = () => { N.hudX = N.hudY = null; N.hudSize = 64; place(); ctx.save(); UI.closeMenu(); };
+    });
     window.addEventListener('resize', place);
     place();
+    hud.place = place;
+  }
+
+  // ---- positions on the chart: draggable cards with live P/L, close all / part, stop loss to break-even ----
+  const CARD_DEF = { scale: 100, color: '#2962ff', opacity: 94, lines: false, robot: true, all: false };
+  const CC = () => { const N = S().nexus, c = N.card = N.card || {}; for (const k in CARD_DEF) if (c[k] === undefined) c[k] = CARD_DEF[k]; return c; };
+  const UIP = id => { const m = S().nexus.cards = S().nexus.cards || {}; return (m[id] = m[id] || {}); };
+  let layer = null, lineSig = '';
+  function closePart(p, lots, price, reason) {
+    lots = Math.round(Math.min(lots, p.lots) * 100) / 100;
+    if (lots >= p.lots - 1e-9) return closePos(p, price, reason);
+    A().history.unshift({ ...p, lots, exit: price, exitTime: Date.now(), pnl: pnlOf({ ...p, lots }, price), reason: reason + ' (časť)' });
+    p.lots = Math.round((p.lots - lots) * 100) / 100;
+    ctx.save();
+  }
+  const priceOf = id => { const l = ctx.livePrice(id); return Number.isFinite(l) ? l : prices[id]; };
+  function shownPositions() {
+    const C = CC(), cur = ctx.chartSymbol();
+    return A().positions.filter(p => (C.all || p.symbol === cur) && (C.robot || p.src !== 'robot'));
+  }
+  function cardShell(p) {
+    const s = sym(p.symbol);
+    return `<div class="pc-h" data-drag><span class="pc-dir ${p.dir > 0 ? 'l' : 's'}">${p.dir > 0 ? '▲ LONG' : '▼ SHORT'}</span><b>${esc(s.name)}</b><small class="pc-lots"></small>
+        <span class="grow"></span><b class="pc-mini"></b><button data-a="min" title="Zbaliť / rozbaliť">–</button><button data-a="cfg" title="Vzhľad (veľkosť, farba, čiary)">⚙</button></div>
+      <div class="pc-body"><div class="pc-pnl"></div><div class="pc-sub"></div>
+        <div class="pc-sltp"><label>SL <input data-f="sl" type="number" step="any"></label><label>TP <input data-f="tp" type="number" step="any"></label></div>
+        <div class="pc-btns"><button data-a="be" title="Posunúť stop loss na vstupnú cenu (break-even)">SL → BE</button><button data-a="part" title="Zavrieť časť pozície">Časť ▾</button><button data-a="close" class="pc-x">Zavrieť</button></div>
+        <div class="pc-part"><button data-p="25">25 %</button><button data-p="50">50 %</button><button data-p="75">75 %</button><input data-pl type="number" step="0.01" min="0.01" placeholder="lotov"><button data-p="lots">OK</button></div>
+        ${p.src === 'robot' ? `<div class="pc-note">🤖 ${esc(p.note || 'robot')}</div>` : ''}</div>`;
+  }
+  function paintCards() {
+    if (!layer) return;
+    const C = CC(), list = shownPositions(), ids = new Set(list.map(p => p.id));
+    $$('.pcard', layer).forEach(el => { if (!ids.has(el.dataset.id)) el.remove(); });
+    list.forEach((p, i) => {
+      let el = layer.querySelector(`.pcard[data-id="${p.id}"]`);
+      const u = UIP(p.id);
+      if (!el) {
+        el = document.createElement('div'); el.className = 'pcard'; el.dataset.id = p.id; el.innerHTML = cardShell(p); layer.appendChild(el); bindCard(el, p);
+        if (u.x === undefined) { u.x = 70 + (i % 4) * 24; u.y = 120 + i * 34; }
+      }
+      const price = priceOf(p.symbol), v = pnlOf(p, price), pts = Number.isFinite(price) ? (price - p.entry) * p.dir : NaN;
+      el.style.left = Math.max(0, Math.min(innerWidth - 60, u.x)) + 'px'; el.style.top = Math.max(0, Math.min(innerHeight - 30, u.y)) + 'px';
+      el.style.setProperty('--pc', u.color || C.color); el.style.setProperty('--pco', C.opacity / 100);
+      el.style.transform = `scale(${C.scale / 100})`;
+      el.classList.toggle('min', !!u.min); el.classList.toggle('win', v > 0); el.classList.toggle('loss', v < 0);
+      $('.pc-lots', el).textContent = `${p.lots} lot`;
+      const money = Number.isFinite(v) ? (v >= 0 ? '+' : '') + usd(v) : '…';
+      $('.pc-pnl', el).textContent = money; $('.pc-mini', el).textContent = money;
+      $('.pc-sub', el).textContent = `${f2(p.entry, p.symbol)} → ${f2(price, p.symbol)} · ${Number.isFinite(pts) ? (pts >= 0 ? '+' : '') + f2(pts, p.symbol) + ' b' : ''}`;
+      for (const k of ['sl', 'tp']) { const inp = $(`[data-f=${k}]`, el); if (document.activeElement !== inp) inp.value = p[k] ?? ''; }
+    });
+    // optional entry / SL / TP lines on the chart (off by default – they get in the way)
+    const defs = C.lines ? list.filter(p => p.symbol === ctx.chartSymbol()).flatMap(p => [{ price: p.entry, color: UIP(p.id).color || C.color, title: `${p.dir > 0 ? 'LONG' : 'SHORT'} ${p.lots}`, style: 0 },
+      ...(p.sl ? [{ price: p.sl, color: '#f23645', title: 'SL', style: 2 }] : []), ...(p.tp ? [{ price: p.tp, color: '#089981', title: 'TP', style: 2 }] : [])]) : [];
+    const sig = JSON.stringify(defs);
+    if (sig !== lineSig) { lineSig = sig; ctx.setLines(defs); }
+  }
+  function bindCard(el, p) {
+    const u = UIP(p.id), head = $('[data-drag]', el);
+    let d = null;
+    head.addEventListener('pointerdown', e => {
+      if (e.target.closest('button, input')) return;
+      d = { x: e.clientX - u.x, y: e.clientY - u.y }; head.setPointerCapture(e.pointerId); e.preventDefault(); el.classList.add('drag');
+    });
+    head.addEventListener('pointermove', e => { if (!d) return; u.x = e.clientX - d.x; u.y = e.clientY - d.y; el.style.left = u.x + 'px'; el.style.top = u.y + 'px'; });
+    head.addEventListener('pointerup', () => { if (d) { d = null; el.classList.remove('drag'); ctx.save(); } });
+    head.addEventListener('dblclick', e => { if (!e.target.closest('button, input')) { u.min = !u.min; ctx.save(); paintCards(); } });
+    const now = () => priceOf(p.symbol);
+    el.addEventListener('click', e => {
+      const a = e.target.dataset.a, pp = e.target.dataset.p;
+      if (a === 'min') { u.min = !u.min; ctx.save(); paintCards(); }
+      else if (a === 'cfg') cardSettings(p);
+      else if (a === 'part') el.classList.toggle('parting');
+      else if (a === 'be') {
+        const price = now();
+        if (Number.isFinite(price) && (price - p.entry) * p.dir <= 0) { ctx.toast('Pozícia nie je v zisku – SL na vstupe by sa hneď spustil'); return; }
+        p.sl = p.entry; ctx.save(); paintCards(); ctx.toast(`🛡 SL posunutý na break-even ${f2(p.entry, p.symbol)}`);
+      } else if (a === 'close') {
+        const price = now(); if (!Number.isFinite(price)) return;
+        const v = pnlOf(p, price); closePos(p, price, 'ručne (graf)'); ctx.toast(`Zavreté ${sym(p.symbol).name} · ${v >= 0 ? '+' : ''}${usd(v)}`); paintCards(); paintLive();
+      } else if (pp) {
+        const price = now(); if (!Number.isFinite(price)) return;
+        const lots = pp === 'lots' ? +$('[data-pl]', el).value : p.lots * +pp / 100;
+        if (!(lots > 0)) { ctx.toast('Zadaj počet lotov'); return; }
+        const part = Math.round(Math.min(Math.max(0.01, lots), p.lots) * 100) / 100;
+        closePart(p, part, price, 'ručne (graf)'); el.classList.remove('parting'); ctx.toast(`Zavretá časť: ${part} lot`); paintCards(); paintLive();
+      }
+    });
+    $$('[data-f]', el).forEach(inp => inp.onchange = () => { const v = +inp.value; p[inp.dataset.f] = inp.value === '' || !Number.isFinite(v) ? null : v; ctx.save(); paintCards(); });
+  }
+  function cardSettings(p) {
+    const C = CC(), u = UIP(p.id), COLORS = ['#2962ff', '#7b61ff', '#26c6da', '#089981', '#ffb300', '#ff7043', '#f23645', '#e0e3eb', '#5d606b'];
+    const d = UI.openDialog(`<div class="dlg-h"><span>⚙ Pozície v grafe</span><button class="ib" data-x>✕</button></div><div class="dlg-b">
+      <div class="sec2">Všetky karty</div>
+      <div class="fld"><span>Veľkosť</span><span class="op" style="width:240px"><input type="range" min="60" max="220" value="${C.scale}" data-cs="scale"><b>${C.scale} %</b></span></div>
+      <div class="fld"><span>Krytie pozadia</span><span class="op" style="width:240px"><input type="range" min="30" max="100" value="${C.opacity}" data-cs="opacity"><b>${C.opacity} %</b></span></div>
+      <div class="fld"><span>Farba</span><span class="ctl">${COLORS.map(c => `<button class="pc-sw ${C.color === c ? 'on' : ''}" data-cc="${c}" style="background:${c}"></button>`).join('')}<input type="color" value="${C.color}" data-ccp></span></div>
+      <div class="fld"><label class="ctl"><input type="checkbox" data-cb="lines" ${C.lines ? 'checked' : ''}> Čiary vstupu, SL a TP v grafe</label></div>
+      <div class="fld"><label class="ctl"><input type="checkbox" data-cb="robot" ${C.robot ? 'checked' : ''}> Zobraziť aj pozície robota 🤖</label></div>
+      <div class="fld"><label class="ctl"><input type="checkbox" data-cb="all" ${C.all ? 'checked' : ''}> Pozície všetkých symbolov (nielen otvoreného grafu)</label></div>
+      <div class="fld"><span>Rozmiestnenie</span><button class="btn sm" data-stack>Zoradiť karty pod seba</button></div>
+      <div class="sec2">Iba táto pozícia (${esc(sym(p.symbol).name)} ${p.dir > 0 ? 'LONG' : 'SHORT'})</div>
+      <div class="fld"><span>Vlastná farba</span><span class="ctl">${COLORS.map(c => `<button class="pc-sw ${u.color === c ? 'on' : ''}" data-uc="${c}" style="background:${c}"></button>`).join('')}<button class="btn sm" data-uc="">Ako ostatné</button></span></div>
+      </div><div class="dlg-f"><span class="grow"></span><button class="btn pri" data-x>Hotovo</button></div>`);
+    const upd = () => { ctx.save(); paintCards(); };
+    $$('[data-cs]', d).forEach(x => x.oninput = () => { C[x.dataset.cs] = +x.value; x.nextElementSibling.textContent = x.value + ' %'; upd(); });
+    $$('[data-cc]', d).forEach(x => x.onclick = () => { C.color = x.dataset.cc; $$('[data-cc]', d).forEach(y => y.classList.toggle('on', y === x)); upd(); });
+    $('[data-ccp]', d).oninput = e => { C.color = e.target.value; upd(); };
+    $$('[data-cb]', d).forEach(x => x.onchange = () => { C[x.dataset.cb] = x.checked; upd(); });
+    $$('[data-uc]', d).forEach(x => x.onclick = () => { u.color = x.dataset.uc || undefined; $$('[data-uc]', d).forEach(y => y.classList.toggle('on', y === x)); upd(); });
+    $('[data-stack]', d).onclick = () => { shownPositions().forEach((q, i) => Object.assign(UIP(q.id), { x: 70, y: 110 + i * (UIP(q.id).min ? 40 : 160) * C.scale / 100 })); upd(); };
+    $$('[data-x]', d).forEach(x => x.onclick = UI.closeDialog);
   }
 
   // ---- page ----------------------------------------------------------------------------------------------
@@ -160,13 +313,22 @@ const NEXUS = (() => {
     return N.avatar ? `<img class="nx-av" src="${esc(N.avatar)}" style="width:${size}px;height:${size}px" alt="">`
       : `<span class="nx-av" style="width:${size}px;height:${size}px;font-size:${size / 2.4}px">${esc(name.slice(0, 1).toUpperCase())}</span>`;
   }
-  function card(id, title, body, extra) { return `<section class="nx-card" id="${id}"><header><span>${title}</span><span class="grow"></span>${extra || ''}</header><div class="nx-cb">${body}</div></section>`; }
+  // every card can be wider (1–3 columns) and have its own text size; the whole page has a zoom and a column width
+  const CUI = id => { const m = S().nexus.cardUi = S().nexus.cardUi || {}; return (m[id] = m[id] || {}); };
+  function card(id, title, body, extra) {
+    const u = CUI(id), z = u.zoom && u.zoom !== 100 ? `zoom:${u.zoom / 100};` : '';
+    return `<section class="nx-card" id="${id}" style="${u.span ? `grid-column:span ${u.span};` : ''}"><header><span>${title}</span><span class="grow"></span>${extra || ''}
+      <span class="nx-ctl"><button class="ib" data-cz="-" title="Menšie písmo">A−</button><button class="ib" data-cz="+" title="Väčšie písmo">A+</button><button class="ib" data-cw title="Šírka karty: 1 / 2 / 3 stĺpce">⇔</button><button class="ib" data-cmin title="Zbaliť">–</button></span></header>
+      <div class="nx-cb" style="${z}${u.min ? 'display:none' : ''}">${body}</div></section>`;
+  }
   function paint() {
     if (!page) return;
     const R = S().robot, a = A(), name = S().labeler;
+    const N = S().nexus;
     page.innerHTML = `<div class="nx-head">${avatarHtml(46)}<div><div class="nx-name">${esc(name || 'Bez mena')}</div><div class="muted" id="nxHeadSum"></div></div><span class="grow"></span>
+        <span class="nx-size"><label>Veľkosť <input type="range" min="60" max="160" value="${N.zoom || 100}" data-nz="zoom"></label><label>Stĺpec <input type="range" min="300" max="900" step="20" value="${N.col || 460}" data-nz="col"></label><label>◆ <input type="range" min="36" max="220" value="${N.hudSize || 64}" data-nz="hudSize"></label></span>
         <button class="btn sm" id="nxChat">💬 Chat</button><button class="btn sm" id="nxLib">📚 Knižnica</button><button class="btn sm" id="nxClose">📈 Späť na graf</button></div>
-      <div class="nx-grid">
+      <div class="nx-grid" style="zoom:${(N.zoom || 100) / 100};grid-template-columns:repeat(auto-fill,minmax(${N.col || 460}px,1fr))">
         ${card('nxAcc', '👤 Účet', `<div class="nx-prof"><label class="nx-avbox" title="Klikni a vyber obrázok">${avatarHtml(84)}<input type="file" accept="image/*" id="nxAvatar" hidden><small>zmeniť fotku</small></label>
             <div class="nx-pf"><label>Meno<input class="idea-in" id="nxName" value="${esc(name)}" placeholder="Tvoje meno"></label>
             <label>Počiatočný zostatok ($)<input class="idea-in" id="nxStart" type="number" min="0" step="100" value="${a.start}"></label></div></div>
@@ -275,6 +437,19 @@ const NEXUS = (() => {
   }
   function bind() {
     $('#nxClose').onclick = close;
+    const N = S().nexus;
+    $$('[data-nz]', page).forEach(x => x.oninput = () => {
+      N[x.dataset.nz] = +x.value;
+      if (x.dataset.nz === 'hudSize') hud.place && hud.place();
+      else { const g = $('.nx-grid', page); g.style.zoom = (N.zoom || 100) / 100; g.style.gridTemplateColumns = `repeat(auto-fill,minmax(${N.col || 460}px,1fr))`; }
+      clearTimeout(bind.t); bind.t = setTimeout(ctx.save, 400);
+    });
+    $$('.nx-card', page).forEach(c => {
+      const u = CUI(c.id), cb = $('.nx-cb', c);
+      $$('[data-cz]', c).forEach(b => b.onclick = () => { u.zoom = Math.max(60, Math.min(180, (u.zoom || 100) + (b.dataset.cz === '+' ? 10 : -10))); cb.style.zoom = u.zoom / 100; ctx.save(); });
+      $('[data-cw]', c).onclick = () => { u.span = ((u.span || (['nxBot', 'nxPos', 'nxHist'].includes(c.id) ? 2 : 1)) % 3) + 1; c.style.gridColumn = `span ${u.span}`; ctx.save(); };
+      $('[data-cmin]', c).onclick = () => { u.min = !u.min; cb.style.display = u.min ? 'none' : ''; ctx.save(); };
+    });
     $('#nxChat').onclick = () => ctx.openChat();
     $('#nxLib').onclick = () => { close(); LIB.open(); };
     $('#nxNext').onclick = () => { tipIdx++; paintQuote(); };
@@ -313,11 +488,26 @@ const NEXUS = (() => {
   return {
     init(c) {
       ctx = c; S = c.S; page = $('#nexusPage');
-      hud(); pollPrices();
+      layer = document.createElement('div'); layer.id = 'posLayer'; document.body.appendChild(layer);
+      hud(); pollPrices(); paintCards();
       if (S().robot.on) robotTick();
       document.addEventListener('keydown', e => { if (e.key === 'Escape' && page.classList.contains('open') && !UI.dialogOpen() && !/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) { e.stopImmediatePropagation(); close(); } }, true);
     },
     open, close, toggle, isOpen: () => page && page.classList.contains('open'),
     refresh() { if (page && page.classList.contains('open')) { paintFolders(); paintIdeas(); } },
+    // live price of the open chart: update the cards and check stop loss / take profit at once
+    tick() {
+      if (!ctx) return;
+      const id = ctx.chartSymbol(), price = ctx.livePrice(id);
+      if (Number.isFinite(price)) {
+        prices[id] = price;
+        for (const p of [...A().positions].filter(x => x.symbol === id)) {
+          if (p.sl && (p.dir > 0 ? price <= p.sl : price >= p.sl)) { closePos(p, p.sl, 'stop loss'); ctx.toast(`🛑 ${sym(id).name}: stop loss ${f2(p.sl, id)}`); }
+          else if (p.tp && (p.dir > 0 ? price >= p.tp : price <= p.tp)) { closePos(p, p.tp, 'take profit'); ctx.toast(`🎯 ${sym(id).name}: take profit ${f2(p.tp, id)}`); }
+        }
+      }
+      paintCards();
+    },
+    chartChanged() { if (!ctx) return; lineSig = ''; paintCards(); },
   };
 })();

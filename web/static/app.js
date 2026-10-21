@@ -305,7 +305,13 @@
   const fmtVol = v => (v >= 1e6 ? (v / 1e6).toFixed(1) + 'M' : v >= 1e4 ? (v / 1e3).toFixed(0) + 'k' : v >= 1e3 ? (v / 1e3).toFixed(1) + 'k' : v >= 100 ? v.toFixed(0) : v >= 10 ? v.toFixed(1) : v.toFixed(2));
 
   // ---- chart --------------------------------------------------------------------------------------
-  let bubbles = null;
+  let bubbles = null, posLines = [], posLineDefs = [];
+  // entry / SL / TP lines of the paper positions (only when switched on in the position card settings)
+  function drawPosLines() {
+    if (!main) return;
+    posLines.forEach(l => { try { main.removePriceLine(l); } catch (e) {} });
+    posLines = posLineDefs.map(d => main.createPriceLine({ price: d.price, color: d.color, lineWidth: 1, lineStyle: d.style ?? 2, axisLabelVisible: true, title: d.title }));
+  }
   let chart = null, main = null, units = [], markersApi = null, alertMark = null;
   const el = $('#chart');
   const tzFmt = {};
@@ -339,6 +345,7 @@
     disp = transform(src()); D = toD(disp);
     chart = LW.createChart(el, chartOptions());
     main = mainSeries(chart);
+    posLines = []; drawPosLines();
     main.setData(mainData());
     markersApi = LW.createSeriesMarkers(main, []);
     units = [];
@@ -384,6 +391,7 @@
     if (computeTL()) { checkNewIdeas(); if (S.idea.open && S.idea.tab === 'live') renderIdea(); }
     autoLayer && autoLayer.update();
     bubbles && bubbles.update();
+    if (window.NEXUS && NEXUS.tick) NEXUS.tick();
     updateMarkers();
     draw.redraw();
     showOHLC();
@@ -2119,6 +2127,9 @@
       liveIdeas: () => (scanRes || []).map((x, i) => ({ ...x, i })).filter(x => x.kind === 'idea'),
       jumpTo: x => jumpTo(x.symbol, x.tf, x.time, x),
       onRobot: () => {},
+      chartSymbol: () => S.symbol,
+      livePrice: id => (id === S.symbol && view.mode === 'live' && !view.replay && raw.length ? raw[raw.length - 1].close : NaN),
+      setLines: defs => { posLineDefs = defs; drawPosLines(); },
     });
   })();
 })();

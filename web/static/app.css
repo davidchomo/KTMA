@@ -573,3 +573,52 @@ body.tb-fit2 #tbRight .tbtn, body.tb-fit3 .tbtn { width: calc(var(--tb-h) + 6px)
 .nx-bot-cfg label.inl { flex-direction: row; align-items: center; gap: 6px; font-size: 12px; color: var(--text); }
 #chatHead > span:first-child, #newsHead > span:first-child, #ideaHead > span:first-child { white-space: nowrap; }
 #chatFilter { max-width: 150px; }
+
+/* ---- ◆ NEXUS diamond (replaces the pill button) ---- */
+#nexusHud { position: fixed; z-index: 30; left: 0; top: 0; bottom: auto; transform: none; width: 64px; height: 74px; padding: 0; margin: 0; border: 0; border-radius: 0;
+            background: none; box-shadow: none; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 0; cursor: grab;
+            color: #e9e9e9; font: 700 9px/1 system-ui; letter-spacing: .32em; user-select: none; touch-action: none; filter: drop-shadow(0 6px 14px rgba(0,0,0,.65)); }
+#nexusHud .nx-dia { width: 100%; height: auto; display: block; transition: transform .15s; }
+#nexusHud .nx-hud-t { margin-top: 2px; padding-left: .32em; opacity: .85; text-shadow: 0 1px 3px #000; }
+#nexusHud:hover .nx-dia { transform: translateY(-2px); }
+#nexusHud.drag { cursor: grabbing; } #nexusHud.drag .nx-dia { transform: scale(1.05); }
+#nexusHud.on { background: none; box-shadow: none; filter: drop-shadow(0 0 10px rgba(91,156,246,.75)) drop-shadow(0 6px 14px rgba(0,0,0,.6)); }
+
+/* ---- position cards on the chart ---- */
+#posLayer { position: fixed; inset: 0; z-index: 15; pointer-events: none; }
+.pcard { position: absolute; pointer-events: auto; transform-origin: top left; min-width: 230px; border-radius: 10px; font-size: 12px; color: #e8eaf0;
+         background: rgba(20, 23, 32, var(--pco, .94)); border: 1px solid color-mix(in srgb, var(--pc) 60%, transparent);
+         box-shadow: 0 8px 26px rgba(0,0,0,.45), inset 3px 0 0 var(--pc); backdrop-filter: blur(4px); }
+.pcard.drag { box-shadow: 0 14px 36px rgba(0,0,0,.6), inset 3px 0 0 var(--pc); opacity: .92; }
+.pc-h { display: flex; align-items: center; gap: 6px; padding: 6px 6px 6px 10px; cursor: grab; user-select: none; border-bottom: 1px solid rgba(255,255,255,.07); }
+.pc-h button, .pc-btns button, .pc-part button { background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.1); color: inherit; border-radius: 5px; padding: 2px 7px; cursor: pointer; font-size: 11px; }
+.pc-h button:hover, .pc-btns button:hover, .pc-part button:hover { background: color-mix(in srgb, var(--pc) 35%, transparent); }
+.pc-dir { font-weight: 700; font-size: 10px; padding: 2px 6px; border-radius: 4px; }
+.pc-dir.l { background: rgba(8,153,129,.25); color: #4cd6b5; } .pc-dir.s { background: rgba(242,54,69,.22); color: #ff7b86; }
+.pc-lots { color: #9598a1; }
+.pc-mini { display: none; font-variant-numeric: tabular-nums; }
+.pcard.min .pc-body { display: none; } .pcard.min .pc-mini { display: inline; } .pcard.min .pc-h { border-bottom: 0; }
+.pcard.win .pc-pnl, .pcard.win .pc-mini { color: #4cd6b5; } .pcard.loss .pc-pnl, .pcard.loss .pc-mini { color: #ff7b86; }
+.pc-body { padding: 6px 10px 9px; }
+.pc-pnl { font-size: 22px; font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
+.pc-sub { color: #9598a1; font-variant-numeric: tabular-nums; margin-bottom: 6px; }
+.pc-sltp { display: flex; gap: 8px; margin-bottom: 6px; }
+.pc-sltp label { display: flex; align-items: center; gap: 4px; color: #9598a1; font-size: 11px; }
+.pc-sltp input, .pc-part input { width: 82px; background: rgba(0,0,0,.35); color: #e8eaf0; border: 1px solid rgba(255,255,255,.12); border-radius: 4px; padding: 2px 5px; font: inherit; }
+.pc-btns { display: flex; gap: 4px; }
+.pc-btns button { flex: 1; padding: 4px 6px; }
+.pc-btns .pc-x { background: rgba(242,54,69,.75); border-color: transparent; color: #fff; }
+.pc-part { display: none; gap: 4px; margin-top: 5px; } .pcard.parting .pc-part { display: flex; }
+.pc-part input { width: 60px; }
+.pc-note { margin-top: 5px; color: #9598a1; font-size: 11px; }
+.pc-sw { width: 20px; height: 20px; border-radius: 50%; border: 2px solid transparent; cursor: pointer; padding: 0; }
+.pc-sw.on { border-color: #fff; }
+body:has(#nexusPage.open) #posLayer, body:has(#libPage.open) #posLayer, body:has(#techPage.open) #posLayer { display: none; }
+
+/* ---- Nexus page: size controls ---- */
+.nx-size { display: flex; gap: 12px; align-items: center; font-size: 11px; color: var(--muted); }
+.nx-size label { display: flex; align-items: center; gap: 5px; }
+.nx-size input { width: 90px; accent-color: var(--accent); }
+.nx-ctl { display: inline-flex; gap: 0; opacity: .4; margin-left: 6px; }
+.nx-card > header:hover .nx-ctl { opacity: 1; }
+.nx-ctl .ib { font-size: 11px; padding: 1px 4px; }
