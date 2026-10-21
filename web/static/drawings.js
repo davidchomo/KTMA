@@ -11,7 +11,7 @@ const DR = (() => {
   const FIB_CIRCLE = [[0.236, '#f23645'], [0.382, '#ff9800'], [0.5, '#4caf50'], [0.618, '#089981'], [0.786, '#00bcd4'], [1, '#787b86'], [1.618, '#2962ff'], [2.618, '#9c27b0']];
   const lv = list => list.map(([v, color]) => ({ v, color, on: true }));
   const GROUPS = [['lines', 'Trendové nástroje'], ['channels', 'Kanály'], ['pitch', 'Vidly'], ['fib', 'Fibonacci'], ['gann', 'Gann'],
-                  ['patterns', 'Vzory'], ['positions', 'Pozície a meranie'], ['brush', 'Štetce'], ['arrows', 'Šípky'], ['shapes', 'Tvary'], ['text', 'Text a poznámky']];
+                  ['patterns', 'Vzory'], ['positions', 'Pozície a meranie'], ['brush', 'Štetce'], ['arrows', 'Šípky'], ['shapes', 'Tvary'], ['text', 'Text a poznámky'], ['content', 'Obsah']];
   const BASE = { color: '#2962ff', opacity: 100, width: 2, style: 0, fill: false, fillColor: '#2962ff', fillOpacity: 15, text: '',
                  textColor: '#d1d4dc', fontSize: 13, extL: false, extR: false, labels: true };
 
@@ -321,6 +321,80 @@ const DR = (() => {
        { t: 'ell', cx: a.x, cy: a.y, rx: 3, ry: 3, fill: true, solid: true }], { props: ['line'] });
   tool('pricenote', 'text', 'Cenová poznámka', '📌', 2, ([a, b], d, E) => [L(a, b, { width: 1 }), TX(b.x + 4, b.y, E.fmt(d.pts[0].p), { align: 'left', bg: true, bgColor: d.color, color: '#fff', pad: 4 })], { props: ['line'] });
 
+
+  // ---- text, notes and content (the "Text" button): boxes, bubbles, pins, a table, an image, a post, an idea ----
+  const BOX = (x, y, w, h, o) => ({ t: 'box', x, y, w, h, r: 6, ...(o || {}) });
+  const TAIL = (pts, color, op) => PL(pts, { closed: true, fill: true, stroke: false, fillColor: color, fillOpacity: op });
+  // a padded box of text: wraps the text to `maxW`, returns the box and the text primitive
+  const textCard = (E, d, x, y, maxW, o = {}) => {
+    const size = o.size || d.fontSize, pad = o.pad ?? 8, txt = E.wrap(o.text ?? d.text, size, maxW, o.bold);
+    const m = E.measure(txt, size, o.bold), w = Math.max(o.minW || 0, m.w + 2 * pad), h = m.h + 2 * pad + (o.head || 0);
+    return { w, h, prims: [TX(x + pad, y + pad + (o.head || 0), txt, { align: 'left', base: 'top', size, color: o.color || d.textColor, bold: o.bold })] };
+  };
+  tool('anote', 'text', 'Poznámka (lístok)', '📝', 1, ([a], d, E) => {
+    const c = textCard(E, d, a.x + 14, a.y - 10, 220), y = a.y - 10 - c.h + 20;
+    return [BOX(a.x - 8, a.y - 8, 16, 16, { r: 3, fill: d.fillColor, fillOpacity: 100, stroke: d.color }), TX(a.x, a.y, '✎', { align: 'center', size: 11, color: '#1b1b1b' }),
+            BOX(a.x + 14, y, c.w, c.h, { fill: d.fillColor, fillOpacity: d.fillOpacity, shadow: true }), ...c.prims.map(p => ({ ...p, y: p.y - (a.y - 10 - y) }))];
+  }, { defaults: { text: 'Poznámka', fillColor: '#ffe082', fillOpacity: 96, textColor: '#1f2330', color: '#c9a227' }, props: ['text', 'fill'], askText: true });
+  tool('pin', 'text', 'Pin', '📍', 1, ([a], d, E) => {
+    const c = textCard(E, d, 0, 0, 200), bx = a.x - c.w / 2, by = a.y - 34 - c.h;
+    return [L(a, { x: a.x, y: a.y - 22 }, { width: 2, color: d.color }), { t: 'ell', cx: a.x, cy: a.y - 26, rx: 7, ry: 7, fill: true, solid: true },
+            { t: 'ell', cx: a.x, cy: a.y, rx: 2.5, ry: 2.5, fill: true, solid: true },
+            ...(d.text ? [BOX(bx, by, c.w, c.h, { fill: d.fillColor, fillOpacity: d.fillOpacity, shadow: true }), ...c.prims.map(p => ({ ...p, x: p.x + bx, y: p.y + by }))] : [])];
+  }, { defaults: { text: 'Pin', color: '#f23645', fillColor: '#1e222d', fillOpacity: 95 }, props: ['line', 'text', 'fill'], askText: true });
+  tool('table', 'text', 'Tabuľka', '▦', 1, ([a], d, E) => {
+    // one row per line, cells separated by |, the first row is the header
+    const rows = String(d.text || '').split('\n').map(r => r.split('|').map(s => s.trim())), cols = Math.max(...rows.map(r => r.length)), size = d.fontSize, pad = 6;
+    const cw = Array.from({ length: cols }, (_, j) => Math.max(...rows.map((r, i) => E.measure(r[j] || '', size, i === 0).w)) + 2 * pad), rh = size * 1.25 + 2 * pad;
+    const W = cw.reduce((s, v) => s + v, 0), out = [BOX(a.x, a.y, W, rh * rows.length, { r: 4, fill: d.fillColor, fillOpacity: d.fillOpacity, stroke: d.color, shadow: true }),
+      BOX(a.x, a.y, W, rh, { r: 4, fill: d.color, fillOpacity: 35 })];
+    rows.forEach((r, i) => {
+      if (i) out.push(L({ x: a.x, y: a.y + i * rh }, { x: a.x + W, y: a.y + i * rh }, { width: 1, opacity: 35 }));
+      let x = a.x;
+      for (let j = 0; j < cols; j++) { if (j && !i) out.push(L({ x, y: a.y }, { x, y: a.y + rh * rows.length }, { width: 1, opacity: 35 })); out.push(TX(x + pad, a.y + i * rh + pad, r[j] || '', { align: 'left', base: 'top', size, bold: i === 0, color: d.textColor })); x += cw[j]; }
+    });
+    return out;
+  }, { defaults: { text: 'Úroveň | Cena | Poznámka\nRezistencia | 4150 | 2× odmietnutá\nPodpora | 4110 | dvojité dno', fillColor: '#1e222d', fillOpacity: 94, color: '#2962ff', fontSize: 12 }, props: ['line', 'text', 'fill'], askText: true });
+  tool('callout', 'text', 'Bublina so šípkou (callout)', '🗨', 2, ([a, b], d, E) => {
+    const c = textCard(E, d, b.x, b.y, 240), x = b.x - c.w / 2, y = b.y - c.h / 2, cx = b.x, cy = b.y;
+    const side = Math.abs(a.x - cx) * c.h > Math.abs(a.y - cy) * c.w ? 'x' : 'y', k = 10;
+    const base = side === 'x' ? [{ x: cx + Math.sign(a.x - cx) * (c.w / 2 - 2), y: cy - k }, { x: cx + Math.sign(a.x - cx) * (c.w / 2 - 2), y: cy + k }]
+                              : [{ x: cx - k, y: cy + Math.sign(a.y - cy) * (c.h / 2 - 2) }, { x: cx + k, y: cy + Math.sign(a.y - cy) * (c.h / 2 - 2) }];
+    return [TAIL([base[0], a, base[1]], d.fillColor, d.fillOpacity), BOX(x, y, c.w, c.h, { fill: d.fillColor, fillOpacity: d.fillOpacity, stroke: d.color, shadow: true }),
+            ...c.prims.map(p => ({ ...p, x: p.x - b.x + x, y: p.y - b.y + y }))];
+  }, { defaults: { text: 'Callout', fillColor: '#2962ff', fillOpacity: 90, textColor: '#ffffff', color: '#5b9cf6' }, props: ['line', 'text', 'fill'], askText: true });
+  tool('comment', 'text', 'Komentár', '💬', 1, ([a], d, E) => {
+    const c = textCard(E, d, 0, 0, 220), x = a.x - 6, y = a.y - 12 - c.h;
+    return [TAIL([{ x: a.x + 4, y: a.y - 14 }, a, { x: a.x + 18, y: a.y - 14 }], d.fillColor, d.fillOpacity), BOX(x, y, c.w, c.h, { r: 12, fill: d.fillColor, fillOpacity: d.fillOpacity, shadow: true }),
+            ...c.prims.map(p => ({ ...p, x: p.x + x, y: p.y + y }))];
+  }, { defaults: { text: 'Komentár', fillColor: '#ffffff', fillOpacity: 95, textColor: '#1f2330' }, props: ['text', 'fill'], askText: true });
+  tool('signpost', 'text', 'Smerovník', '🪧', 1, ([a], d, E) => {
+    const c = textCard(E, d, 0, 0, 180, { bold: true }), x = a.x - c.w / 2, y = a.y - 46 - c.h;
+    return [L(a, { x: a.x, y: a.y - 46 }, { width: 2, dash: [3, 3] }), { t: 'ell', cx: a.x, cy: a.y, rx: 3, ry: 3, fill: true, solid: true },
+            BOX(x, y, c.w, c.h, { r: 3, fill: d.color, fillOpacity: 100, shadow: true }), TAIL([{ x: a.x - 6, y: y + c.h - 1 }, { x: a.x, y: y + c.h + 6 }, { x: a.x + 6, y: y + c.h - 1 }], d.color, 100),
+            ...c.prims.map(p => ({ ...p, x: p.x + x, y: p.y + y, color: '#fff' }))];
+  }, { defaults: { text: 'Vstup', color: '#ff9800' }, props: ['line', 'text'], askText: true });
+  tool('flag', 'text', 'Vlajka', '🚩', 1, ([a], d) => [L(a, { x: a.x, y: a.y - 30 }, { width: 2 }),
+       PL([{ x: a.x, y: a.y - 30 }, { x: a.x + 20, y: a.y - 24 }, { x: a.x, y: a.y - 17 }], { closed: true, fill: true, solid: true }),
+       ...(d.text ? [TX(a.x + 24, a.y - 24, d.text, { align: 'left', size: d.fontSize, color: d.textColor, bg: true, pad: 3 })] : [])],
+       { defaults: { text: '', color: '#f23645' }, props: ['line', 'text'] });
+  tool('image', 'content', 'Obrázok', '🖼', 2, ([a, b], d) => {
+    const x = Math.min(a.x, b.x), y = Math.min(a.y, b.y), w = Math.abs(b.x - a.x), h = Math.abs(b.y - a.y);
+    return [{ t: 'img', x, y, w, h, src: d.img }, BOX(x, y, w, h, { r: 2, stroke: d.color, fillOpacity: 0, lw: d.width })];
+  }, { defaults: { width: 1, color: '#2a2e39' }, props: ['line', 'image'], askImage: true });
+  tool('post', 'content', 'Príspevok', '𝕏', 1, ([a], d, E) => {
+    const W = 280, c = textCard(E, d, 0, 0, W - 16, { minW: W, head: 40 }), x = a.x, y = a.y, name = d.author || 'Obchodník';
+    return [BOX(x, y, c.w, c.h, { r: 12, fill: d.fillColor, fillOpacity: d.fillOpacity, stroke: '#2f3336', shadow: true }),
+            { t: 'ell', cx: x + 22, cy: y + 24, rx: 14, ry: 14, fill: true, solid: true }, TX(x + 22, y + 24, name.slice(0, 1).toUpperCase(), { align: 'center', size: 13, color: '#fff', bold: true }),
+            TX(x + 44, y + 12, name, { align: 'left', base: 'top', size: 13, bold: true, color: '#e7e9ea' }), TX(x + 44, y + 28, '@' + name.toLowerCase().replace(/\s+/g, ''), { align: 'left', base: 'top', size: 11, color: '#71767b' }),
+            TX(x + c.w - 12, y + 14, '𝕏', { align: 'right', base: 'top', size: 14, color: '#e7e9ea' }), ...c.prims.map(p => ({ ...p, x: p.x + x, y: p.y + y, color: '#e7e9ea' }))];
+  }, { defaults: { text: 'Zlato práve testuje podporu 4110 – sledujem reakciu 👀', author: 'Obchodník', fillColor: '#000000', fillOpacity: 96, color: '#1d9bf0' }, props: ['text', 'post', 'fill'], askText: true });
+  tool('idea', 'content', 'Nápad', '💡', 1, ([a], d, E) => {
+    const W = 250, c = textCard(E, d, 0, 0, W - 16, { minW: W, head: 26 }), x = a.x, y = a.y;
+    return [BOX(x, y, c.w, c.h, { r: 8, fill: d.fillColor, fillOpacity: d.fillOpacity, stroke: d.color, shadow: true }), BOX(x, y, 4, c.h, { r: 2, fill: d.color, fillOpacity: 100 }),
+            TX(x + 12, y + 8, '💡 Obchodný nápad', { align: 'left', base: 'top', size: 12, bold: true, color: d.color }), ...c.prims.map(p => ({ ...p, x: p.x + x, y: p.y + y }))];
+  }, { defaults: { text: 'Long pri retest 4120, SL 4112, TP 4150', fillColor: '#1e222d', fillOpacity: 96, color: '#ffca28' }, props: ['line', 'text', 'fill'], askText: true });
+
   // ---- rendering -----------------------------------------------------------------------------
   const DASHES = (style, w) => [[], [w, w * 1.5], [w * 3, w * 2], [w * 6, w * 3], [w, w * 4]][style] || [];
   function extend(a, b, extL, extR, W) {
@@ -333,7 +407,7 @@ const DR = (() => {
   }
   function textBox(ctx, p) {
     const size = p.size || 12, lines = String(p.text).split('\n');
-    ctx.font = `${size}px -apple-system, system-ui, sans-serif`;
+    ctx.font = `${p.bold ? '600 ' : ''}${size}px -apple-system, system-ui, sans-serif`;
     const w = Math.max(...lines.map(s => ctx.measureText(s).width)), h = lines.length * size * 1.25, pad = p.pad ?? 3;
     let x = p.x; if (p.align === 'center') x -= w / 2; else if (p.align === 'right') x -= w;
     let y = p.y; if (p.base === 'bottom') y -= h; else if (p.base !== 'top') y -= h / 2;
@@ -355,6 +429,20 @@ const DR = (() => {
         ctx.beginPath(); ctx.ellipse(p.cx, p.cy, Math.max(p.rx, 0.5), Math.max(p.ry, 0.5), 0, 0, 2 * Math.PI);
         if (p.fill) { ctx.fillStyle = p.solid ? rgba(d.color, d.opacity) : rgba(d.fillColor, d.fillOpacity); ctx.fill(); }
         if (!p.solid) { stroke(p); ctx.stroke(); }
+      } else if (p.t === 'box') {
+        ctx.setLineDash([]);
+        ctx.beginPath(); ctx.roundRect ? ctx.roundRect(p.x, p.y, p.w, p.h, p.r || 0) : ctx.rect(p.x, p.y, p.w, p.h);
+        if (p.fill && (p.fillOpacity ?? 100) > 0) {
+          if (p.shadow) { ctx.shadowColor = 'rgba(0,0,0,.4)'; ctx.shadowBlur = 10; ctx.shadowOffsetY = 3; }
+          ctx.fillStyle = rgba(p.fill, p.fillOpacity ?? 100); ctx.fill();
+          ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0; ctx.shadowOffsetY = 0;
+        }
+        if (p.stroke) { ctx.strokeStyle = rgba(p.stroke, 100); ctx.lineWidth = p.lw || 1; ctx.stroke(); }
+      } else if (p.t === 'img') {
+        const im = imageOf(p.src);
+        if (im && im.complete && im.naturalWidth) ctx.drawImage(im, p.x, p.y, p.w, p.h);
+        else { ctx.fillStyle = 'rgba(127,127,127,.15)'; ctx.fillRect(p.x, p.y, p.w, p.h); ctx.fillStyle = '#9598a1'; ctx.font = '12px system-ui'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+          ctx.fillText(p.src ? 'Načítavam…' : '🖼 Dvojklik = vybrať obrázok', p.x + p.w / 2, p.y + p.h / 2); }
       } else if (p.t === 'text') {
         const b = textBox(ctx, p);
         if (p.bg) {
@@ -367,6 +455,14 @@ const DR = (() => {
       }
     }
     ctx.setLineDash([]);
+  }
+  // pictures on the chart (stored inside the drawing as a small JPEG); redraw once loaded
+  const IMGS = {};
+  let redrawImages = null;
+  function imageOf(src) {
+    if (!src) return null;
+    if (!IMGS[src]) { const im = new Image(); im.onload = () => redrawImages && redrawImages(); im.src = src; IMGS[src] = im; }
+    return IMGS[src];
   }
   function distSeg(p, a, b) {
     const dx = b.x - a.x, dy = b.y - a.y, l2 = dx * dx + dy * dy;
@@ -386,6 +482,8 @@ const DR = (() => {
       } else if (q.t === 'ell') {
         const nx = (p.x - q.cx) / (q.rx || 1), ny = (p.y - q.cy) / (q.ry || 1), r = Math.hypot(nx, ny);
         best = Math.min(best, (q.fill && r <= 1) ? 0 : Math.abs(r - 1) * Math.min(q.rx, q.ry));
+      } else if (q.t === 'box' || q.t === 'img') {
+        if (p.x >= q.x && p.x <= q.x + q.w && p.y >= q.y && p.y <= q.y + q.h) best = 0;
       } else if (q.t === 'text') {
         const b = textBox(ctx, q);
         if (p.x >= b.x && p.x <= b.x + b.w && p.y >= b.y && p.y <= b.y + b.h) best = 0;
@@ -416,6 +514,16 @@ const DR = (() => {
         let sxy = 0, sxx = 0; b.forEach((x, i) => { sxy += (i - xm) * (x.close - ym); sxx += (i - xm) ** 2; });
         const k = sxy / sxx, a = ym - k * xm, sd = Math.sqrt(b.reduce((s, x, i) => s + (x.close - (a + k * i)) ** 2, 0) / n);
         return { t0: b[0].time, t1: b[n - 1].time, m0: a, m1: a + k * (n - 1), k: dev * sd };
+      },
+      measure: (text, size, bold) => { const b = textBox(measureCtx, { text, size, bold, x: 0, y: 0, pad: 0, base: 'top' }); return { w: b.w, h: b.h }; },
+      // wrap each line of the text to maxW pixels
+      wrap: (text, size, maxW, bold) => {
+        measureCtx.font = `${bold ? '600 ' : ''}${size}px -apple-system, system-ui, sans-serif`;
+        return String(text || '').split('\n').map(line => {
+          const out = []; let cur = '';
+          for (const w of line.split(' ')) { const t = cur ? cur + ' ' + w : w; if (cur && measureCtx.measureText(t).width > maxW) { out.push(cur); cur = w; } else cur = t; }
+          out.push(cur); return out.join('\n');
+        }).join('\n');
       },
     };
     const styleOf = id => ({ ...BASE, ...(TOOLS[id].defaults || {}), ...(env.toolDefaults(id) || {}) });
@@ -458,6 +566,7 @@ const DR = (() => {
       }
     }
     const redraw = () => layer && layer.update();
+    redrawImages = redraw;
     const changed = () => { env.onChange(list.filter(d => !d.temp)); redraw(); bar(); };
 
     // mouse position -> {t, p}, with the magnet
@@ -505,7 +614,7 @@ const DR = (() => {
       const okCount = t.n === 'multi' ? d.pts.length >= 2 : t.n === 'free' ? d.pts.length >= 2 : d.pts.length >= (t.create ? 3 : t.n);
       mode = null;
       env.el.classList.remove('drawing'); env.hint(''); env.onMode(null);
-      if (okCount) { list.push(d); select(d); changed(); if (t.askText) openSettings(d, 'text'); if (keep) start(t.id); }
+      if (okCount) { list.push(d); select(d); changed(); if (t.askText) openSettings(d, 'text'); else if (t.askImage) openSettings(d, 'img'); if (keep) start(t.id); }
       redraw();
     }
     function cancel() {
@@ -631,10 +740,13 @@ const DR = (() => {
     function openSettings(d, tab0) {
       const t = TOOLS[d.type], props = t.props || [], before = JSON.stringify(d);
       let tab = tab0 || (props.includes('levels') ? 'st' : 'st');
-      const tabs = [['st', 'Štýl'], ...(props.includes('text') ? [['text', 'Text']] : []), ...(props.includes('levels') ? [['lv', 'Úrovne']] : []), ['xy', 'Súradnice']];
+      const tabs = [['st', 'Štýl'], ...(props.includes('image') ? [['img', 'Obrázok']] : []), ...(props.includes('text') ? [['text', 'Text']] : []), ...(props.includes('levels') ? [['lv', 'Úrovne']] : []), ['xy', 'Súradnice']];
       const cb = (k, on, label) => `<label class="ctl"><input type="checkbox" data-k="${k}" ${on ? 'checked' : ''}> ${label}</label>`;
       const body = () => {
-        if (tab === 'text') return `<textarea data-k="text" rows="4" class="ta">${esc(d.text)}</textarea>
+        if (tab === 'img') return `<div class="fld"><span>Obrázok zo zariadenia</span><label class="btn sm">📁 Vybrať súbor<input type="file" accept="image/*" data-img hidden></label></div>
+          ${d.img ? `<img src="${d.img}" style="max-width:100%;max-height:220px;border-radius:6px;display:block;margin:6px auto">` : '<div class="muted">Zatiaľ bez obrázka.</div>'}
+          <div class="muted" style="font-size:11px">Obrázok sa zmenší na max. 900 px a uloží priamo do kresby (aj na server s tvojimi nastaveniami).</div>`;
+        if (tab === 'text') return `${props.includes('post') ? `<div class="fld"><span>Autor</span><input type="text" data-ks="author" value="${esc(d.author || '')}"></div>` : ''}${d.type === 'table' ? '<div class="muted" style="font-size:11px;margin-bottom:4px">Každý riadok = riadok tabuľky, bunky oddeľ znakom | . Prvý riadok je hlavička.</div>' : ''}<textarea data-k="text" rows="4" class="ta">${esc(d.text)}</textarea>
           <div class="fld"><span>Farba textu</span>${swatch('text', d.textColor, 100)}</div>
           <div class="fld"><span>Veľkosť písma</span><select data-k="fontSize">${opts([10, 11, 12, 13, 14, 16, 18, 20, 24, 28, 32, 40].map(v => [v + ' px', v]), d.fontSize)}</select></div>`;
         if (tab === 'lv') return d.levels.map((l, i) => `<div class="fld"><label class="ctl"><input type="checkbox" data-lv="${i}" ${l.on ? 'checked' : ''}>
@@ -661,6 +773,15 @@ const DR = (() => {
         $$('[data-k]', el).forEach(x => x.addEventListener(x.tagName === 'TEXTAREA' ? 'input' : 'change', () => {
           const k = x.dataset.k; d[k] = x.type === 'checkbox' ? x.checked : x.tagName === 'TEXTAREA' ? x.value : +x.value; changed();
         }));
+        $$('[data-ks]', el).forEach(x => x.oninput = () => { d[x.dataset.ks] = x.value; changed(); });
+        const fi = $('[data-img]', el);
+        if (fi) fi.onchange = () => {
+          const f = fi.files[0]; if (!f) return;
+          const im = new Image(), u = URL.createObjectURL(f);
+          im.onload = () => { const k = Math.min(1, 900 / Math.max(im.width, im.height)), c = document.createElement('canvas'); c.width = Math.round(im.width * k); c.height = Math.round(im.height * k);
+            c.getContext('2d').drawImage(im, 0, 0, c.width, c.height); URL.revokeObjectURL(u); d.img = c.toDataURL('image/jpeg', 0.82); changed(); paint(); };
+          im.src = u;
+        };
         const sw = (k, st, o, keys) => { const b = $(`[data-sw="${k}"]`, el); if (keys && keys.opacity && st[keys.opacity] === undefined) st[keys.opacity] = 100; if (b) b.onclick = e => colorPopover(e.currentTarget, st, o, changed, keys); };
         sw('line', d, { width: true, style: true });
         sw('fill', d, {}, { color: 'fillColor', opacity: 'fillOpacity' });

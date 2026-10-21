@@ -746,7 +746,7 @@
   }
   window.addEventListener('resize', () => { clearTimeout(fitToolbar.t); fitToolbar.t = setTimeout(fitToolbar, 150); });
   function applyToolbar() {
-    document.body.classList.remove('tb-top', 'tb-bottom', 'tb-left', 'tb-right', 'tb-hidden'); document.body.classList.add(`tb-${S.toolbar}`);
+    document.body.classList.remove('tb-top', 'tb-bottom', 'tb-left', 'tb-right', 'tb-hidden'); document.body.classList.add(`tb-${S.toolbar}`); applySide();
     $('#bAuto').classList.toggle('on', S.auto.on);
     $('#symLabel').textContent = sym().name || S.symbol;
     const t = TYPES.find(x => x[0] === S.type) || TYPES[0];
@@ -803,7 +803,7 @@
     const html = `<div class="sec">Magnet (prichytenie k sviečke)</div><div class="row">${magnets.map(([k, n]) => `<button class="btn ${S.magnet === k ? 'pri' : ''}" data-mag="${k}">${n}</button>`).join('')}</div>
       <div class="row"><button class="btn ${draw.keep ? 'pri' : ''}" data-x="keep" title="Po nakreslení ostane nástroj zapnutý">🔁 Opakovane</button><button class="btn" data-x="hide">${draw.hidden ? '👁 Zobraziť' : '🙈 Skryť'} všetky</button></div>
       <div class="row"><button class="btn" data-x="lock">🔒 Zamknúť všetky</button><button class="btn" data-x="del">🗑 Zmazať všetky</button></div>
-      ${DR.GROUPS.map(([g, name]) => `<div class="sec">${name}</div>${Object.values(DR.TOOLS).filter(t => t.group === g).map(t => `<div class="it ${draw.mode === t.id ? 'on' : ''}" data-tool="${t.id}"><span class="ic">${t.icon}</span><span class="grow">${esc(t.name)}</span>${t.key ? `<span class="key">${t.key}</span>` : ''}</div>`).join('')}`).join('')}`;
+      ${DR.GROUPS.filter(([g]) => g !== 'text' && g !== 'content').map(([g, name]) => `<div class="sec">${name}</div>${Object.values(DR.TOOLS).filter(t => t.group === g).map(t => `<div class="it ${draw.mode === t.id ? 'on' : ''}" data-tool="${t.id}"><span class="ic">${t.icon}</span><span class="grow">${esc(t.name)}</span>${t.key ? `<span class="key">${t.key}</span>` : ''}</div>`).join('')}`).join('')}`;
     openMenu(e.currentTarget, html, m => {
       $$('[data-tool]', m).forEach(x => x.onclick = () => { closeMenu(); draw.start(x.dataset.tool); });
       $$('[data-mag]', m).forEach(x => x.onclick = () => { S.magnet = x.dataset.mag; save(); closeMenu(); toast(`Magnet: ${x.textContent}`); });
@@ -991,6 +991,10 @@
         return `<div class="sec2">Poloha panelu</div>
         <div class="fld"><span class="ctl" style="flex-wrap:wrap">${[['top', '⬆ Hore'], ['bottom', '⬇ Dole'], ['left', '⬅ Vľavo'], ['right', '➡ Vpravo'], ['hidden', '🙈 Skryť']].map(([k, n]) => `<button class="btn sm ${S.toolbar === k ? 'pri' : ''}" data-pos="${k}">${n}</button>`).join('')}</span></div>
         <div class="muted" style="font-size:11px">Skrytý panel vrátiš tlačidlom ☰ v rohu grafu alebo Alt+P.</div>
+        <div class="sec2">Panel na boku (vľavo / vpravo)</div>
+        <div class="fld"><span>Šírka bočného panela</span><span class="op" style="width:250px"><input type="range" min="20" max="64" data-pside="sideW" value="${P.sideW || 30}"><b>${P.sideW || 30} px</b></span></div>
+        <div class="fld"><span>Krytie bočného panela</span><span class="op" style="width:250px"><input type="range" min="0" max="100" data-pside="sideOpacity" value="${P.sideOpacity ?? 100}"><b>${P.sideOpacity ?? 100} %</b></span></div>
+        <div class="fld"><label class="ctl"><input type="checkbox" data-pfloat ${P.sideFloat ? 'checked' : ''}> Plávať nad grafom (graf sa nezúži; s nízkym krytím je panel priehľadný)</label></div>
         <div class="sec2">Vzhľad panelu</div>
         <div class="fld"><span>Šírka tlačidla</span>${rng('w', 40, 240)}</div><div class="fld"><span>Výška panelu</span>${rng('h', 22, 56)}</div>
         <div class="fld"><span>Veľkosť písma</span>${rng('fs', 9, 22)}</div>
@@ -1018,6 +1022,8 @@
       $$('[data-cp]', d).forEach(x => x.onclick = () => { Object.assign(CS, CANDLE_PRESETS[x.dataset.cp][1], { preset: x.dataset.cp }); save(); buildChart();
         chart.timeScale().applyOptions({ barSpacing: CS.spacing }); chart.timeScale().scrollToRealTime(); paint(); });
       const P = S.panel;
+      $$('[data-pside]', d).forEach(x => x.oninput = () => { P[x.dataset.pside] = +x.value; x.nextElementSibling.textContent = x.value + (x.dataset.pside === 'sideW' ? ' px' : ' %'); save(); applySide(); });
+      const pf = $('[data-pfloat]', d); if (pf) pf.onchange = () => { P.sideFloat = pf.checked; save(); applySide(); };
       $$('[data-pos]', d).forEach(x => x.onclick = () => { if (x.dataset.pos === 'hidden') S.lastToolbar = S.toolbar; S.toolbar = x.dataset.pos; save(); applyToolbar(); paint(); });
       $$('[data-pl]', d).forEach(x => x[x.type === 'range' ? 'oninput' : 'onchange'] = () => { const k = x.dataset.pl; P[k] = x.type === 'range' ? +x.value : x.value;
         if (x.type === 'range') x.nextElementSibling.textContent = `${P[k]} px`; save(); applyPanel(); });
@@ -1799,6 +1805,7 @@
     const ws = workspaces();
     save(); applyLayout();
     if (ws.main && (ws.main.symbol !== S.symbol || ws.main.tf !== S.tf)) setAndReload({ symbol: ws.main.symbol || S.symbol, tf: ws.main.tf || S.tf });
+    paintDock();
     toast(`▦ ${ws.name} · ${S.layout.n} ${S.layout.n === 1 ? 'graf' : S.layout.n < 5 ? 'grafy' : 'grafov'}`);
   }
   // what is shown around every chart: price scale, time scale, legend, toolbar
@@ -1824,6 +1831,7 @@
         <div class="ws-it add" data-wsnew>＋ Nová plocha</div></div>
       <div class="sec">Počet grafov na tejto ploche</div>
       <div class="lay-pick">${['1', '2h', '2v', '3', '4', '5', '6', '7', '8', '9', '10'].map(k => `<span data-ly="${k}" class="${cur === k ? 'on' : ''}">${k === '2h' ? '2 ⇆' : k === '2v' ? '2 ⇅' : k}</span>`).join('')}</div>
+      <label class="it"><input type="checkbox" data-dock ${(S.wsDock || {}).on !== false ? 'checked' : ''}><span class="grow">Prepínač plôch priamo na obrazovke (dok)</span></label>
       <div class="sec">Zobraziť pri grafoch</div>
       <div class="vw-grid">${[['scale', 'Cenová os', !S.look.hideScale], ['time', 'Čas a dátum', !S.look.hideTime], ['legend', 'Legenda', !S.look.hideLegend], ['bar', 'Panel malých grafov', !L().hideBars]].map(([k, n, on]) => `<label><input type="checkbox" data-vw="${k}" ${on ? 'checked' : ''}> ${n}</label>`).join('')}</div>
       ${L().n > 1 ? `<label class="it"><input type="checkbox" data-sync ${L().sync ? 'checked' : ''}><span class="grow">Rovnaký symbol vo všetkých grafoch</span></label>
@@ -1847,6 +1855,7 @@
         if (x.dataset.vw === 'bar') { L().hideBars = !x.checked; save(); eachPane(w => w.NX_view({ bar: x.checked })); return; }
         setView({ [x.dataset.vw]: x.checked }, true);
       });
+      const dk = $('[data-dock]', m); if (dk) dk.onchange = () => { S.wsDock = { ...(S.wsDock || {}), on: dk.checked }; save(); paintDock(); };
       const sy = $('[data-sync]', m); if (sy) sy.onchange = () => { L().sync = sy.checked; save(); if (L().sync) eachPane(w => w.NX_setSymbol(S.symbol)); rerender(m); };
       $$('[data-psym]', m).forEach(x => x.onchange = () => { const i = +x.dataset.psym; L().panes[i].symbol = x.value; save(); const f = panes()[i]; try { f.contentWindow.NX_setSymbol(x.value); } catch (e) {} });
       $$('[data-ptf]', m).forEach(x => x.onchange = () => { const i = +x.dataset.ptf; L().panes[i].tf = x.value; save(); const f = panes()[i]; try { f.contentWindow.NX_setTf(x.value); } catch (e) {} });
@@ -1854,6 +1863,84 @@
     openMenu(anchor, html(), bind, { side: side(), cls: 'lay-menu' });
   }
   $('#bLayout').onclick = e => layoutMenu(e.currentTarget);
+  // ---- Text: notes, pins, a table, callouts, pictures, posts and ideas on the chart ---------------------------
+  $('#bText').onclick = e => {
+    const sec = (g, name) => `<div class="sec">${name}</div>${Object.values(DR.TOOLS).filter(t => t.group === g).map(t => `<div class="it ${draw.mode === t.id ? 'on' : ''}" data-tool="${t.id}"><span class="ic tx-ic">${t.icon}</span><span class="grow">${esc(t.name)}</span></div>`).join('')}`;
+    openMenu(e.currentTarget, sec('text', 'Text a poznámky') + sec('content', 'Obsah') +
+      '<div class="muted" style="font-size:11px;padding:6px 12px 8px">Klikni do grafu, kam to patrí. Text upravíš dvojklikom na kresbu (alebo ⚙).</div>',
+      m => $$('[data-tool]', m).forEach(x => x.onclick = () => { closeMenu(); draw.start(x.dataset.tool); }), { side: side(), cls: 'text-menu' });
+  };
+
+  // ---- ⊞ every function in one place, by category; choose which buttons stay on the toolbar -------------------
+  const FUNCS = [
+    ['Graf', [['bSymbol', '◆', 'Symbol', 'Vyber trh'], ['bType', '🕯', 'Typ grafu', 'Sviečky, Heikin Ashi, Renko…'], ['bTf', '⏱', 'Timeframe', '1 s až 1 mesiac'], ['bLayout', '▦', 'Rozloženie a plochy', '1–10 grafov, prepínanie plôch']]],
+    ['Kreslenie a text', [['bDraw', '✎', 'Kreslenie', 'Čiary, Fibonacci, vzory, tvary'], ['bText', 'T', 'Text', 'Poznámky, pin, tabuľka, obrázok, nápad']]],
+    ['Analýza', [['bInd', 'ƒx', 'Indikátory', 'RSI, MACD, kĺzavé priemery, vzory'], ['bAuto', '📐', 'Auto čiary', 'Trendové čiary a živé nápady'], ['bFlow', '🫧', 'Objem', 'Bubliny, delta, tok obchodov'],
+      ['bTech', '📊', 'Technicals', 'Súhrn pre všetky timeframy'], ['bScan', '🔍', 'Skenovať', 'Hľadá vstupy na trhoch'], ['bReplay', '⏯', 'Replay', 'Tréning na histórii']]],
+    ['Obchod', [['nexus', '◆', 'Nexus', 'Účet, pozície, robot, nástenka'], ['ticket', '💹', 'Obchodný panel', 'Kúpiť / predať s SL a TP'], ['bIdea', '💡', 'Nápad', 'Alerty skenera a labelovanie']]],
+    ['Komunikácia', [['bChat', '💬', 'Chat', 'Tím, nápady, otázky pre Clauda'], ['bNews', '📰', 'Správy', 'Novinky, kalendár, odkazy']]],
+    ['Vzhľad', [['bSettings', '⚙', 'Nastavenia', 'Graf, panel, jas'], ['bStyle', '🖼', 'Štýly', 'Fotky, videá, animácie, témy'], ['bFull', '⛶', 'Celá obrazovka', 'F11'], ['bUndo', '↶', 'Späť', 'Ctrl+Z'], ['bRedo', '↷', 'Znova', 'Ctrl+Y']]],
+    ['Vzdelávanie', [['bLib', '📚', 'Knižnica', 'Formácie, stratégie, tipy']]],
+  ];
+  function applyHiddenButtons() { const H = S.panel.hide || []; $$('#toolbar .tbtn').forEach(b => { if (b.id !== 'bAll') b.style.display = H.includes(b.id) ? 'none' : ''; }); fitToolbar(); }
+  $('#bAll').onclick = e => {
+    const html = () => `<div class="all-head"><b>Všetky funkcie</b><span class="muted">☆ = tlačidlo je v paneli</span></div>
+      ${FUNCS.map(([cat, list]) => `<div class="sec">${cat}</div><div class="all-grid">${list.map(([id, ic, n, hint]) => { const onBar = id.startsWith('b') && !(S.panel.hide || []).includes(id);
+        return `<div class="all-it" data-fn="${id}" title="${esc(hint)}"><span class="all-ic">${ic}</span><span class="grow"><b>${esc(n)}</b><small>${esc(hint)}</small></span>${id.startsWith('b') ? `<span class="all-pin ${onBar ? 'on' : ''}" data-pin="${id}" title="${onBar ? 'Skryť z panela' : 'Pridať do panela'}">${onBar ? '★' : '☆'}</span>` : ''}</div>`; }).join('')}</div>`).join('')}`;
+    const bind = m => {
+      $$('[data-pin]', m).forEach(x => x.onclick = ev => { ev.stopPropagation(); const id = x.dataset.pin, H = S.panel.hide = S.panel.hide || []; S.panel.hide = H.includes(id) ? H.filter(y => y !== id) : [...H, id]; save(); applyHiddenButtons(); m.innerHTML = html(); bind(m); });
+      $$('[data-fn]', m).forEach(x => x.onclick = () => {
+        const id = x.dataset.fn; closeMenu();
+        if (id === 'nexus') return NEXUS.open();
+        if (id === 'ticket') return NEXUS.toggleTicket();
+        const b = $('#' + id); if (!b) return;
+        // a hidden button still opens its menu: anchor it to ⊞
+        if (b.style.display === 'none') { b.style.display = ''; b.click(); setTimeout(() => applyHiddenButtons(), 0); } else b.click();
+      });
+    };
+    openMenu(e.currentTarget, html(), bind, { side: side(), cls: 'all-menu' });
+  };
+
+  // ---- the workspace dock: Plocha 1 / 2 / 3 … on the screen, drag it anywhere ------------------------------------
+  function paintDock() {
+    if (EMBED) return;
+    let d = $('#wsDock');
+    const D = S.wsDock = S.wsDock || { on: true, x: null, y: null, vertical: false };
+    if (!D.on) { if (d) d.remove(); return; }
+    if (!d) {
+      d = document.createElement('div'); d.id = 'wsDock'; d.className = 'no-chart'; document.body.appendChild(d);
+      let g = null;
+      d.addEventListener('pointerdown', e => { if (!e.target.closest('[data-grip]')) return; const r = d.getBoundingClientRect(); g = { x: e.clientX - r.left, y: e.clientY - r.top }; d.setPointerCapture(e.pointerId); e.preventDefault(); });
+      d.addEventListener('pointermove', e => { if (!g) return; D.x = e.clientX - g.x; D.y = e.clientY - g.y; placeDock(); });
+      d.addEventListener('pointerup', () => { if (g) { g = null; save(); } });
+      d.addEventListener('click', e => {
+        const w = e.target.closest('[data-dws]'); if (w) { if (w.dataset.dws !== S.wsId) switchWorkspace(w.dataset.dws); paintDock(); return; }
+        if (e.target.closest('[data-dadd]')) { const id = 'w' + Date.now().toString(36); S.workspaces.push({ id, name: `Plocha ${S.workspaces.length + 1}`, layout: { n: 4, two: 'h', sync: true, panes: [] }, main: { symbol: S.symbol, tf: S.tf } }); switchWorkspace(id); paintDock(); }
+        if (e.target.closest('[data-drot]')) { D.vertical = !D.vertical; save(); paintDock(); }
+      });
+      d.addEventListener('contextmenu', e => { e.preventDefault(); D.on = false; save(); paintDock(); toast('Prepínač plôch skrytý – zapneš ho v ▦ menu'); });
+    }
+    workspaces();
+    d.classList.toggle('vert', !!D.vertical);
+    d.innerHTML = `<span class="ws-grip" data-grip title="Potiahni a presuň · pravý klik = skryť">⋮⋮</span>${S.workspaces.map((w, i) => `<button data-dws="${w.id}" class="${w.id === S.wsId ? 'on' : ''}" title="${esc(w.name)} · Alt+${i + 1}"><b>${i + 1}</b><span>${esc(w.name)}</span><small>${w.layout.n}▦</small></button>`).join('')}
+      <button data-dadd title="Nová plocha">＋</button><button data-drot title="Otočiť (vodorovne / zvislo)">⤾</button>`;
+    placeDock();
+  }
+  function placeDock() {
+    const d = $('#wsDock'), D = S.wsDock; if (!d) return;
+    const w = d.offsetWidth, h = d.offsetHeight, x = D.x ?? innerWidth / 2 + 60, y = D.y ?? innerHeight - h - 14;
+    d.style.left = Math.max(0, Math.min(innerWidth - w, x)) + 'px'; d.style.top = Math.max(0, Math.min(innerHeight - h, y)) + 'px';
+  }
+  window.addEventListener('resize', () => placeDock());
+
+  // ---- side toolbar: thin by default, own width, see-through, floating over the chart -----------------------------
+  function applySide() {
+    const P = S.panel, r = document.documentElement.style;
+    r.setProperty('--tb-sw', (P.sideW || 30) + 'px');
+    r.setProperty('--tb-sbg', rgba(P.bg, P.sideOpacity ?? 100));
+    document.body.classList.toggle('tb-float', !!P.sideFloat && ['left', 'right'].includes(S.toolbar));
+  }
+
 
   // ---- styles: chart backgrounds (seasons) and colour themes ---------------------------------------
   const bgLayer = $('#bgLayer'), bgDim = $('#bgDim');
@@ -1864,20 +1951,106 @@
     if (id.startsWith('photo:')) return photoUrl(id.slice(6));
     return id === 'none' ? '' : BG.url(id);
   }
-  function hasBg() { return !!bgUrl() || (!EMBED && !['none', 'kenburns', undefined].includes(S.bgImg.anim)); }
+  function hasBg() { return !!bgUrl() || (!EMBED && !!S.bgImg.video) || (!EMBED && !['none', 'kenburns', undefined].includes(S.bgImg.anim)); }
   // ---- animated backgrounds: CSS layers (cheap, GPU) or a small canvas at ≤ 30 fps that stops when the tab is hidden ----
   const ANIMS = {
-    none: ['Bez animácie', 'linear-gradient(135deg,#161a25,#1e222d)'],
-    aurora: ['Polárna žiara', 'linear-gradient(160deg,#04131f,#0b3b3a 45%,#3b1d5c)'],
-    fog: ['Hmla nad grafom', 'linear-gradient(180deg,#1b2433,#3a4658 55%,#1b2433)'],
-    nebula: ['Hmlovina', 'radial-gradient(circle at 30% 40%,#5b2a86,transparent 60%),radial-gradient(circle at 70% 60%,#1f5f9e,#03040a 70%)'],
-    waves: ['Oceán', 'linear-gradient(180deg,#06121f,#0b3556 60%,#0e4f78)'],
-    snow: ['Sneženie', 'linear-gradient(180deg,#0f1724,#233148)'],
-    rain: ['Dážď', 'linear-gradient(180deg,#0b0f17,#1c2533)'],
-    storm: ['Búrka s bleskami', 'linear-gradient(180deg,#07090e,#1a1f2b)'],
-    kenburns: ['Pomalý pohyb fotky', 'linear-gradient(135deg,#2b3a2f,#5c4a32)'],
+    none: ['Bez animácie', 'linear-gradient(135deg,#161a25,#1e222d)', 'Základné'],
+    aurora: ['Polárna žiara', 'linear-gradient(160deg,#04131f,#0b3b3a 45%,#3b1d5c)', 'Príroda'],
+    fog: ['Hmla nad grafom', 'linear-gradient(180deg,#1b2433,#3a4658 55%,#1b2433)', 'Príroda'],
+    waves: ['Oceán', 'linear-gradient(180deg,#06121f,#0b3556 60%,#0e4f78)', 'Príroda'],
+    snow: ['Sneženie', 'linear-gradient(180deg,#0f1724,#233148)', 'Počasie'],
+    rain: ['Dážď', 'linear-gradient(180deg,#0b0f17,#1c2533)', 'Počasie'],
+    storm: ['Búrka s bleskami', 'linear-gradient(180deg,#07090e,#1a1f2b)', 'Počasie'],
+    money: ['Tlač peňazí', 'linear-gradient(180deg,#0b1a12,#14402a)', 'Efekty'],
+    fire: ['Oheň', 'linear-gradient(0deg,#3a0d02,#120604 70%)', 'Efekty'],
+    spotlights: ['Reflektory (slávnostné)', 'linear-gradient(180deg,#0a0716,#1c1236)', 'Efekty'],
+    fireworks: ['Ohňostroj', 'linear-gradient(180deg,#05060d,#141a33)', 'Efekty'],
+    neon: ['Neónové farby', 'linear-gradient(135deg,#ff2bd6,#2962ff,#00e5ff)', 'Efekty'],
+    bokeh: ['Bokeh svetlá', 'radial-gradient(circle at 30% 40%,#ffb30055,transparent 40%),radial-gradient(circle at 70% 60%,#00e5ff44,#0b0f17 60%)', 'Efekty'],
+    matrix: ['Digitálny dážď čísel', 'linear-gradient(180deg,#020a04,#04150a)', 'Efekty'],
+    nebula: ['Hmlovina', 'radial-gradient(circle at 30% 40%,#5b2a86,transparent 60%),radial-gradient(circle at 70% 60%,#1f5f9e,#03040a 70%)', 'Vesmír'],
+    kenburns: ['Pomalý pohyb fotky', 'linear-gradient(135deg,#2b3a2f,#5c4a32)', 'Základné'],
   };
-  let animRaf = null, animCanvas = null;
+  const CSS_ANIMS = { aurora: 3, nebula: 3, fog: 3, waves: 3, spotlights: 4, neon: 2 };
+  // canvas effects: init(w, h) → state, step(g, w, h, state, speed)
+  const rnd = (a, b) => a + Math.random() * (b - a);
+  const FX = {
+    snow: { init: (w, h) => Array.from({ length: 110 }, () => ({ x: rnd(0, w), y: rnd(0, h), v: rnd(0.4, 1.4), r: rnd(1, 3.2), ph: rnd(0, 6.3) })),
+      step: (g, w, h, P, sp) => { g.fillStyle = 'rgba(255,255,255,.75)'; g.beginPath(); for (const p of P) { p.ph += 0.02; p.x += Math.sin(p.ph) * 0.4; p.y += p.v * sp; if (p.y > h + 5) { p.y = -5; p.x = rnd(0, w); } g.moveTo(p.x + p.r, p.y); g.arc(p.x, p.y, p.r, 0, 6.28); } g.fill(); } },
+    rain: { init: (w, h) => Array.from({ length: 150 }, () => ({ x: rnd(0, w), y: rnd(0, h), v: rnd(7, 13), l: rnd(10, 22) })),
+      step: (g, w, h, P, sp, st) => {
+        if (st && st.storm) { if (st.flash > 0) { g.fillStyle = `rgba(200,210,255,${st.flash * 0.25})`; g.fillRect(0, 0, w, h); st.flash -= 0.08; } else if (Math.random() < 0.004) st.flash = 1; }
+        g.strokeStyle = 'rgba(180,200,230,.35)'; g.lineWidth = 1; g.beginPath();
+        for (const p of P) { p.y += p.v * sp; p.x -= p.v * sp * 0.15; if (p.y > h + 20) { p.y = -20; p.x = rnd(0, w + 40); } g.moveTo(p.x, p.y); g.lineTo(p.x + p.l * 0.15, p.y - p.l); }
+        g.stroke(); } },
+    // banknotes come out of a press at the top and float down, turning
+    money: { init: (w, h) => Array.from({ length: 34 }, () => ({ x: rnd(0, w), y: rnd(-h, h), v: rnd(0.6, 1.6), a: rnd(0, 6.3), va: rnd(-0.02, 0.02), s: rnd(0.7, 1.25), fl: rnd(0, 6.3) })),
+      step: (g, w, h, P, sp) => {
+        const press = 26;
+        const grd = g.createLinearGradient(0, 0, 0, press); grd.addColorStop(0, '#2a2f38'); grd.addColorStop(1, '#14171d');
+        g.fillStyle = grd; g.fillRect(0, 0, w, press); g.fillStyle = 'rgba(255,255,255,.08)'; for (let x = (Date.now() / 20) % 40; x < w; x += 40) g.fillRect(x, 6, 20, 3);
+        for (const p of P) {
+          p.y += p.v * sp; p.a += p.va * sp; p.fl += 0.05 * sp; p.x += Math.sin(p.fl) * 0.5;
+          if (p.y > h + 40) { p.y = press - 10; p.x = rnd(0, w); }
+          const bw = 64 * p.s, bh = 30 * p.s, sq = Math.abs(Math.cos(p.fl));
+          g.save(); g.translate(p.x, p.y); g.rotate(p.a); g.scale(1, 0.35 + 0.65 * sq);
+          g.fillStyle = '#2e7d4f'; g.fillRect(-bw / 2, -bh / 2, bw, bh); g.strokeStyle = '#a5d6a7'; g.lineWidth = 1.2; g.strokeRect(-bw / 2 + 3, -bh / 2 + 3, bw - 6, bh - 6);
+          g.fillStyle = '#c8e6c9'; g.beginPath(); g.ellipse(0, 0, bh * 0.32, bh * 0.32, 0, 0, 6.28); g.fill();
+          g.fillStyle = '#1b5e20'; g.font = `700 ${Math.round(12 * p.s)}px system-ui`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('$', 0, 1);
+          g.fillStyle = '#c8e6c9'; g.font = `600 ${Math.round(7 * p.s)}px system-ui`; g.fillText('100', -bw / 2 + 10, -bh / 2 + 8); g.fillText('100', bw / 2 - 10, bh / 2 - 7);
+          g.restore();
+        }
+      } },
+    // flames from the bottom edge: additive glowing particles
+    fire: { init: () => [],
+      step: (g, w, h, P, sp) => {
+        for (let i = 0; i < 9 * sp; i++) P.push({ x: rnd(0, w), y: h + 10, vx: rnd(-0.4, 0.4), vy: rnd(-2.6, -1.2), r: rnd(18, 46), life: 1 });
+        g.globalCompositeOperation = 'lighter';
+        for (const p of P) {
+          p.x += p.vx * sp + Math.sin(p.y / 30) * 0.3; p.y += p.vy * sp; p.life -= 0.012 * sp; p.r *= 0.992;
+          const k = Math.max(0, p.life), gr = g.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.r);
+          gr.addColorStop(0, `rgba(255,${Math.round(200 * k)},${Math.round(60 * k)},${0.35 * k})`); gr.addColorStop(1, 'rgba(255,60,0,0)');
+          g.fillStyle = gr; g.fillRect(p.x - p.r, p.y - p.r, 2 * p.r, 2 * p.r);
+        }
+        g.globalCompositeOperation = 'source-over';
+        for (let i = P.length - 1; i >= 0; i--) if (P[i].life <= 0) P.splice(i, 1);
+        if (P.length > 600) P.splice(0, P.length - 600);
+      } },
+    // rockets rise, burst into coloured sparks that fall and fade
+    fireworks: { init: () => ({ r: [], s: [] }),
+      step: (g, w, h, F, sp) => {
+        if (Math.random() < 0.035 * sp) F.r.push({ x: rnd(w * 0.15, w * 0.85), y: h, vy: rnd(-8.5, -6.5), t: rnd(h * 0.15, h * 0.45), hue: Math.round(rnd(0, 360)) });
+        g.globalCompositeOperation = 'lighter';
+        for (const r of F.r) { r.y += r.vy * sp; g.fillStyle = `hsl(${r.hue},100%,75%)`; g.fillRect(r.x - 1, r.y, 2, 6); }
+        for (let i = F.r.length - 1; i >= 0; i--) { const r = F.r[i]; if (r.y <= r.t) { const n = 70; for (let k = 0; k < n; k++) { const a = (k / n) * 6.28, v = rnd(1.5, 4.2); F.s.push({ x: r.x, y: r.y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, life: 1, hue: r.hue + rnd(-20, 20) }); } F.r.splice(i, 1); } }
+        for (const s of F.s) { s.x += s.vx * sp; s.y += s.vy * sp; s.vy += 0.05 * sp; s.vx *= 0.985; s.life -= 0.012 * sp; g.fillStyle = `hsla(${s.hue},100%,65%,${Math.max(0, s.life)})`; g.beginPath(); g.arc(s.x, s.y, 1.8, 0, 6.28); g.fill(); }
+        g.globalCompositeOperation = 'source-over';
+        F.s = F.s.filter(s => s.life > 0);
+      } },
+    bokeh: { init: (w, h) => Array.from({ length: 26 }, () => ({ x: rnd(0, w), y: rnd(0, h), r: rnd(20, 70), vx: rnd(-0.25, 0.25), vy: rnd(-0.2, 0.2), hue: [40, 190, 280, 330, 210][Math.floor(rnd(0, 5))], ph: rnd(0, 6.3) })),
+      step: (g, w, h, P, sp) => {
+        g.globalCompositeOperation = 'lighter';
+        for (const p of P) {
+          p.x += p.vx * sp; p.y += p.vy * sp; p.ph += 0.01 * sp;
+          if (p.x < -80) p.x = w + 80; if (p.x > w + 80) p.x = -80; if (p.y < -80) p.y = h + 80; if (p.y > h + 80) p.y = -80;
+          const a = 0.1 + 0.07 * Math.sin(p.ph), gr = g.createRadialGradient(p.x, p.y, p.r * 0.2, p.x, p.y, p.r);
+          gr.addColorStop(0, `hsla(${p.hue},90%,65%,${a})`); gr.addColorStop(0.8, `hsla(${p.hue},90%,60%,${a * 0.7})`); gr.addColorStop(1, `hsla(${p.hue},90%,60%,0)`);
+          g.fillStyle = gr; g.beginPath(); g.arc(p.x, p.y, p.r, 0, 6.28); g.fill();
+        }
+        g.globalCompositeOperation = 'source-over';
+      } },
+    // columns of prices / digits falling like a terminal
+    matrix: { init: (w, h) => Array.from({ length: Math.ceil(w / 18) }, (_, i) => ({ x: i * 18 + 6, y: rnd(-h, 0), v: rnd(2, 5) })),
+      step: (g, w, h, P, sp, st) => {
+        if (P.length < Math.ceil(w / 18)) for (let i = P.length; i < Math.ceil(w / 18); i++) P.push({ x: i * 18 + 6, y: rnd(-h, 0), v: rnd(2, 5) });
+        g.font = '600 14px Consolas, monospace'; g.textAlign = 'center';
+        for (const p of P) {
+          p.y += p.v * sp * 3; if (p.y > h + 200) { p.y = rnd(-200, 0); p.v = rnd(2, 5); }
+          for (let k = 0; k < 12; k++) { const y = p.y - k * 17; if (y < -20 || y > h + 20) continue; g.fillStyle = k ? `rgba(0,230,118,${0.55 - k * 0.045})` : 'rgba(200,255,220,.95)'; g.fillText('0123456789$.+−▲▼'[(Math.floor(p.y / 17) + k * 7 + Math.round(p.x)) % 17], p.x, y); }
+        }
+      } },
+  };
+  let animRaf = null;
   function applyAnim() {
     const B = S.bgImg, kind = EMBED ? 'none' : B.anim || 'none';
     let el = $('#bgAnim');
@@ -1886,35 +2059,38 @@
     el.className = 'anim-' + kind; el.innerHTML = '';
     el.style.setProperty('--as', 100 / (B.animSpeed || 100)); el.style.opacity = (B.animOpacity ?? 70) / 100;
     $('#bgLayer').classList.toggle('kenburns', kind === 'kenburns');
-    if (['aurora', 'nebula', 'fog'].includes(kind)) el.innerHTML = '<i></i><i></i><i></i>';
-    if (kind === 'waves') el.innerHTML = '<i></i><i></i><i></i>';
-    if (['snow', 'rain', 'storm'].includes(kind)) {
-      animCanvas = document.createElement('canvas'); el.appendChild(animCanvas);
-      const c = animCanvas, g = c.getContext('2d'), snow = kind === 'snow';
-      let parts = [], last = 0, flash = 0;
-      const size = () => { c.width = el.clientWidth; c.height = el.clientHeight; parts = Array.from({ length: snow ? 110 : 150 }, () => ({ x: Math.random() * c.width, y: Math.random() * c.height, v: snow ? 0.4 + Math.random() : 7 + Math.random() * 6, r: snow ? 1 + Math.random() * 2.2 : 10 + Math.random() * 12, w: Math.random() * 6.28 })); };
-      size();
-      const step = t => {
-        animRaf = requestAnimationFrame(step);
-        if (document.hidden || t - last < 33) return;                  // ≤ 30 fps
-        last = t;
-        if (c.width !== el.clientWidth || c.height !== el.clientHeight) size();
-        const sp = (B.animSpeed || 100) / 100;
-        g.clearRect(0, 0, c.width, c.height);
-        if (kind === 'storm') { if (flash > 0) { g.fillStyle = `rgba(200,210,255,${flash * 0.25})`; g.fillRect(0, 0, c.width, c.height); flash -= 0.08; } else if (Math.random() < 0.004) flash = 1; }
-        g.strokeStyle = 'rgba(180,200,230,.35)'; g.fillStyle = 'rgba(255,255,255,.75)'; g.lineWidth = 1;
-        g.beginPath();
-        for (const p of parts) {
-          if (snow) { p.w += 0.02; p.x += Math.sin(p.w) * 0.4; p.y += p.v * sp; g.moveTo(p.x + p.r, p.y); g.arc(p.x, p.y, p.r, 0, 6.28); }
-          else { p.y += p.v * sp; p.x -= p.v * sp * 0.15; g.moveTo(p.x, p.y); g.lineTo(p.x + p.r * 0.15, p.y - p.r); }
-          if (p.y > c.height + 20) { p.y = -20; p.x = Math.random() * c.width; }
-          if (p.x < -20) p.x = c.width + 10;
-        }
-        if (snow) g.fill(); else g.stroke();
-      };
+    if (CSS_ANIMS[kind]) el.innerHTML = '<i></i>'.repeat(CSS_ANIMS[kind]);
+    const fx = FX[kind === 'storm' ? 'rain' : kind];
+    if (!fx) return;
+    const c = document.createElement('canvas'), g = c.getContext('2d');
+    el.appendChild(c);
+    let state = null, st = { storm: kind === 'storm', flash: 0 }, last = 0;
+    const size = () => { c.width = el.clientWidth; c.height = el.clientHeight; state = fx.init(c.width, c.height); };
+    size();
+    const step = t => {
       animRaf = requestAnimationFrame(step);
-    }
+      if (document.hidden || t - last < 33) return;                  // ≤ 30 fps
+      last = t;
+      if (c.width !== el.clientWidth || c.height !== el.clientHeight) size();
+      g.clearRect(0, 0, c.width, c.height);
+      fx.step(g, c.width, c.height, state, (B.animSpeed || 100) / 100, st);
+    };
+    animRaf = requestAnimationFrame(step);
   }
+
+  // ---- video backgrounds (short loops from Wikimedia Commons, credited in the window) --------------------
+  let VIDEOS = [];
+  function applyVideo() {
+    const B = S.bgImg, v = !EMBED && B.video ? VIDEOS.find(x => x.id === B.video) : null;
+    let el = $('#bgVideo');
+    if (!v) { if (el) { el.pause(); el.remove(); } return; }
+    if (!el) { el = document.createElement('video'); el.id = 'bgVideo'; el.muted = true; el.loop = true; el.playsInline = true; el.autoplay = true; $('#bgLayer').after(el); }
+    if (!el.src.endsWith(v.file)) { el.poster = v.poster ? 'static/' + v.poster : ''; el.src = 'static/' + v.file; }
+    el.playbackRate = (B.videoSpeed || 100) / 100;
+    el.style.filter = B.blur ? `blur(${B.blur}px)` : '';
+    el.play().catch(() => {});
+  }
+  document.addEventListener('visibilitychange', () => { const v = $('#bgVideo'); if (v) { if (document.hidden) v.pause(); else v.play().catch(() => {}); } });
 
   function applyBright() { const b = S.look.bright || 100; document.documentElement.style.filter = b !== 100 ? `brightness(${b / 100})` : ''; }
   function applyBg() {
@@ -1922,7 +2098,8 @@
     bgLayer.style.backgroundImage = url ? `url("${url.replace(/"/g, '%22')}")` : 'none';
     bgLayer.style.filter = B.blur ? `blur(${B.blur}px)` : '';
     bgLayer.style.inset = B.blur ? `-${B.blur * 2}px` : '0';
-    bgDim.style.background = url ? rgba(S.look.bg, B.dim) : 'transparent';
+    applyVideo();
+    bgDim.style.background = url || (B.video && !EMBED) ? rgba(S.look.bg, B.dim) : 'transparent';
   }
   // A picture from the device: scaled to max 2560 px and stored as JPEG in this browser.
   function loadImage(file, done) {
@@ -1945,6 +2122,7 @@
     const P = S.panel, r = document.documentElement.style;
     r.setProperty('--tb-w', P.w + 'px'); r.setProperty('--tb-h', P.h + 'px'); r.setProperty('--tb-fs', P.fs + 'px'); r.setProperty('--tb-font', fontCss(P.font));
     r.setProperty('--tb-bg', rgba(P.bg, P.opacity)); r.setProperty('--tb-text', P.text); r.setProperty('--accent', P.accent);
+    applySide();
     document.body.classList.toggle('tb-icons', P.show === 'icons'); document.body.classList.toggle('tb-text', P.show === 'text');
     fitToolbar();
   }
@@ -1997,11 +2175,19 @@
           <div class="fld"><span>Vlastný obrázok zo zariadenia</span><label class="btn sm">📁 Vybrať súbor<input type="file" accept="image/*" data-file hidden></label></div>
           <div class="fld"><span>…alebo adresa obrázka z internetu (URL)</span><input type="text" data-b="url" value="${esc(B.url)}" placeholder="https://…jpg" style="width:260px"></div>`;
       }
-      if (stTab === 'anim') return `<div class="tiles">${Object.entries(ANIMS).map(([k, [n, bg]]) => `<div class="tile ${(B.anim || 'none') === k ? 'on' : ''}" data-an="${k}"><div class="thumb an-thumb an-${k}" style="background:${bg}"><i></i></div><span>${esc(n)}</span></div>`).join('')}</div>
+      if (stTab === 'video') {
+        const cur = VIDEOS.find(v => v.id === B.video), cats = [...new Set(VIDEOS.map(v => v.cat))];
+        return `<div class="tiles"><div class="tile ${B.video ? '' : 'on'}" data-vid=""><div class="thumb" style="background:${S.look.bg}"></div><span>Bez videa</span></div></div>
+          ${cats.map(c => `<div class="tgroup">${esc(c)}</div><div class="tiles">${VIDEOS.filter(v => v.cat === c).map(v => `<div class="tile ${B.video === v.id ? 'on' : ''}" data-vid="${v.id}" title="${esc(v.name)} · ${esc(v.author)} (${esc(v.license)})"><div class="thumb vthumb" style="background-image:url('static/${v.poster}')"><b>▶</b></div><span>${esc(v.name)}</span></div>`).join('')}</div>`).join('')}
+          ${cur ? `<div class="muted credit">🎬 ${esc(cur.name)} · ${esc(cur.author)} · <a href="${esc(cur.licenseUrl || cur.source)}" target="_blank" rel="noopener">${esc(cur.license)}</a> · <a href="${esc(cur.source)}" target="_blank" rel="noopener">Wikimedia Commons</a></div>` : ''}
+          <div class="fld"><span>Rýchlosť prehrávania</span><span class="op" style="width:240px"><input type="range" min="25" max="200" data-vs value="${B.videoSpeed || 100}"><b>${B.videoSpeed || 100} %</b></span></div>
+          ${common()}<div class="muted" style="font-size:11px">Krátke slučky bez zvuku (480p, 1–4 MB). Video sa zastaví, keď okno nie je viditeľné; v malých grafoch sa nespúšťa.</div>`;
+      }
+      if (stTab === 'anim') return `${[...new Set(Object.values(ANIMS).map(a => a[2]))].map(c => `<div class="tgroup">${esc(c)}</div><div class="tiles">${Object.entries(ANIMS).filter(([, a]) => a[2] === c).map(([k, [n, bg]]) => `<div class="tile ${(B.anim || 'none') === k ? 'on' : ''}" data-an="${k}"><div class="thumb an-thumb an-${k}" style="background:${bg}"><i></i></div><span>${esc(n)}</span></div>`).join('')}</div>`).join('')}
           <div class="fld"><span>Rýchlosť</span><span class="op" style="width:240px"><input type="range" min="30" max="250" data-ab="animSpeed" value="${B.animSpeed || 100}"><b>${B.animSpeed || 100} %</b></span></div>
           <div class="fld"><span>Výraznosť</span><span class="op" style="width:240px"><input type="range" min="10" max="100" data-ab="animOpacity" value="${B.animOpacity ?? 70}"><b>${B.animOpacity ?? 70} %</b></span></div>
-          <div class="muted" style="font-size:11px">Animácia ide nad pozadím (aj nad fotkou), pod sviečkami. Žiara, hmla, hmlovina a oceán sú čisté CSS animácie – takmer nezaťažia počítač.
-          Sneh, dážď a búrka kreslia max. 30 snímok za sekundu a zastavia sa, keď je okno skryté. V malých grafoch (rozloženie viac grafov) sa animácia nespúšťa.</div>`;
+          <div class="muted" style="font-size:11px">Animácia ide nad pozadím (aj nad fotkou), pod sviečkami. Žiara, hmla, hmlovina, oceán, reflektory a neón sú čisté CSS animácie – takmer nezaťažia počítač.
+          Ostatné (sneh, dážď, peniaze, oheň, ohňostroj, bokeh, čísla) kreslia max. 30 snímok za sekundu a zastavia sa, keď je okno skryté. V malých grafoch (rozloženie viac grafov) sa animácia nespúšťa.</div>`;
       if (stTab === 'drawn') return `<div class="tiles">${tile('none', 'Bez obrázka', `background:${S.look.bg}`)}${Object.entries(BG.SCENES).map(([k, x]) => tile(k, x.name, `background-image:url('${BG.url(k)}')`, `<small>${esc(x.season)}</small>`)).join('')}</div>${common()}`;
       if (stTab === 'candles') {
         const L = S.look, now = { up: L.up, down: L.down, borderUp: L.borderUp, borderDown: L.borderDown, wickUp: L.wickUp, wickDown: L.wickDown, body: L.body };
@@ -2016,9 +2202,11 @@
     };
     const paint = () => {
       const d = openDialog(`<div class="dlg-h"><span>🖼 Štýly a pozadia</span><button class="ib" data-x>✕</button></div><div class="dlg-b">
-        <div class="tabs">${[['photos', '📷 Fotky'], ['drawn', '🏔 Kreslené'], ['anim', '✨ Animované'], ['candles', '🕯 Farby sviečok'], ['themes', '🎨 Témy']].map(([k, n]) => `<span class="tab ${stTab === k ? 'on' : ''}" data-tab="${k}">${n}</span>`).join('')}</div>
+        <div class="tabs">${[['photos', '📷 Fotky'], ['drawn', '🏔 Kreslené'], ['anim', '✨ Animované'], ['video', '🎬 Videá'], ['candles', '🕯 Farby sviečok'], ['themes', '🎨 Témy']].map(([k, n]) => `<span class="tab ${stTab === k ? 'on' : ''}" data-tab="${k}">${n}</span>`).join('')}</div>
         ${body()}</div><div class="dlg-f"><span class="grow"></span><button class="btn pri" data-x>Hotovo</button></div>`, null, 'wide styles-dlg');
       $$('[data-tab]', d).forEach(x => x.onclick = () => { stTab = x.dataset.tab; paint(); });
+      $$('[data-vid]', d).forEach(x => x.onclick = () => { B.video = x.dataset.vid; save(); applyBg(); buildChart(); paint(); });
+      const vs = $('[data-vs]', d); if (vs) vs.oninput = () => { B.videoSpeed = +vs.value; vs.nextElementSibling.textContent = vs.value + ' %'; save(); applyVideo(); };
       $$('[data-an]', d).forEach(x => x.onclick = () => { B.anim = x.dataset.an; save(); applyAnim(); buildChart(); paint(); });
       $$('[data-ab]', d).forEach(x => x.oninput = () => { B[x.dataset.ab] = +x.value; x.nextElementSibling.textContent = x.value + ' %'; save(); applyAnim(); });
       $$('[data-bg]', d).forEach(x => x.onclick = () => {
@@ -2386,10 +2574,11 @@
     SYM = Object.fromEntries((META.symbols || []).map(s => [s.id, s]));
     TL.configure(META.structure);
     try { PHOTOS = await (await fetch('static/photos/photos.json')).json(); } catch (e) { PHOTOS = []; }
+    try { VIDEOS = await (await fetch('static/videos/videos.json')).json(); } catch (e) { VIDEOS = []; }
     if (!SYM[S.symbol]) S.symbol = 'XAUUSD';
     if (S.labeler) await pullPrefs(S.labeler);
     applyPanel(); applyBg(); applyBright(); applyToolbar(); applyView(); applyAnim();
-    applyLayout();
+    applyLayout(); paintDock(); applyHiddenButtons();
     await load();
     if (EMBED) { hist = [snap()]; hpos = 0; paintHist(); return; }
     if (S.idea.open) toggleIdea(true);

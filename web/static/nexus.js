@@ -674,21 +674,36 @@ const NEXUS = (() => {
     if (!page) return;
     const N = S().nexus, a = A(), D = DK(), hidden = Object.keys(APPS).filter(k => D.icons[k].hidden);
     page.classList.toggle('private', !!N.private);
+    const view = N.view || 'mobile', design = N.design || 'glass';
+    page.className = page.className.replace(/d-w+/g, '').trim() + ' d-' + design;
     page.innerHTML = `<div class="nx-head">${avatarHtml(38)}<div><div class="nx-name">${esc(S().labeler || 'Bez mena')} <small class="muted">· ${esc(a.name)}</small></div><div class="muted" id="nxHeadSum"></div></div><span class="grow"></span>
         <span class="nx-size"><label>Veľkosť <input type="range" min="60" max="160" value="${N.zoom || 100}" data-nz="zoom"></label><label>◆ <input type="range" min="36" max="220" value="${N.hudSize || 64}" data-nz="hudSize"></label></span>
+        <select id="nxView" class="nx-sel" title="Vzhľad Nexusu"><option value="mobile" ${view === 'mobile' ? 'selected' : ''}>📱 Mobil (ikony)</option><option value="classic" ${view === 'classic' ? 'selected' : ''}>🗂 Klasický (karty)</option></select>
+        <select id="nxDesign" class="nx-sel" title="Dizajn celého hubu">${DESIGNS.map(([k, n]) => `<option value="${k}" ${design === k ? 'selected' : ''}>${n}</option>`).join('')}</select>
         <button class="btn sm ${N.private ? 'pri' : ''}" id="nxPriv" title="Skryť sumy a údaje účtu (napr. pri zdieľaní obrazovky)">${N.private ? '🙈 Údaje skryté' : '👁 Skryť údaje'}</button>
         <button class="btn sm" id="nxEdit">▦ Plocha${hidden.length ? ` (${hidden.length} skryté)` : ''}</button><button class="btn sm" id="nxClose">📈 Späť na graf</button></div>
-      <div class="nx-desk" id="nxDesk" style="zoom:${(N.zoom || 100) / 100}">
+      <div class="nx-desk" id="nxDesk" style="zoom:${(N.zoom || 100) / 100}">${view === 'classic' ? classicHtml() : `
         ${Object.keys(APPS).filter(k => !D.icons[k].hidden).map(iconHtml).join('')}${D.icons.cloud.hidden ? '' : cloudHtml()}
-        ${Object.keys(D.wins).filter(k => D.wins[k].open && BODY[k]).map(winHtml).join('')}
+        ${Object.keys(D.wins).filter(k => D.wins[k].open && BODY[k]).map(winHtml).join('')}`}
       </div>`;
     bindDesk();
-    Object.keys(D.wins).filter(k => D.wins[k].open && BODY[k]).forEach(k => { bindWin($(`.nx-win[data-win="${k}"]`, page), k); });
+    if (view === 'classic') $$('.nx-card[data-cls]', page).forEach(el => BIND[el.dataset.cls] && BIND[el.dataset.cls](el));
+    else Object.keys(D.wins).filter(k => D.wins[k].open && BODY[k]).forEach(k => { bindWin($(`.nx-win[data-win="${k}"]`, page), k); });
     paintLive(); paintFolders(); paintIdeas(); paintBoard();
+  }
+  // the classic view: every app as a card in a grid (the first Nexus look)
+  const DESIGNS = [['glass', '🔷 Sklo (predvolený)'], ['neon', '🌈 Neón'], ['gold', '🥇 Zlato a čierna'], ['terminal', '🖥 Terminál'], ['aurora', '🌌 Polárna žiara'], ['ocean', '🌊 Oceán'], ['minimal', '⬜ Minimal (svetlý)']];
+  function classicHtml() {
+    const q = QUOTES[tipIdx % QUOTES.length];
+    return `<div class="nx-classic">${Object.keys(BODY).map(id => { const [name, bg] = APPS[id];
+      return `<section class="nx-card nx-c-${id}" data-cls="${id}"><header><span class="nx-wico" style="background:${bg}"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${ICO[id]}</svg></span><b>${esc(name)}</b></header><div class="nx-cb">${BODY[id]()}</div></section>`; }).join('')}
+      <section class="nx-card"><header><span class="nx-wico" style="background:linear-gradient(135deg,#a78bfa,#6d28d9)">✨</span><b>Motivácia</b></header><div class="nx-cb"><blockquote class="nx-q">„${esc(q[0])}“<cite>— ${esc(q[1])}</cite></blockquote></div></section></div>`;
   }
   function bindDesk() {
     const D = DK(), N = S().nexus, desk = $('#nxDesk');
     $('#nxClose').onclick = close;
+    $('#nxView').onchange = e => { N.view = e.target.value; ctx.save(); paint(); };
+    $('#nxDesign').onchange = e => { N.design = e.target.value; ctx.save(); paint(); };
     $('#nxPriv').onclick = () => { N.private = !N.private; ctx.save(); paint(); };
     $$('[data-nz]', page).forEach(x => x.oninput = () => {
       N[x.dataset.nz] = +x.value;
@@ -946,6 +961,7 @@ const NEXUS = (() => {
     },
     chartLines: s => (ctx ? chartLines(s) : []), chartTrades: s => (ctx ? chartTrades(s) : []), chartMarkers: s => (ctx ? chartMarkers(s) : []),
     moveLine, removeLine,
+    toggleTicket() { const P = PL(); P.open = !P.open; ctx.save(); paintTicket(); ctx.onTrades(); },
     chartChanged() { if (!ctx) return; lineSig = ''; paintCards(); },
   };
 })();

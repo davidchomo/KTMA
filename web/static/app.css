@@ -810,3 +810,116 @@ body.no-legend #legend { display: none; }
 .an-kenburns i { inset: 0; border-radius: 0; filter: none; background: linear-gradient(135deg, #2b3a2f, #8a6d42); animation: kb 5s ease-in-out infinite alternate; }
 @keyframes fall { from { transform: translateY(-10%); } to { transform: translateY(10%); } }
 @media (prefers-reduced-motion: reduce) { #bgAnim i, #bgLayer.kenburns { animation-duration: 1000s !important; } }
+
+/* ---- Text menu (like TradingView's text & notes) ---- */
+.dd.text-menu { width: 270px; }
+.dd.text-menu .it { padding: 7px 12px; }
+.tx-ic { width: 22px; text-align: center; font-size: 15px; }
+#bText .ic { font-family: Georgia, serif; font-weight: 700; }
+
+/* ---- ⊞ all functions ---- */
+.dd.all-menu { width: 560px; max-height: 82vh; overflow-y: auto; }
+.all-head { display: flex; align-items: baseline; justify-content: space-between; padding: 10px 12px 2px; font-size: 14px; }
+.all-head .muted { font-size: 11px; }
+.all-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 0 10px 6px; }
+.all-it { display: flex; align-items: center; gap: 9px; padding: 7px 8px; border-radius: 8px; cursor: pointer; border: 1px solid transparent; }
+.all-it:hover { background: var(--panel2); border-color: var(--border); }
+.all-ic { width: 30px; height: 30px; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; background: var(--bg); border: 1px solid var(--border); font-size: 15px; flex: 0 0 auto; }
+.all-it b { display: block; font-weight: 600; font-size: 13px; }
+.all-it small { display: block; color: var(--muted); font-size: 11px; line-height: 1.2; }
+.all-pin { font-size: 16px; color: var(--muted); padding: 2px 4px; border-radius: 4px; }
+.all-pin.on { color: #ffca28; } .all-pin:hover { background: var(--bg); }
+#bAll .ic { font-size: 1.35em; }
+
+/* ---- workspace dock ---- */
+#wsDock { position: fixed; z-index: 29; display: flex; align-items: center; gap: 3px; padding: 4px; border-radius: 12px; background: rgba(20,23,32,.88);
+          border: 1px solid rgba(255,255,255,.1); box-shadow: 0 8px 24px rgba(0,0,0,.45); backdrop-filter: blur(6px); }
+#wsDock.vert { flex-direction: column; }
+#wsDock button { display: flex; align-items: center; gap: 5px; background: transparent; border: 1px solid transparent; color: #b2b5be; border-radius: 8px; padding: 4px 8px; cursor: pointer; font-size: 12px; }
+#wsDock button b { width: 18px; height: 18px; border-radius: 5px; background: rgba(255,255,255,.08); font-size: 11px; line-height: 18px; text-align: center; }
+#wsDock button small { color: #787b86; font-size: 10px; }
+#wsDock button:hover { background: rgba(255,255,255,.06); color: #fff; }
+#wsDock button.on { background: rgba(41,98,255,.3); border-color: rgba(91,156,246,.6); color: #fff; } #wsDock button.on b { background: #2962ff; }
+#wsDock .ws-grip { cursor: grab; color: #5d606b; padding: 0 4px; letter-spacing: -2px; user-select: none; touch-action: none; }
+#wsDock.vert button span, #wsDock.vert button small { display: none; }
+
+/* ---- thin, see-through, floating side toolbar ---- */
+body.tb-left .tbtn, body.tb-right .tbtn, body.tb-left .tbtn.sq, body.tb-right .tbtn.sq { width: var(--tb-sw, 30px); height: var(--tb-sw, 30px); min-width: 0; }
+body.tb-left #toolbar, body.tb-right #toolbar { padding: 3px 2px; background: var(--tb-sbg, var(--tb-bg)); scrollbar-width: none; }
+body.tb-left #toolbar::-webkit-scrollbar, body.tb-right #toolbar::-webkit-scrollbar { display: none; }
+body.tb-left .tb-div, body.tb-right .tb-div { width: calc(var(--tb-sw, 30px) - 6px); margin: 4px auto; }
+body.tb-left .tbtn .ic, body.tb-right .tbtn .ic { font-size: calc(var(--tb-sw, 30px) * .5); width: auto; }
+body.tb-left .status, body.tb-right .status { padding: 4px 0; justify-content: center; }
+body.tb-float #toolbar { position: fixed; top: 0; bottom: 0; z-index: 12; border: 0; box-shadow: none; }
+body.tb-float.tb-left #toolbar { left: 0; } body.tb-float.tb-right #toolbar { right: 0; }
+body.tb-float .tbtn:hover { background: rgba(127,127,127,.25); }
+
+/* ---- video backgrounds ---- */
+#bgVideo { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; pointer-events: none; }
+.vthumb { background-size: cover !important; background-position: center !important; display: flex; align-items: center; justify-content: center; }
+.vthumb b { width: 28px; height: 28px; border-radius: 50%; background: rgba(0,0,0,.55); color: #fff; font-size: 12px; display: flex; align-items: center; justify-content: center; }
+
+/* ---- new CSS effects: festive spotlights, neon colour flow ---- */
+.anim-spotlights i { bottom: -10%; width: 34%; height: 140%; transform-origin: 50% 100%; filter: blur(8px); mix-blend-mode: screen;
+                     background: conic-gradient(from 165deg at 50% 100%, transparent 0deg, rgba(255,240,200,.45) 14deg, rgba(255,240,200,.08) 26deg, transparent 30deg);
+                     animation: spot calc(9s * var(--as)) ease-in-out infinite alternate; }
+.anim-spotlights i:nth-child(1) { left: 0; } .anim-spotlights i:nth-child(2) { left: 22%; animation-delay: -3s; filter: blur(8px) hue-rotate(200deg) saturate(3); }
+.anim-spotlights i:nth-child(3) { left: 44%; animation-delay: -6s; filter: blur(8px) hue-rotate(300deg) saturate(3); } .anim-spotlights i:nth-child(4) { left: 66%; animation-delay: -1.5s; }
+@keyframes spot { from { transform: rotate(-22deg); } to { transform: rotate(22deg); } }
+.anim-neon i { inset: -20%; width: 140%; height: 140%; filter: blur(80px); opacity: .55;
+               background: conic-gradient(from 0deg, #ff2bd6, #7b61ff, #2962ff, #00e5ff, #00e676, #ffd600, #ff2bd6); animation: neonr calc(30s * var(--as)) linear infinite; }
+.anim-neon i:nth-child(2) { inset: 10%; width: 80%; height: 80%; opacity: .35; animation-direction: reverse; animation-duration: calc(45s * var(--as)); }
+@keyframes neonr { to { transform: rotate(360deg); } }
+.an-money i { background: repeating-linear-gradient(20deg, #2e7d4f 0 14px, transparent 14px 26px); filter: none; inset: 0; border-radius: 0; animation: fall 3s linear infinite; opacity: .8; }
+.an-fire i { inset: 40% 0 0; border-radius: 50% 50% 0 0; background: radial-gradient(ellipse at 50% 100%, #ffd54f, #ff6d00 40%, transparent 70%); animation: aur 1.5s ease-in-out infinite alternate; }
+.an-spotlights i { inset: -20% 20% 0; border-radius: 0; filter: blur(4px); background: conic-gradient(from 160deg at 50% 100%, transparent, rgba(255,240,200,.7) 20deg, transparent 40deg); animation: spot 3s ease-in-out infinite alternate; transform-origin: 50% 100%; }
+.an-fireworks i { inset: 15% 30%; border-radius: 50%; filter: none; background: radial-gradient(circle, transparent 20%, #ff4081 22%, transparent 30%, #ffd740 42%, transparent 50%); animation: pulse 1.6s ease-out infinite; }
+.an-neon i { inset: -30%; filter: blur(12px); background: conic-gradient(#ff2bd6, #2962ff, #00e5ff, #ff2bd6); animation: neonr 4s linear infinite; border-radius: 0; }
+.an-bokeh i { inset: 10%; filter: blur(6px); background: radial-gradient(circle at 30% 40%, #ffb30088 12%, transparent 13%), radial-gradient(circle at 70% 60%, #00e5ff77 16%, transparent 17%), radial-gradient(circle at 50% 30%, #ff2bd666 10%, transparent 11%); animation: aur 5s ease-in-out infinite alternate; border-radius: 0; }
+.an-matrix i { inset: 0; filter: none; border-radius: 0; background: repeating-linear-gradient(90deg, transparent 0 8px, rgba(0,230,118,.5) 8px 10px); animation: fall 1.2s linear infinite; }
+
+/* ---- Nexus: classic card view and designs ---- */
+.nx-sel { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 4px 6px; font: inherit; font-size: 12px; }
+.nx-classic { display: grid; grid-template-columns: repeat(auto-fill, minmax(440px, 1fr)); grid-auto-rows: auto; gap: 14px; padding: 16px 18px 90px; align-items: start; }
+.nx-desk:has(.nx-classic) { overflow-y: auto; }
+.nx-classic .nx-card { overflow: visible; min-height: min-content; }
+.nx-classic .nx-card > header { gap: 8px; }
+.nx-classic .nx-c-hist, .nx-classic .nx-c-bot, .nx-classic .nx-c-pos, .nx-classic .nx-c-board { grid-column: span 2; }
+.nx-classic .nx-c-board .bd-area { min-height: 380px; height: 380px; }
+@media (max-width: 1000px) { .nx-classic { grid-template-columns: 1fr; } .nx-classic .nx-card { grid-column: auto !important; } }
+/* neon */
+#nexusPage.d-neon .nx-desk { background: radial-gradient(800px 500px at 10% 10%, rgba(255,43,214,.16), transparent 60%), radial-gradient(900px 600px at 90% 90%, rgba(0,229,255,.14), transparent 60%), #07060f; }
+#nexusPage.d-neon .nx-win, #nexusPage.d-neon .nx-card { background: rgba(10,8,22,.94); border-color: rgba(255,43,214,.45); box-shadow: 0 0 0 1px rgba(0,229,255,.15), 0 0 26px rgba(255,43,214,.25); }
+#nexusPage.d-neon .nx-tile { box-shadow: 0 0 18px rgba(0,229,255,.55), inset 0 1px 0 rgba(255,255,255,.3); }
+#nexusPage.d-neon .nx-head { background: linear-gradient(90deg, rgba(255,43,214,.25), rgba(0,229,255,.15)); }
+/* gold */
+#nexusPage.d-gold .nx-desk { background: radial-gradient(900px 500px at 50% -10%, rgba(255,202,40,.12), transparent 60%), #0b0a08; }
+#nexusPage.d-gold .nx-win, #nexusPage.d-gold .nx-card { background: rgba(18,16,12,.96); border-color: rgba(212,175,55,.45); }
+#nexusPage.d-gold .nx-tile { background: linear-gradient(145deg, #3a3020, #120f09) !important; border: 1px solid #d4af37; box-shadow: 0 6px 18px rgba(0,0,0,.6), inset 0 1px 0 rgba(255,230,160,.35); }
+#nexusPage.d-gold .nx-tile svg { stroke: #f1d27a; } #nexusPage.d-gold .nx-app span, #nexusPage.d-gold .nx-name { color: #f1d27a; }
+#nexusPage.d-gold .nx-head { background: linear-gradient(90deg, rgba(212,175,55,.2), transparent); border-bottom-color: rgba(212,175,55,.35); }
+/* terminal */
+#nexusPage.d-terminal, #nexusPage.d-terminal .nx-desk { background: #020702; font-family: Consolas, 'Courier New', monospace; }
+#nexusPage.d-terminal .nx-win, #nexusPage.d-terminal .nx-card { background: #031003; border: 1px solid #1f6f2f; border-radius: 2px; box-shadow: 0 0 14px rgba(0,230,118,.12); color: #8dfc9f; }
+#nexusPage.d-terminal .nx-tile { background: #031a06 !important; border: 1px solid #2ecc71; border-radius: 4px; box-shadow: none; }
+#nexusPage.d-terminal .nx-tile svg { stroke: #2ecc71; } #nexusPage.d-terminal .nx-app span { color: #8dfc9f; text-shadow: none; }
+#nexusPage.d-terminal .nx-head { background: #031003; border-bottom: 1px solid #1f6f2f; }
+/* aurora */
+#nexusPage.d-aurora .nx-desk { background: radial-gradient(1000px 400px at 20% 0%, rgba(40,224,160,.25), transparent 60%), radial-gradient(800px 500px at 80% 20%, rgba(123,92,255,.25), transparent 60%), linear-gradient(180deg, #04131f, #0b1630); }
+#nexusPage.d-aurora .nx-win, #nexusPage.d-aurora .nx-card { background: rgba(8,20,34,.85); border-color: rgba(40,224,160,.3); }
+/* ocean */
+#nexusPage.d-ocean .nx-desk { background: linear-gradient(180deg, #06121f, #0b3556 70%, #0e4f78); }
+#nexusPage.d-ocean .nx-win, #nexusPage.d-ocean .nx-card { background: rgba(6,22,38,.9); border-color: rgba(38,198,218,.35); }
+#nexusPage.d-ocean .nx-tile { border-radius: 50%; }
+/* minimal (light) */
+#nexusPage.d-minimal, #nexusPage.d-minimal .nx-desk { background: #f3f4f7; color: #1f2330; --text: #1f2330; --muted: #6b7280; --border: #e2e5ea; --bg: #ffffff; --panel2: #eef0f4; }
+#nexusPage.d-minimal .nx-head { background: #fff; border-bottom-color: #e2e5ea; }
+#nexusPage.d-minimal .nx-win, #nexusPage.d-minimal .nx-card { background: #fff; border-color: #e2e5ea; box-shadow: 0 8px 26px rgba(15,23,42,.08); color: #1f2330; }
+#nexusPage.d-minimal .nx-app span { color: #1f2330; text-shadow: none; }
+#nexusPage.d-minimal .nx-tile { box-shadow: 0 6px 14px rgba(15,23,42,.15); }
+#nexusPage.d-minimal .btn, #nexusPage.d-minimal input, #nexusPage.d-minimal select { background: #fff; color: #1f2330; border-color: #d6dae1; }
+#nexusPage.d-minimal .nx-stats div, #nexusPage.d-minimal .nx-hsum div, #nexusPage.d-minimal .nx-acc { background: #f7f8fa; }
+#nexusPage.d-minimal table.tt td, #nexusPage.d-minimal table.tt th { border-color: #e7e9ee; }
+body.tb-left #toolbar .tbtn, body.tb-right #toolbar .tbtn { width: var(--tb-sw, 30px) !important; flex: 0 0 auto !important; }
+body.tb-float.tb-left #legend { left: calc(var(--tb-sw, 30px) + 14px); }
+body.tb-float.tb-left #showToolbar, body.tb-float.tb-right #showToolbar { display: none; }

@@ -1,0 +1,110 @@
+[
+ {
+  "id": "stream",
+  "name": "Lesný potok na jeseň",
+  "cat": "Príroda",
+  "file": "videos/stream.webm",
+  "poster": "videos/stream.jpg",
+  "author": "Forest Wander",
+  "license": "CC BY-SA 2.0",
+  "licenseUrl": "https://creativecommons.org/licenses/by-sa/2.0",
+  "source": "https://commons.wikimedia.org/wiki/File:Autumn_stream_in_West_Virginia.webm"
+ },
+ {
+  "id": "river",
+  "name": "Rieka v horách",
+  "cat": "Príroda",
+  "file": "videos/river.webm",
+  "poster": "videos/river.jpg",
+  "author": "BLM Oregon &amp; Washington",
+  "license": "Public domain",
+  "source": "https://commons.wikimedia.org/wiki/File:Wallowa_River_(35166286545).webm"
+ },
+ {
+  "id": "waterfall",
+  "name": "Vodopád v lese",
+  "cat": "Príroda",
+  "file": "videos/waterfall.webm",
+  "poster": "videos/waterfall.jpg",
+  "author": "Forest Service - Northern Region",
+  "license": "Public domain",
+  "source": "https://commons.wikimedia.org/wiki/File:Waterfall_on_Falls_Creek,_south_of_Augusta,_Montana_(52974925584).webm"
+ },
+ {
+  "id": "deer",
+  "name": "Stádo jeleňov",
+  "cat": "Zvieratá",
+  "file": "videos/deer.webm",
+  "poster": "videos/deer.jpg",
+  "author": "Forest Starr and Kim Starr",
+  "license": "CC BY 2.0",
+  "licenseUrl": "https://creativecommons.org/licenses/by/2.0",
+  "source": "https://commons.wikimedia.org/wiki/File:Axis_Deer_Herd_-_Maui.webm"
+ },
+ {
+  "id": "fire",
+  "name": "Oheň",
+  "cat": "Oheň a svetlo",
+  "file": "videos/fire.webm",
+  "poster": "videos/fire.jpg",
+  "author": "Mostafameraji",
+  "license": "CC0",
+  "licenseUrl": "http://creativecommons.org/publicdomain/zero/1.0/deed.en",
+  "source": "https://commons.wikimedia.org/wiki/File:Fire_%D8%A2%D8%AA%D8%B4_08.ogv"
+ },
+ {
+  "id": "campfire",
+  "name": "Táborák v noci",
+  "cat": "Oheň a svetlo",
+  "file": "videos/campfire.webm",
+  "poster": "videos/campfire.jpg",
+  "author": "Virginia State Parks",
+  "license": "CC BY 2.0",
+  "licenseUrl": "https://creativecommons.org/licenses/by/2.0",
+  "source": "https://commons.wikimedia.org/wiki/File:Campfire_at_night_-_Claytor_Lake_State_Park_-_video.webm"
+ },
+ {
+  "id": "fireworks",
+  "name": "Ohňostroj",
+  "cat": "Oslavy",
+  "file": "videos/fireworks.webm",
+  "poster": "videos/fireworks.jpg",
+  "author": "Nicholas Gemini",
+  "license": "CC BY-SA 4.0",
+  "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+  "source": "https://commons.wikimedia.org/wiki/File:Fireworks_in_Rome_46.webm"
+ },
+ {
+  "id": "clouds",
+  "name": "Plávajúce oblaky",
+  "cat": "Obloha",
+  "file": "videos/clouds.webm",
+  "poster": "videos/clouds.jpg",
+  "author": "https://www.youtube.com/user/FreeSwissVideo",
+  "license": "CC BY 3.0",
+  "licenseUrl": "https://creativecommons.org/licenses/by/3.0",
+  "source": "https://commons.wikimedia.org/wiki/File:Wolken_Zeitraffer_-_Clouds_Timelapse_(Royalty_Free)_(Kostenlos)_3840x2160p_30FPS.webm"
+ },
+ {
+  "id": "aurora",
+  "name": "Polárna žiara",
+  "cat": "Obloha",
+  "file": "videos/aurora.webm",
+  "poster": "videos/aurora.jpg",
+  "author": "Fritzchens Fritz",
+  "license": "CC0",
+  "licenseUrl": "http://creativecommons.org/publicdomain/zero/1.0/deed.en",
+  "source": "https://commons.wikimedia.org/wiki/File:Time_Lapse_-_Aurora_Borealis_close_to_Berlin_on_Oktober_01,_2025.webm"
+ },
+ {
+  "id": "ocean",
+  "name": "Hladina oceánu",
+  "cat": "Príroda",
+  "file": "videos/ocean.webm",
+  "poster": "videos/ocean.jpg",
+  "author": "Mostafameraji",
+  "license": "CC0",
+  "licenseUrl": "http://creativecommons.org/publicdomain/zero/1.0/deed.en",
+  "source": "https://commons.wikimedia.org/wiki/File:Ocean_surface_waves_09.ogv"
+ }
+]
