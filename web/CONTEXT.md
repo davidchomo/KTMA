@@ -21,11 +21,12 @@ Read this first; it replaces re-reading the whole code. Keep it up to date when 
 | backgrounds.js | `BG` | drawn SVG scenes, colour THEMES |
 | technicals.js | `TA` | TradingView-like ratings, pivots |
 | library.js | `LIB` | Knižnica page (candles, chart patterns, STRATS, TIPS); `LIB.show(tab,id)` |
+| algos.js | `ALGO` | 9 published systems (`SYS`: tsmom, turtle, faber, rsi2, ibs, bbmr, supertrend, macd, orb) with sources; `run(id, D, {symbol})` honest backtest (next-open entry, spread `COST`, stop first) → trades/stats/half (last 30 %)/open; `score(stats, half)` |
 | flow.js | `FLOW` | 🌊 tape window (Binance aggTrade WS) |
 | nexus.js | `NEXUS` (also `window.NEXUS`) | ◆ HUD, Nexus home screen (apps/windows/cloud/board, classic view, designs), paper accounts `A()`, robot, position cards, trade ticket, chart lines/markers API |
 | app.js | (IIFE) | everything else: state `S`, chart, toolbar, menus, chat, news, scan, replay, layouts/workspaces, styles, animations, videos |
 
-app.js sections (grep `// ---- `): state/save/undo · data (fetchBars, live WS) · CandleView custom series · Bubbles · TradeLines (drag SL/TP) · toolbar · indicator menus · settings(tab) · idea window · replay · auto lines · scan · chat (+folders, ask Claude) · volume menu · workspaces/layout (GRIDS, embed panes) · Text menu · ⊞ launcher (FUNCS) · ws dock · side toolbar · styles/anims/videos · ctx menus · news · technicals · library · keyboard · start.
+app.js sections (grep `// ---- `): state/save/undo · data (fetchBars, live WS) · CandleView custom series · Bubbles · TradeLines (drag SL/TP) · toolbar · indicator menus · settings(tab) · idea window · replay · auto lines · scan · chat (+folders, ask Claude) · volume menu · workspaces/layout (GRIDS, embed panes) · Text menu · ⊞ launcher (FUNCS) · ws dock · side toolbar · styles/anims/videos · ctx menus · 🧠 Algo window (rank/detail/live, `algoTick` every 30 s, `algoMarks` on chart) · news (inside the chat window, tab `S.chat.tab`) · technicals · library · keyboard · start.
 
 ## State
 - `S` = merge(DEF, localStorage `nx2`), synced to `/api/prefs/{labeler}` (debounced). Embed panes use key `nx2:pane<ws>-<n>` and never sync.
@@ -33,6 +34,8 @@ app.js sections (grep `// ---- `): state/save/undo · data (fetchBars, live WS) 
 - Paper accounts: `S.accounts[]`, `S.accountId` (nexus `A()`), positions {id,symbol,dir,lots,lots0,entry,sl,tp,tps[],best,worst,time,src}.
 
 ## Server (server.py, FastAPI)
+- Shared accounts: `POST /api/accounts` (share → codes), `POST /api/accounts/join` {name, code}, `GET/PUT /api/accounts/{id}` (PUT needs current `rev`, 409 returns the newer version; nexus merges in `syncShared`). Table `web_accounts`.
+- `POST /api/signal` → chat kind `signal` (+ Telegram if TELEGRAM_* env and requested).
 - `/api/meta`, `/api/candles` (bars `[t,o,h,l,c,v,buyVol]`, Binance klines/aggTrades; futures WS = `wss://fstream.binance.com/market/ws/`), alerts/labels/marks/progress (scanner DB), prefs, chat (+`/api/ask` Claude via ktma/assistant.py), news, calendar.
 - SYMBOLS dict at top.
 
@@ -45,7 +48,8 @@ app.js sections (grep `// ---- `): state/save/undo · data (fetchBars, live WS) 
 
 ## Plan / backlog (update as you go)
 - [x] Nexus home screen, accounts, board, workspaces (1–10 charts), Text tools, videos, effects.
-- [ ] Remove extra crypto/metals symbols; keep XAU, XAG, BTC + forex (EURUSD; others if Binance has them).
-- [ ] Toolbar declutter: Štýly → into Nastavenia; Chat + Správy → one window with tabs.
-- [ ] 🧠 Algo window: researched strategies (signals + backtest on our data, honest win-rate/PF), auto-run on symbols/TFs, broadcast signals (chat channel, optional Telegram), paper auto-trade.
-- [ ] Shared accounts on the server: invite code, roles view/trade, friend sees & trades the same paper account (optimistic `rev`).
+- [x] Symbols: XAU, XAG, BTC, EURUSD, GBPUSD, AUDUSD (Binance has no other USD forex pairs).
+- [x] Toolbar declutter: Štýly in Nastavenia (tab) and ⊞; Chat + Správy one window with tabs.
+- [x] 🧠 Algo window: ranking on our data (weighs the last 30 %), sources, chart overlay, live signals → chat / Telegram / paper trades.
+- [x] Shared accounts (codes view/trade, merge on conflict, `by` on trades).
+- [ ] Ideas: walk-forward parameter check per market; algo signals as alerts in the scanner; per-member permissions UI (owner can change roles via PUT members).

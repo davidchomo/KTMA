@@ -1781,7 +1781,7 @@
         for (const id of Object.keys(ALGO.SYS)) {
           if (ALGO.SYS[id].intraday && TF_SEC[tf] > 3600) continue;
           const r = ALGO.run(id, D, { symbol: s });
-          algoRes.push({ id, symbol: s, tf, stats: r.stats, half: r.half, open: r.open, from: D.t[0], to: D.t[D.t.length - 1], score: ALGO.score(r.stats) });
+          algoRes.push({ id, symbol: s, tf, stats: r.stats, half: r.half, open: r.open, from: D.t[0], to: D.t[D.t.length - 1], score: ALGO.score(r.stats, r.half) });
         }
       } catch (e) {}
       if (algoEl.classList.contains('open') && AG().tab === 'rank') paintAlgo();

@@ -188,7 +188,9 @@ const ALGO = (() => {
              avgR: Rs.length ? Rs.reduce((s, v) => s + v, 0) / Rs.length : null, exp: T.length ? T.reduce((s, t) => s + t.ret, 0) / T.length : null,
              bars: T.length ? T.reduce((s, t) => s + t.bars, 0) / T.length : null, curve };
   }
-  // a score to rank systems: needs enough trades; rewards profit factor and expectancy, punishes drawdown
-  const score = s => (!s.n || s.n < 15 || s.pf === null ? -Infinity : Math.min(s.pf, 4) * 10 + (s.avgR || 0) * 5 - s.dd * 20 + Math.min(s.n, 100) / 50);
+  // a score to rank systems: needs enough trades; rewards profit factor and expectancy, punishes drawdown,
+  // and weighs the last 30 % of the data (the check period) heavily so that a lucky stretch does not win
+  const score = (s, h) => (!s.n || s.n < 15 || s.pf === null ? -Infinity : Math.min(s.pf, 4) * 10 + (s.avgR || 0) * 5 - s.dd * 20 + Math.min(s.n, 100) / 50
+    + (h && h.n >= 5 && h.pf !== null ? (Math.min(h.pf, 3) - 1) * 12 : -6));
   return { SYS, run, stats, score, COST };
 })();
