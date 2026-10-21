@@ -29,7 +29,7 @@
             bgType: 'solid', bg2: '#0f121a', gridV: { on: true, color: '#1f2433', opacity: 100, style: 0 }, gridH: { on: true, color: '#1f2433', opacity: 100, style: 0 },
             sepColor: '#2a2e39', scaleLine: '#2a2e39', fontSize: 11, font: 'system', marginTop: 8, marginBottom: 8 },
     panel: { w: 118, h: 30, fs: 13, font: 'system', bg: '#1e222d', text: '#d1d4dc', accent: '#2962ff', show: 'both', opacity: 100 },
-    bgImg: { id: 'none', auto: false, dim: 55, blur: 0, url: '' },
+    bgImg: { id: 'none', auto: false, autoKind: 'photo', dim: 55, blur: 0, url: '' },
     auto: { on: false, lines: true, channels: false, levels: true, pivots: false, ended: false, touches: true, labels: true, k: 0, ext: 30,
             sup: { color: '#26a69a', opacity: 90, width: 2, style: 0 }, res: { color: '#ef5350', opacity: 90, width: 2, style: 0 },
             lvl: { color: '#ffb74d', opacity: 75, width: 1, style: 2 } },
@@ -37,6 +37,8 @@
     scan: { symbols: ['XAUUSD', 'XAGUSD', 'BTCUSD'], tfs: ['1m', '5m', '15m', '1h', '4h'], fresh: 3, near: true, minScore: 0, every: 0 },
     chat: { open: false, x: null, y: null, kind: 'msg', filter: 'all', attach: false },
     replaySpeed: 2,
+    legend: { symbol: true, name: 'short', tf: false, type: false, ohlc: false, change: false, studies: true, values: true },
+    news: { open: false, x: null, y: null, topic: '', impact: 'med', cur: 'USD', links: [] },
     crosshair: { mode: 0, color: '#9598a1', opacity: 100, width: 1, style: 2, labels: true, labelBg: '#363c4e' },
     renko: { method: 'atr', atr: 14, box: 1, pct: 0.1, wicks: true },
     studies: null, templates: {}, favorites: ['ema', 'sma', 'vwap', 'bb', 'rsi', 'macd', 'volume'],
@@ -257,7 +259,7 @@
     if (ideaPos) draw.add(ideaPos);
     legendRows();
     showOHLC();
-    chart.subscribeCrosshairMove(p => { crossTime = p && p.time !== undefined ? p.time : null; showOHLC(crossTime); });
+    chart.subscribeCrosshairMove(p => { lastCross = p; crossTime = p && p.time !== undefined ? p.time : null; showOHLC(crossTime); });
     const ts = chart.timeScale();
     if (range) ts.setVisibleLogicalRange(range);
     else if (view.focus !== undefined) focusOn(view.focus);
@@ -388,14 +390,16 @@
     if (!disp.length) return;
     const i = time === null || time === undefined ? disp.length - 1 : disp.findIndex(b => b.time === time);
     const b = disp[i < 0 ? disp.length - 1 : i], prev = disp[(i < 0 ? disp.length - 1 : i) - 1];
-    const c = b.close >= b.open ? S.look.up : S.look.down, ch = prev ? b.close - prev.close : 0;
-    $('#ohlc').innerHTML = `<span class="sym">${esc(sym().name)} · ${S.tf} · ${esc(TYPES.find(t => t[0] === S.type)[1])}</span>` +
-      `O <b style="color:${c}">${fmt(b.open)}</b>H <b style="color:${c}">${fmt(b.high)}</b>L <b style="color:${c}">${fmt(b.low)}</b>C <b style="color:${c}">${fmt(b.close)}</b>` +
-      `<b style="color:${ch >= 0 ? S.look.up : S.look.down}">${ch >= 0 ? '+' : ''}${fmt(ch)} (${prev ? (100 * ch / prev.close).toFixed(2) : '0.00'} %)</b>`;
+    const c = b.close >= b.open ? S.look.up : S.look.down, ch = prev ? b.close - prev.close : 0, G = S.legend;
+    const head = [G.symbol ? (G.name === 'name' ? sym().name : G.name === 'full' ? `${sym().name} · ${sym().desc || ''}` : S.symbol) : '', G.tf ? S.tf : '', G.type ? TYPES.find(t => t[0] === S.type)[1] : ''].filter(Boolean);
+    const html = (head.length ? `<span class="sym">${esc(head.join(' · '))}</span>` : '') +
+      (G.ohlc ? `O <b style="color:${c}">${fmt(b.open)}</b>H <b style="color:${c}">${fmt(b.high)}</b>L <b style="color:${c}">${fmt(b.low)}</b>C <b style="color:${c}">${fmt(b.close)}</b>` : '') +
+      (G.change ? `<b style="color:${ch >= 0 ? S.look.up : S.look.down}">${ch >= 0 ? '+' : ''}${fmt(ch)} (${prev ? (100 * ch / prev.close).toFixed(2) : '0.00'} %)</b>` : '');
+    const o = $('#ohlc'); o.innerHTML = html; o.style.display = html ? '' : 'none';
     legendValues(i < 0 ? disp.length - 1 : i);
   }
   function legendRows() {
-    const rows = units.filter(u => !u.s.temp || true);
+    const rows = S.legend.studies ? units : [];
     const toggle = rows.length ? `<div id="lgToggle">${S.legendOpen ? '⌃ skryť' : `⌄ indikátory (${rows.length})`}</div>` : '';
     $('#studies').innerHTML = (S.legendOpen ? rows.map((u, n) => `<div class="lg-row" data-n="${n}"><span class="lg-name">${esc(u.def.label(u.s))}</span><span class="vals"></span>` +
       `<button class="lg-btn" data-a="hide" title="Skryť">👁</button><button class="lg-btn" data-a="cfg" title="Nastavenia">⚙</button>` +
@@ -412,7 +416,7 @@
   function legendValues(i) {
     $$('#studies .lg-row').forEach(div => {
       const u = units[+div.dataset.n];
-      if (!u || !u.s.out.legendValues || u.def.pattern) { if (u && div.querySelector('.vals')) div.querySelector('.vals').innerHTML = u && u.def.pattern ? `<span class="lg-val muted">${u.marks.length}×</span>` : ''; return; }
+      if (!u || !u.s.out.legendValues || !S.legend.values || u.def.pattern) { if (u && div.querySelector('.vals')) div.querySelector('.vals').innerHTML = u && u.def.pattern ? `<span class="lg-val muted">${u.marks.length}×</span>` : ''; return; }
       const keys = u.def.legend || (u.s.type === 'volume' ? ['vol'] : Object.keys(u.values).filter(k => !u.s.plots[k] || u.s.plots[k].visible));
       div.querySelector('.vals').innerHTML = keys.filter(k => u.values[k]).slice(0, 7).map(k => {
         const st = u.s.plots[k] || u.s.plots.up || u.s.plots.h1 || {}, v = u.values[k][i];
@@ -671,8 +675,8 @@
   }
 
   // ---- chart settings ---------------------------------------------------------------------------
-  function settings() {
-    let tab = 'bars';
+  function settings(tab0) {
+    let tab = typeof tab0 === 'string' ? tab0 : 'bars';
     const L = S.look, C = S.crosshair, R = S.renko;
     const cb = (k, on, label) => `<label class="ctl"><input type="checkbox" data-k="${k}" ${on ? 'checked' : ''}> ${label}</label>`;
     const num = (k, v, min, max, step) => `<input type="number" data-k="${k}" value="${v}" min="${min}" max="${max}" step="${step || 1}">`;
@@ -703,6 +707,11 @@
         <div class="fld">${cb('crosshair.labels', C.labels, 'Popisy na osiach')}${swatch('labelBg', C.labelBg)}</div>`,
       time: `<div class="fld"><span>Časové pásmo</span><select data-k="tz">${opts(ZONES.map(z => [z === 'UTC' ? 'UTC' : z.replace('_', ' '), z]), S.tz)}</select></div>
         <div class="muted">Čas na osi aj v legende sa zobrazí v tomto pásme.</div>`,
+      legend: `<div class="muted" style="margin:4px 0 8px">Čo sa zobrazí vľavo hore v grafe. Predvolené je iba skratka symbolu.</div>
+        <div class="fld">${cb('legend.symbol', S.legend.symbol, 'Symbol')}<select data-k="legend.name">${opts([['Skratka (XAUUSD)', 'short'], ['Názov (XAU/USD)', 'name'], ['Názov + popis', 'full']], S.legend.name)}</select></div>
+        <div class="fld">${cb('legend.tf', S.legend.tf, 'Timeframe')}</div><div class="fld">${cb('legend.type', S.legend.type, 'Typ grafu')}</div>
+        <div class="fld">${cb('legend.ohlc', S.legend.ohlc, 'Ceny O H L C sviečky pod kurzorom')}</div><div class="fld">${cb('legend.change', S.legend.change, 'Zmena a percentuálna zmena')}</div>
+        <div class="fld">${cb('legend.studies', S.legend.studies, 'Zoznam indikátorov (s tlačidlami 👁 ⚙ ✕)')}</div><div class="fld">${cb('legend.values', S.legend.values, 'Hodnoty indikátorov')}</div>`,
       renko: `<div class="fld"><span>Veľkosť tehly</span><select data-k="renko.method">${opts([['ATR (automaticky)', 'atr'], ['Pevná cena', 'fixed'], ['Percento ceny', 'pct']], R.method)}</select></div>
         <div class="fld"><span>ATR perióda</span>${num('renko.atr', R.atr, 1, 500)}</div><div class="fld"><span>Pevná veľkosť</span>${num('renko.box', R.box, 0.0001, 100000, 'any')}</div>
         <div class="fld"><span>Percento</span>${num('renko.pct', R.pct, 0.001, 50, 'any')}</div><div class="fld">${cb('renko.wicks', R.wicks, 'Knôty')}</div>`,
@@ -714,7 +723,7 @@
     const set = (path, v) => { const ks = path.split('.'); let o = S; while (ks.length > 1) o = o[ks.shift()]; o[ks[0]] = v; };
     const paint = () => {
       const d = openDialog(`<div class="dlg-h"><span>Nastavenia grafu</span><button class="ib" data-x>✕</button></div><div class="dlg-b">
-        <div class="tabs">${[['bars', 'Sviečky'], ['canvas', 'Plátno'], ['scale', 'Mierka'], ['cross', 'Kurzor'], ['time', 'Čas'], ['renko', 'Renko'], ['data', 'Dáta']].map(([k, n]) => `<span class="tab ${tab === k ? 'on' : ''}" data-tab="${k}">${n}</span>`).join('')}</div>${body()}</div>
+        <div class="tabs">${[['bars', 'Sviečky'], ['canvas', 'Plátno'], ['legend', 'Legenda'], ['scale', 'Mierka'], ['cross', 'Kurzor'], ['time', 'Čas'], ['renko', 'Renko'], ['data', 'Dáta']].map(([k, n]) => `<span class="tab ${tab === k ? 'on' : ''}" data-tab="${k}">${n}</span>`).join('')}</div>${body()}</div>
         <div class="dlg-f"><button class="btn" data-reset>Predvolené</button><span class="grow"></span><button class="btn pri" data-x>Hotovo</button></div>`, null, 'wide');
       $$('[data-tab]', d).forEach(x => x.onclick = () => { tab = x.dataset.tab; paint(); });
       $$('[data-k]', d).forEach(x => x.onchange = async () => {
@@ -1338,8 +1347,13 @@
 
   // ---- styles: chart backgrounds (seasons) and colour themes ---------------------------------------
   const bgLayer = $('#bgLayer'), bgDim = $('#bgDim');
-  const bgId = () => (S.bgImg.auto ? BG.bySeason() : S.bgImg.id);
-  function bgUrl() { const id = bgId(); if (id === 'custom') return LS.get('nx-bg-custom', '') || S.bgImg.url || ''; return id === 'none' ? '' : BG.url(id); }
+  const bgId = () => (S.bgImg.auto ? seasonId() : S.bgImg.id);
+  function bgUrl() {
+    const id = bgId();
+    if (id === 'custom') return LS.get('nx-bg-custom', '') || S.bgImg.url || '';
+    if (id.startsWith('photo:')) return photoUrl(id.slice(6));
+    return id === 'none' ? '' : BG.url(id);
+  }
   function hasBg() { return !!bgUrl(); }
   function applyBg() {
     const url = bgUrl(), B = S.bgImg;
@@ -1347,43 +1361,6 @@
     bgLayer.style.filter = B.blur ? `blur(${B.blur}px)` : '';
     bgLayer.style.inset = B.blur ? `-${B.blur * 2}px` : '0';
     bgDim.style.background = url ? rgba(S.look.bg, B.dim) : 'transparent';
-  }
-  function stylesDialog() {
-    const B = S.bgImg;
-    const tile = (id, name, img, extra) => `<div class="tile ${(B.auto ? '' : B.id) === id ? 'on' : ''}" data-bg="${id}" title="${esc(name)}"><div class="thumb" style="${img}"></div><span>${esc(name)}</span>${extra || ''}</div>`;
-    const paint = () => {
-      const cust = LS.get('nx-bg-custom', '') || B.url;
-      const d = openDialog(`<div class="dlg-h"><span>🖼 Štýly a pozadia</span><button class="ib" data-x>✕</button></div><div class="dlg-b">
-        <div class="sec2">Pozadie grafu</div>
-        <div class="tiles">${tile('none', 'Bez obrázka', `background:${S.look.bg}`)}${Object.entries(BG.SCENES).map(([k, x]) => tile(k, x.name, `background-image:url('${BG.url(k)}')`, `<small>${esc(x.season)}</small>`)).join('')}
-          ${tile('custom', 'Vlastný obrázok', cust ? `background-image:url('${String(cust).replace(/"/g, '%22').replace(/'/g, '%27')}')` : 'background:repeating-linear-gradient(45deg,#2a2e39 0 8px,#1e222d 8px 16px)')}</div>
-        <div class="fld"><label class="ctl"><input type="checkbox" data-b="auto" ${B.auto ? 'checked' : ''}> Podľa ročného obdobia (teraz: ${esc(BG.SCENES[BG.bySeason()].name)})</label></div>
-        <div class="fld"><span>Stmavenie (aby bol graf čitateľný)</span><span class="op" style="width:240px"><input type="range" min="0" max="95" data-b="dim" value="${B.dim}"><b>${B.dim} %</b></span></div>
-        <div class="fld"><span>Rozmazanie</span><span class="op" style="width:240px"><input type="range" min="0" max="20" data-b="blur" value="${B.blur}"><b>${B.blur} px</b></span></div>
-        <div class="fld"><span>Vlastný obrázok zo zariadenia</span><label class="btn sm">📁 Vybrať súbor<input type="file" accept="image/*" data-file hidden></label></div>
-        <div class="fld"><span>…alebo adresa obrázka (URL)</span><input type="text" data-b="url" value="${esc(B.url)}" placeholder="https://…jpg" style="width:240px"></div>
-        <div class="sec2">Farebné témy (graf + panel)</div>
-        <div class="tiles themes">${Object.entries(BG.THEMES).map(([k, t]) => `<div class="tile" data-th="${k}"><div class="thumb" style="background:linear-gradient(135deg,${t.look.bg},${t.look.bg2})">
-          <i style="background:${t.look.up}"></i><i style="background:${t.look.down}"></i><i style="background:${t.panel.accent}"></i></div><span>${esc(t.name)}</span></div>`).join('')}</div></div>
-        <div class="dlg-f"><span class="grow"></span><button class="btn pri" data-x>Hotovo</button></div>`, null, 'wide styles-dlg');
-      $$('[data-bg]', d).forEach(x => x.onclick = () => { if (x.dataset.bg === 'custom' && !cust) { $('[data-file]', d).click(); return; } B.id = x.dataset.bg; B.auto = false; save(); applyBg(); buildChart(); paint(); });
-      $$('[data-b]', d).forEach(x => x[x.type === 'range' ? 'oninput' : 'onchange'] = () => {
-        const k = x.dataset.b; B[k] = x.type === 'checkbox' ? x.checked : x.type === 'range' ? +x.value : x.value.trim();
-        if (k === 'url' && B.url) { LS.set('nx-bg-custom', ''); B.id = 'custom'; B.auto = false; }
-        if (x.type === 'range') x.nextElementSibling.textContent = `${B[k]} ${k === 'dim' ? '%' : 'px'}`;
-        save(); applyBg(); if (x.type !== 'range') { buildChart(); paint(); }
-      });
-      $('[data-file]', d).onchange = e => { const file = e.target.files[0]; if (file) loadImage(file, () => { B.id = 'custom'; B.auto = false; B.url = ''; save(); applyBg(); buildChart(); paint(); }); };
-      $$('[data-th]', d).forEach(x => x.onclick = () => {
-        const t = BG.THEMES[x.dataset.th];
-        Object.assign(S.look, t.look, { borderUp: t.look.up, wickUp: t.look.up, borderDown: t.look.down, wickDown: t.look.down });
-        S.look.gridV = { ...S.look.gridV, color: t.grid }; S.look.gridH = { ...S.look.gridH, color: t.grid };
-        S.look.bgType = t.look.bg2 !== t.look.bg ? 'gradient' : 'solid';
-        Object.assign(S.panel, t.panel); save(); applyPanel(); applyBg(); buildChart(); toast(`Téma: ${t.name}`);
-      });
-      $$('[data-x]', d).forEach(x => x.onclick = closeDialog);
-    };
-    paint();
   }
   // A picture from the device: scaled to max 2560 px and stored as JPEG in this browser.
   function loadImage(file, done) {
@@ -1399,7 +1376,7 @@
     img.onerror = () => toast('Obrázok sa nepodarilo načítať');
     img.src = u;
   }
-  $('#bStyle').onclick = stylesDialog;
+  $('#bStyle').onclick = () => stylesDialog();
 
   // ---- toolbar look: size, font, colours -----------------------------------------------------------
   function applyPanel() {
@@ -1430,10 +1407,401 @@
     $$('[data-x]', d).forEach(x => x.onclick = closeDialog);
   }
 
+  // ---- styles window: photos, drawn scenes, candle colours, themes -----------------------------------
+  // Real photos (Wikimedia Commons, free licences, credited in the window) live in static/photos/.
+  let PHOTOS = [];
+  const PHOTO_SEASON = { winter: 'alps-winter', spring: 'spring-blossom', summer: 'summer-lake', autumn: 'autumn-foliage' };
+  const CANDLES = {
+    tv: ['TradingView', '#089981', '#f23645'], classic: ['Klasická', '#26a69a', '#ef5350'], vivid: ['Sýta', '#00c853', '#ff1744'],
+    blueRed: ['Modrá / červená', '#2962ff', '#f23645'], cb: ['Pre farboslepých', '#1e88e5', '#ff9800'], mono: ['Čiernobiela', '#e0e3eb', '#5d606b'],
+    gold: ['Zlatá', '#ffca28', '#7e57c2'], neon: ['Neón', '#00e5ff', '#ff2bd6'], pastel: ['Pastelová', '#80cbc4', '#f48fb1'],
+    ocean: ['Oceán', '#26c6da', '#5c6bc0'], fire: ['Oheň', '#ffca28', '#e53935'], forest: ['Les', '#9ccc65', '#8d6e63'],
+    ice: ['Ľad', '#b3e5fc', '#546e7a'], sepia: ['Sépia', '#2e7d32', '#b23c17'],
+    outline: ['Iba obrysy', '#089981', '#f23645', { body: false }], greyWicks: ['Sivé knôty', '#089981', '#f23645', { wick: '#787b86' }],
+    hollowMono: ['Obrysy čiernobiele', '#e0e3eb', '#787b86', { body: false }],
+  };
+  function candlePreset(k) {
+    const [, up, down, o = {}] = CANDLES[k];
+    return { up, down, borderUp: up, borderDown: down, wickUp: o.wick || up, wickDown: o.wick || down, body: o.body !== false, borders: true, wicks: true };
+  }
+  function candleSvg(p) {
+    const H = [[30, 14, 22, 8], [26, 10, 18, 4], [20, 6, 12, 2], [24, 12, 30, 8], [16, 8, 26, 4], [12, 4, 20, 2]];   // [open, high, close, low] in px from top-ish
+    return `<svg viewBox="0 0 84 40" width="100%" height="40">${H.map(([o, hh, c, l], i) => {
+      const x = 6 + i * 13, up = c < o, col = up ? p.up : p.down, wick = up ? p.wickUp : p.wickDown, top = Math.min(o, c), h = Math.max(2, Math.abs(o - c));
+      return `<line x1="${x + 3}" x2="${x + 3}" y1="${hh}" y2="${Math.max(o, c) + 6}" stroke="${wick}"/><rect x="${x}" y="${top}" width="6" height="${h}" fill="${p.body ? col : 'none'}" stroke="${up ? p.borderUp : p.borderDown}"/>`;
+    }).join('')}</svg>`;
+  }
+  const photoUrl = id => { const p = PHOTOS.find(x => x.id === id); return p ? 'static/' + p.file : ''; };
+  function seasonId() { const k = BG.bySeason(); return S.bgImg.autoKind === 'drawn' ? k : 'photo:' + PHOTO_SEASON[k]; }
+  let stTab = 'photos';
+  function stylesDialog(tab0) {
+    if (typeof tab0 === 'string') stTab = tab0;
+    const B = S.bgImg;
+    const cur = B.auto ? '' : B.id;
+    const tile = (id, name, img, extra, title) => `<div class="tile ${cur === id ? 'on' : ''}" data-bg="${id}" title="${esc(title || name)}"><div class="thumb" style="${img}"></div><span>${esc(name)}</span>${extra || ''}</div>`;
+    const q = u => String(u).replace(/"/g, '%22').replace(/'/g, '%27');
+    const common = () => `<div class="fld"><label class="ctl"><input type="checkbox" data-b="auto" ${B.auto ? 'checked' : ''}> Automaticky podľa ročného obdobia</label>
+        <select data-b="autoKind">${opts([['fotky', 'photo'], ['kreslené', 'drawn']], B.autoKind)}</select></div>
+      <div class="fld"><span>Stmavenie (aby bol graf čitateľný)</span><span class="op" style="width:240px"><input type="range" min="0" max="95" data-b="dim" value="${B.dim}"><b>${B.dim} %</b></span></div>
+      <div class="fld"><span>Rozmazanie</span><span class="op" style="width:240px"><input type="range" min="0" max="20" data-b="blur" value="${B.blur}"><b>${B.blur} px</b></span></div>`;
+    const body = () => {
+      if (stTab === 'photos') {
+        const cust = LS.get('nx-bg-custom', '') || B.url, sel = PHOTOS.find(p => 'photo:' + p.id === (B.auto ? seasonId() : B.id));
+        return `<div class="tiles">${tile('none', 'Bez obrázka', `background:${S.look.bg}`)}${PHOTOS.map(p => tile('photo:' + p.id, p.name, `background-image:url('${q('static/' + p.thumb)}')`, `<small>${esc(p.season)}</small>`, `${p.name} · foto: ${p.author} (${p.license})`)).join('')}
+          ${tile('custom', 'Vlastný obrázok', cust ? `background-image:url('${q(cust)}')` : 'background:repeating-linear-gradient(45deg,#2a2e39 0 8px,#1e222d 8px 16px)')}</div>
+          ${sel ? `<div class="muted credit">📷 ${esc(sel.name)} · foto: ${esc(sel.author)} · <a href="${esc(sel.licenseUrl || sel.source)}" target="_blank" rel="noopener">${esc(sel.license)}</a> · <a href="${esc(sel.source)}" target="_blank" rel="noopener">Wikimedia Commons</a></div>` : ''}
+          ${common()}
+          <div class="fld"><span>Vlastný obrázok zo zariadenia</span><label class="btn sm">📁 Vybrať súbor<input type="file" accept="image/*" data-file hidden></label></div>
+          <div class="fld"><span>…alebo adresa obrázka z internetu (URL)</span><input type="text" data-b="url" value="${esc(B.url)}" placeholder="https://…jpg" style="width:260px"></div>`;
+      }
+      if (stTab === 'drawn') return `<div class="tiles">${tile('none', 'Bez obrázka', `background:${S.look.bg}`)}${Object.entries(BG.SCENES).map(([k, x]) => tile(k, x.name, `background-image:url('${BG.url(k)}')`, `<small>${esc(x.season)}</small>`)).join('')}</div>${common()}`;
+      if (stTab === 'candles') {
+        const L = S.look, now = { up: L.up, down: L.down, borderUp: L.borderUp, borderDown: L.borderDown, wickUp: L.wickUp, wickDown: L.wickDown, body: L.body };
+        const same = k => { const p = candlePreset(k); return ['up', 'down', 'wickUp', 'wickDown', 'body'].every(x => String(p[x]).toLowerCase() === String(now[x]).toLowerCase()); };
+        return `<div class="muted" style="margin:4px 0 8px">Klik = použije farby na graf. Jemné doladenie (telo, okraje, knôty zvlášť) je v ⚙ Nastavenia → Sviečky, alebo pravý klik na sviečku.</div>
+          <div class="tiles candles">${Object.keys(CANDLES).map(k => `<div class="tile ${same(k) ? 'on' : ''}" data-cd="${k}"><div class="thumb" style="background:${S.look.bg}">${candleSvg(candlePreset(k))}</div><span>${esc(CANDLES[k][0])}</span></div>`).join('')}</div>
+          <div class="fld"><span>Teraz</span><span class="ctl">${swatch('up', L.up)}${swatch('down', L.down)}<button class="btn sm" data-cfull>Podrobné nastavenia…</button></span></div>`;
+      }
+      return `<div class="tiles themes">${Object.entries(BG.THEMES).map(([k, t]) => `<div class="tile" data-th="${k}"><div class="thumb" style="background:linear-gradient(135deg,${t.look.bg},${t.look.bg2})">
+          <i style="background:${t.look.up}"></i><i style="background:${t.look.down}"></i><i style="background:${t.panel.accent}"></i></div><span>${esc(t.name)}</span></div>`).join('')}</div>
+        <div class="muted">Téma zmení pozadie grafu, mriežku, text, farby sviečok aj panel. Obrázok na pozadí ostane.</div>`;
+    };
+    const paint = () => {
+      const d = openDialog(`<div class="dlg-h"><span>🖼 Štýly a pozadia</span><button class="ib" data-x>✕</button></div><div class="dlg-b">
+        <div class="tabs">${[['photos', '📷 Fotky'], ['drawn', '🏔 Kreslené'], ['candles', '🕯 Farby sviečok'], ['themes', '🎨 Témy']].map(([k, n]) => `<span class="tab ${stTab === k ? 'on' : ''}" data-tab="${k}">${n}</span>`).join('')}</div>
+        ${body()}</div><div class="dlg-f"><span class="grow"></span><button class="btn pri" data-x>Hotovo</button></div>`, null, 'wide styles-dlg');
+      $$('[data-tab]', d).forEach(x => x.onclick = () => { stTab = x.dataset.tab; paint(); });
+      $$('[data-bg]', d).forEach(x => x.onclick = () => {
+        if (x.dataset.bg === 'custom' && !(LS.get('nx-bg-custom', '') || B.url)) { $('[data-file]', d).click(); return; }
+        B.id = x.dataset.bg; B.auto = false; save(); applyBg(); buildChart(); paint();
+      });
+      $$('[data-b]', d).forEach(x => x[x.type === 'range' ? 'oninput' : 'onchange'] = () => {
+        const k = x.dataset.b; B[k] = x.type === 'checkbox' ? x.checked : x.type === 'range' ? +x.value : x.value.trim();
+        if (k === 'url' && B.url) { LS.set('nx-bg-custom', ''); B.id = 'custom'; B.auto = false; }
+        if (x.type === 'range') x.nextElementSibling.textContent = `${B[k]} ${k === 'dim' ? '%' : 'px'}`;
+        save(); applyBg(); if (x.type !== 'range') { buildChart(); paint(); }
+      });
+      const file = $('[data-file]', d); if (file) file.onchange = e => { const f = e.target.files[0]; if (f) loadImage(f, () => { B.id = 'custom'; B.auto = false; B.url = ''; save(); applyBg(); buildChart(); paint(); }); };
+      $$('[data-cd]', d).forEach(x => x.onclick = () => { Object.assign(S.look, candlePreset(x.dataset.cd)); save(); buildChart(); paint(); toast(`Sviečky: ${CANDLES[x.dataset.cd][0]}`); });
+      ['up', 'down'].forEach(k => { const b = $(`[data-sw=${k}]`, d); if (b) b.onclick = () => colorPopover(b, S.look, { noOpacity: true }, () => { S.look[k === 'up' ? 'borderUp' : 'borderDown'] = S.look[k]; S.look[k === 'up' ? 'wickUp' : 'wickDown'] = S.look[k]; save(); buildChart(); }, { color: k, opacity: '_o' + k }); });
+      const cf = $('[data-cfull]', d); if (cf) cf.onclick = () => settings('bars');
+      $$('[data-th]', d).forEach(x => x.onclick = () => {
+        const t = BG.THEMES[x.dataset.th];
+        Object.assign(S.look, t.look, { borderUp: t.look.up, wickUp: t.look.up, borderDown: t.look.down, wickDown: t.look.down, body: true });
+        S.look.gridV = { ...S.look.gridV, color: t.grid }; S.look.gridH = { ...S.look.gridH, color: t.grid };
+        S.look.bgType = t.look.bg2 !== t.look.bg ? 'gradient' : 'solid';
+        Object.assign(S.panel, t.panel); save(); applyPanel(); applyBg(); buildChart(); toast(`Téma: ${t.name}`);
+      });
+      $$('[data-x]', d).forEach(x => x.onclick = closeDialog);
+    };
+    paint();
+  }
+
+  // ---- right click: the settings of whatever is under the mouse ----------------------------------------
+  let lastCross = null;
+  function ctxMenu(ev, html, bind) {
+    closeMenu();
+    let a = $('#ctxAnchor');
+    if (!a) { a = document.createElement('div'); a.id = 'ctxAnchor'; document.body.appendChild(a); }
+    a.style.cssText = `position:fixed;left:${ev.clientX}px;top:${ev.clientY}px;width:1px;height:1px;pointer-events:none`;
+    const m = openMenu(a, html, bind, { cls: 'ctx' });
+    if (m && m.getBoundingClientRect().bottom > innerHeight - 4) { m.style.top = Math.max(6, ev.clientY - m.offsetHeight) + 'px'; m.style.maxHeight = ''; }
+  }
+  const item = (k, ic, name, key) => `<div class="it" data-c="${k}"><span class="ic">${ic}</span><span class="grow">${name}</span>${key ? `<span class="key">${key}</span>` : ''}</div>`;
+  const bindItems = (m, acts) => $$('[data-c]', m).forEach(x => x.onclick = () => { closeMenu(); const f = acts[x.dataset.c]; if (f) f(x); });
+  function paneAt(y) {
+    const panes = chart.panes(); let top = 0;
+    for (let i = 0; i < panes.length; i++) { const h = panes[i].getHeight(); if (y >= top && y < top + h) return { i, top }; top += h + 1; }
+    return null;
+  }
+  // The indicator whose line / histogram is within a few pixels of (x, y) in pane `pi`.
+  function unitAt(pi, x, yIn) {
+    const l = Math.round(chart.timeScale().coordinateToLogical(x));
+    if (!(l >= 0 && l < disp.length)) return null;
+    let best = null;
+    for (const u of units) {
+      if (u.pane !== pi || u.def.pattern) continue;
+      for (const [k, vals] of Object.entries(u.values)) {
+        const st = u.s.plots[k]; if (st && !st.visible) continue;
+        const ser = (u.lines[k] && u.lines[k][0]) || u.hists[k] || u.host; if (!ser) continue;
+        const yy = ser.priceToCoordinate(vals[l]); if (yy === null || !Number.isFinite(vals[l])) continue;
+        const d = Math.abs(yy - yIn); if (d < 7 && (!best || d < best.d)) best = { u, d };
+      }
+    }
+    return best && best.u;
+  }
+  function autoLineAt(x, y) {
+    if (!S.auto.on || !tlR || hideL.auto) return false;
+    const ts = chart.timeScale(), l = ts.coordinateToLogical(x), n = closedCount(); if (l === null) return false;
+    for (const ln of tlR.lines) {
+      if (ln.created > n - 1 || !(ln.ended === null || ln.ended > n - 1) || l < ln.i1) continue;
+      const yy = main.priceToCoordinate(tlR.value(ln, l)); if (yy !== null && Math.abs(yy - y) < 6) return true;
+    }
+    for (const lv of tlR.levels) {
+      if (lv.created > n - 1 || !(lv.ended === null || lv.ended > n - 1) || l < lv.touchIdx[0]) continue;
+      const yy = main.priceToCoordinate(lv.price); if (yy !== null && Math.abs(yy - y) < 5) return true;
+    }
+    return false;
+  }
+  function studyMenu(ev, s) {
+    const def = KS.STUDIES[s.type];
+    ctxMenu(ev, `<div class="sec">${esc(def.label(s))}</div>${item('cfg', '⚙', 'Nastavenia… (farby, dĺžka, štýl)')}${item('hide', '👁', 'Skryť')}${item('dup', '⧉', 'Duplikovať')}
+      ${item('def', '⭐', 'Uložiť ako predvolené')}${item('del', '🗑', 'Odstrániť')}<div class="sep"></div>${item('add', 'ƒx', 'Pridať ďalší indikátor…')}`, m => bindItems(m, {
+      cfg: () => studySettings(s), hide: () => { s.visible = false; studiesChanged(); },
+      dup: () => { studies.push(KS.normalize({ ...JSON.parse(JSON.stringify(s)), uid: undefined })); studiesChanged(); },
+      def: () => { S.toolDefaults['study:' + s.type] = { inputs: s.inputs, plots: s.plots, tfs: s.tfs, out: s.out }; save(); toast('Uložené ako predvolené'); },
+      del: () => { studies = studies.filter(x => x !== s); studiesChanged(); }, add: () => $('#bInd').click(),
+    }));
+  }
+  function candleMenu(ev, bar, price) {
+    const L = S.look, chips = Object.keys(CANDLES).slice(0, 10).map(k => `<span class="cchip" data-cd="${k}" title="${esc(CANDLES[k][0])}"><i style="background:${CANDLES[k][1]}"></i><i style="background:${CANDLES[k][2]}"></i></span>`).join('');
+    ctxMenu(ev, `<div class="sec">Sviečka ${esc(fmtTime(bar.time))}</div><div class="ctx-ohlc">O ${fmt(bar.open)} · H ${fmt(bar.high)} · L ${fmt(bar.low)} · C ${fmt(bar.close)}</div>
+      <div class="sec">Farby sviečok</div><div class="cchips">${chips}</div>
+      ${item('colors', '🎨', 'Farby a štýl sviečok… (telo, okraje, knôty)')}${item('more', '🕯', 'Ďalšie farebné témy sviečok…')}
+      <div class="sec">Typ grafu</div><div class="tchips">${TYPES.map(([k, n, ic]) => `<span data-type="${k}" class="${S.type === k ? 'on' : ''}" title="${esc(n)}">${ic}</span>`).join('')}</div>
+      <div class="sep"></div>${item('replay', '✂', 'Replay od tejto sviečky')}${item('idea', '💡', 'Vlastný nápad na tejto sviečke')}${item('chat', '💬', 'Poslať sviečku do chatu')}
+      ${item('copy', '📋', `Kopírovať cenu ${fmt(price)}`)}`, m => {
+      $$('[data-cd]', m).forEach(x => x.onclick = () => { Object.assign(S.look, candlePreset(x.dataset.cd)); save(); buildChart(); toast(`Sviečky: ${CANDLES[x.dataset.cd][0]}`); });
+      $$('[data-type]', m).forEach(x => x.onclick = () => { closeMenu(); const fresh = (x.dataset.type === 'renko') !== (S.type === 'renko'); S.type = x.dataset.type; save(); applyToolbar(); buildChart(fresh ? null : undefined); });
+      bindItems(m, {
+        colors: () => settings('bars'), more: () => stylesDialog('candles'),
+        replay: () => { startReplay(false); const i = raw.findIndex(x => x.time > bar.time); view.replay.cut = Math.max(30, i < 0 ? raw.length : i); refreshAll(); replayInfo(); },
+        idea: () => { S.idea.tab = 'own'; mark = { direction: 'bullish', entry: bar.close, sl: null, tp: null, note: '', time: bar.time }; toggleIdea(true); renderIdea(); },
+        chat: () => { crossTime = bar.time; S.chat.attach = true; toggleChat(true); setTimeout(() => $('#chatText') && $('#chatText').focus(), 50); },
+        copy: () => { navigator.clipboard && navigator.clipboard.writeText(fmt(price)); toast('Skopírované ' + fmt(price)); },
+      });
+    });
+  }
+  function chartMenu(ev) {
+    ctxMenu(ev, `${item('settings', '⚙', 'Nastavenia grafu…')}${item('canvas', '▦', 'Plátno a mriežka…')}${item('legend', '🏷', 'Legenda (čo sa zobrazí vľavo hore)…')}
+      ${item('styles', '🖼', 'Štýly, pozadia a farby sviečok…')}<div class="sep"></div>${item('ind', 'ƒx', 'Pridať indikátor…')}${item('auto', '📐', S.auto.on ? 'Vypnúť auto čiary' : 'Zapnúť auto čiary', 'Alt+A')}
+      ${item('draw', '✎', 'Kresliť trendovú čiaru', 'Alt+T')}${item('tech', '📊', 'Technicals tohto symbolu')}<div class="sep"></div>
+      ${item('reset', '⤢', 'Resetovať zobrazenie')}${item('panel', '☰', S.toolbar === 'hidden' ? 'Zobraziť panel' : 'Skryť panel', 'Alt+P')}`, m => bindItems(m, {
+      settings: () => settings(), canvas: () => settings('canvas'), legend: () => settings('legend'), styles: () => stylesDialog(), ind: () => $('#bInd').click(),
+      auto: () => toggleAuto(), draw: () => draw.start('trend'), tech: () => openTech(),
+      reset: () => { chart.priceScale('right').applyOptions({ autoScale: true }); chart.timeScale().setVisibleLogicalRange({ from: disp.length - 150, to: disp.length + 5 }); },
+      panel: () => document.dispatchEvent(new KeyboardEvent('keydown', { key: 'p', code: 'KeyP', altKey: true })),
+    }));
+  }
+  function scaleMenu(ev) {
+    const L = S.look, set = v => () => { L.scale = v; save(); buildChart(); };
+    ctxMenu(ev, `<div class="sec">Cenová mierka</div>${[['Normálna', 0], ['Logaritmická', 1], ['Percentá', 2], ['Indexovaná na 100', 3]].map(([n, v]) => `<div class="it ${L.scale === v ? 'on' : ''}" data-c="s${v}"><span class="ic">${L.scale === v ? '✓' : ''}</span><span class="grow">${n}</span></div>`).join('')}
+      ${item('inv', L.invert ? '✓' : '', 'Obrátiť mierku')}${item('auto', '⤢', 'Automaticky prispôsobiť')}${item('cfg', '⚙', 'Nastavenia mierky…')}`, m => bindItems(m, {
+      s0: set(0), s1: set(1), s2: set(2), s3: set(3), inv: () => { L.invert = !L.invert; save(); buildChart(); },
+      auto: () => chart.priceScale('right').applyOptions({ autoScale: true }), cfg: () => settings('scale'),
+    }));
+  }
+  function timeMenu(ev) {
+    ctxMenu(ev, `<div class="sec">Časové pásmo</div>${ZONES.map(z => `<div class="it ${S.tz === z ? 'on' : ''}" data-z="${z}"><span class="ic">${S.tz === z ? '✓' : ''}</span><span class="grow">${z.replace('_', ' ')}</span></div>`).join('')}
+      <div class="sep"></div>${item('tf', '⏱', 'Zmeniť timeframe…')}`, m => {
+      $$('[data-z]', m).forEach(x => x.onclick = () => { closeMenu(); S.tz = x.dataset.z; save(); Object.keys(tzFmt).forEach(z => delete tzFmt[z]); buildChart(); });
+      bindItems(m, { tf: () => $('#bTf').click() });
+    });
+  }
+  el.addEventListener('contextmenu', e => {
+    if (!chart) return;
+    e.preventDefault(); e.stopPropagation();
+    const r = el.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top;
+    const W = chart.paneSize(0).width, pane = paneAt(y);
+    if (!pane) return timeMenu(e);
+    if (x > W) return scaleMenu(e);
+    if (pane.i === 0) {
+      const h = draw.hitAt(x, y);
+      if (h && !h.d.temp) return ctxMenu(e, `<div class="sec">${esc(DR.TOOLS[h.d.type].name)}</div>${item('cfg', '⚙', 'Nastavenia… (farba, štýl, text)')}${item('lock', '🔒', h.d.locked ? 'Odomknúť' : 'Zamknúť')}${item('del', '🗑', 'Zmazať')}`,
+        m => bindItems(m, { cfg: () => draw.openSettings(h.d), lock: () => { h.d.locked = !h.d.locked; S.drawings[S.symbol] = draw.list().filter(d => !d.temp); save(); }, del: () => draw.remove(h.d) }));
+      const u = unitAt(0, x, y);
+      if (u) return studyMenu(e, u.s);
+      if (autoLineAt(x, y)) return ctxMenu(e, `<div class="sec">Auto čiara</div>${item('style', '🎨', 'Farby, hrúbka a štýl auto čiar…')}${item('menu', '📐', 'Čo kresliť, citlivosť…')}${item('off', '🙈', 'Vypnúť auto čiary')}`,
+        m => bindItems(m, { style: () => autoStyle(), menu: () => autoMenu($('#bAuto')), off: () => toggleAuto(false) }));
+      const l = Math.round(chart.timeScale().coordinateToLogical(x)), bar = disp[l];
+      if (bar) {
+        const yh = main.priceToCoordinate(bar.high), yl = main.priceToCoordinate(bar.low), bx = chart.timeScale().logicalToCoordinate(l);
+        const bw = Math.max(4, chart.timeScale().options().barSpacing * 0.5);
+        if (yh !== null && yl !== null && y >= Math.min(yh, yl) - 4 && y <= Math.max(yh, yl) + 4 && Math.abs(x - bx) <= bw) return candleMenu(e, bar, main.coordinateToPrice(y));
+      }
+      return chartMenu(e);
+    }
+    const u = unitAt(pane.i, x, y - pane.top) || units.find(v => v.pane === pane.i);
+    if (u) return studyMenu(e, u.s);
+    chartMenu(e);
+  });
+  $('#legend').addEventListener('contextmenu', e => {
+    e.preventDefault();
+    const row = e.target.closest('.lg-row');
+    if (row) { const u = units[+row.dataset.n]; if (u) return studyMenu(e, u.s); }
+    ctxMenu(e, `${item('legend', '🏷', 'Čo zobraziť v legende…')}${item('sym', S.legend.symbol ? '🙈' : '👁', S.legend.symbol ? 'Skryť symbol' : 'Zobraziť symbol')}`,
+      m => bindItems(m, { legend: () => settings('legend'), sym: () => { S.legend.symbol = !S.legend.symbol; save(); showOHLC(); } }));
+  });
+
+  // ---- news, economic calendar and important links ------------------------------------------------------
+  const newsEl = $('#newsWin');
+  const TOPICS = [['gold', '🥇 Zlato'], ['silver', '🥈 Striebro'], ['btc', '₿ Bitcoin'], ['macro', '🏛 Makro / Fed'], ['cal', '📅 Kalendár'], ['links', '🔗 Odkazy']];
+  const LINKS = [
+    ['Zlato a striebro', [['Kitco – ceny a správy', 'https://www.kitco.com/'], ['World Gold Council – Goldhub', 'https://www.gold.org/goldhub'], ['CME – zlaté futures', 'https://www.cmegroup.com/markets/metals/precious/gold.html'],
+      ['LBMA – ceny drahých kovov', 'https://www.lbma.org.uk/prices-and-data/precious-metal-prices'], ['Investing.com – správy o zlate', 'https://www.investing.com/commodities/gold-news'],
+      ['TradingView – XAUUSD', 'https://www.tradingview.com/symbols/XAUUSD/'], ['The Silver Institute', 'https://www.silverinstitute.org/'], ['CFTC – Commitments of Traders', 'https://www.cftc.gov/MarketReports/CommitmentsofTraders/index.htm']]],
+    ['Makro a Fed', [['Forex Factory – kalendár', 'https://www.forexfactory.com/calendar'], ['CME FedWatch – očakávania sadzieb', 'https://www.cmegroup.com/markets/interest-rates/cme-fedwatch-tool.html'],
+      ['Federal Reserve – správy', 'https://www.federalreserve.gov/newsevents.htm'], ['FRED – makro dáta', 'https://fred.stlouisfed.org/'], ['US Treasury – výnosy', 'https://home.treasury.gov/resource-center/data-chart-center/interest-rates'],
+      ['BLS – inflácia CPI', 'https://www.bls.gov/cpi/'], ['TradingView – index dolára DXY', 'https://www.tradingview.com/symbols/TVC-DXY/']]],
+    ['Krypto', [['CoinDesk', 'https://www.coindesk.com/'], ['Binance – BTC/USDT', 'https://www.binance.com/en/trade/BTC_USDT'], ['CoinGlass – likvidácie, funding', 'https://www.coinglass.com/'],
+      ['Crypto Fear & Greed Index', 'https://alternative.me/crypto/fear-and-greed-index/']]],
+  ];
+  const newsCache = {};
+  const ago = t => { const s = Date.now() / 1000 - t; return s < 3600 ? `pred ${Math.max(1, Math.round(s / 60))} min` : s < 86400 ? `pred ${Math.round(s / 3600)} h` : `pred ${Math.round(s / 86400)} d`; };
+  function newsTopic() { return S.news.topic || ({ XAUUSD: 'gold', XAGUSD: 'silver', BTCUSD: 'btc' }[S.symbol] || 'gold'); }
+  async function renderNews() {
+    const t = newsTopic(), body = $('#newsBody');
+    $('#newsTabs').innerHTML = TOPICS.map(([k, n]) => `<span data-nt="${k}" class="${t === k ? 'on' : ''}">${n}</span>`).join('');
+    $$('#newsTabs [data-nt]').forEach(x => x.onclick = () => { S.news.topic = x.dataset.nt; save(); renderNews(); });
+    if (t === 'links') {
+      body.innerHTML = LINKS.map(([g, list]) => `<div class="step">${esc(g)}</div>${list.map(([n, u]) => `<a class="nl" href="${esc(u)}" target="_blank" rel="noopener">${esc(n)}<small>${esc(new URL(u).hostname.replace('www.', ''))}</small></a>`).join('')}`).join('') +
+        `<div class="step">Moje odkazy</div>${(S.news.links || []).map((l, i) => `<div class="nl own"><a href="${esc(l.url)}" target="_blank" rel="noopener">${esc(l.name || l.url)}</a><button class="ib" data-ld="${i}">✕</button></div>`).join('')}
+        <div class="grid2" style="margin-top:6px"><input class="idea-in" id="lnName" placeholder="Názov"><input class="idea-in" id="lnUrl" placeholder="https://…"></div><button class="btn sm" id="lnAdd" style="margin-top:6px">➕ Pridať odkaz</button>`;
+      $$('[data-ld]', body).forEach(b => b.onclick = () => { S.news.links.splice(+b.dataset.ld, 1); save(); renderNews(); });
+      $('#lnAdd').onclick = () => { const url = $('#lnUrl').value.trim(); if (!/^https?:\/\//.test(url)) { toast('Zadaj adresu začínajúcu https://'); return; } S.news.links = [...(S.news.links || []), { name: $('#lnName').value.trim(), url }]; save(); renderNews(); };
+      return;
+    }
+    body.innerHTML = '<div class="muted" style="padding:10px">Načítavam…</div>';
+    try {
+      if (t === 'cal') {
+        const list = newsCache.cal && Date.now() - newsCache.cal.at < 600000 ? newsCache.cal.v : await (await fetch('api/calendar')).json();
+        newsCache.cal = { at: Date.now(), v: list };
+        const N = S.news, now = Date.now() / 1000;
+        const show = list.filter(e => (N.impact === 'all' || (N.impact === 'high' ? e.impact === 'High' : ['High', 'Medium'].includes(e.impact))) && (N.cur === 'all' || e.country === N.cur));
+        const next = show.find(e => e.time > now);
+        let day = '';
+        body.innerHTML = `<div class="fld"><select id="calImp">${opts([['Iba vysoký vplyv', 'high'], ['Vysoký + stredný', 'med'], ['Všetko', 'all']], N.impact)}</select><select id="calCur">${opts([['USD', 'USD'], ['EUR', 'EUR'], ['GBP', 'GBP'], ['JPY', 'JPY'], ['CNY', 'CNY'], ['Všetky meny', 'all']], N.cur)}</select></div>
+          ${next ? `<div class="cal-next">⏰ Najbližšie: <b>${esc(next.title)}</b> (${esc(next.country)}) o ${esc(tzf({ weekday: 'short', hour: '2-digit', minute: '2-digit' }).format(new Date(next.time * 1000)))} · ${Math.floor((next.time - now) / 3600)} h ${Math.round((next.time - now) % 3600 / 60)} min</div>` : ''}
+          ${show.map(e => { const d = tzf({ weekday: 'long', day: 'numeric', month: 'numeric' }).format(new Date(e.time * 1000)), head = d !== day ? `<div class="step">${esc(d)}</div>` : ''; day = d;
+            return `${head}<div class="cal ${e.time < now ? 'past' : ''}"><span class="ct">${esc(tzf({ hour: '2-digit', minute: '2-digit' }).format(new Date(e.time * 1000)))}</span><span class="imp ${esc((e.impact || '').toLowerCase())}" title="${esc(e.impact)}"></span>
+              <span class="cc">${esc(e.country)}</span><span class="grow">${esc(e.title)}</span><small>${e.actual ? `<b>${esc(e.actual)}</b> · ` : ''}${e.forecast ? 'odh. ' + esc(e.forecast) : ''}${e.previous ? ' · pred. ' + esc(e.previous) : ''}</small></div>`; }).join('') || '<div class="muted">Tento týždeň nič podľa filtra.</div>'}
+          <div class="muted" style="font-size:11px;margin-top:8px">Zdroj: Forex Factory (tento týždeň) · čas v pásme ${esc(S.tz)}</div>`;
+        $('#calImp').onchange = e => { N.impact = e.target.value; save(); renderNews(); };
+        $('#calCur').onchange = e => { N.cur = e.target.value; save(); renderNews(); };
+        return;
+      }
+      const key = 'n:' + t, c = newsCache[key];
+      const list = c && Date.now() - c.at < 300000 ? c.v : await (await fetch(`api/news?topic=${t}`)).json();
+      newsCache[key] = { at: Date.now(), v: list };
+      body.innerHTML = (Array.isArray(list) && list.length ? list.map(n => `<a class="news" href="${esc(n.link)}" target="_blank" rel="noopener"><span>${esc(n.title)}</span><small>${esc(n.source)} · ${n.time ? ago(n.time) : ''}</small></a>`).join('')
+        : '<div class="muted">Žiadne správy.</div>') + '<div class="muted" style="font-size:11px;margin-top:8px">Zdroj: Google News (posledné 3 dni) · obnovuje sa každých 10 min</div>';
+    } catch (e) { body.innerHTML = '<div class="muted" style="padding:10px">Zdroj správ teraz neodpovedá.</div>'; }
+  }
+  function toggleNews(open) {
+    S.news.open = open ?? !S.news.open; save();
+    newsEl.classList.toggle('open', S.news.open); $('#bNews').classList.toggle('on', S.news.open);
+    if (S.news.open) { placeWin(newsEl, S.news); renderNews(); }
+  }
+  $('#bNews').onclick = () => toggleNews();
+  $('#newsClose').onclick = () => toggleNews(false);
+  $('#newsMin').onclick = () => newsEl.classList.toggle('min');
+  $('#newsReload').onclick = () => { for (const k in newsCache) delete newsCache[k]; renderNews(); };
+  dragWin(newsEl, $('#newsHead'), S.news);
+
+  // ---- technicals: ratings, pivots and trade ideas for every timeframe ----------------------------------
+  const techEl = $('#techPage');
+  const TECH_TFS = KS.TIMEFRAMES;
+  const techCache = {};
+  let techSym = null, techTf = null, techTimer = null, techBusy = new Set();
+  const RCOL = { 'Strong sell': '#f23645', Sell: '#f77c80', Neutral: '#9598a1', Buy: '#5b9cf6', 'Strong buy': '#2962ff' };
+  function gauge(g, big) {
+    const R = 70, cx = 90, cy = 86, seg = [['#f23645', 180, 144], ['#f77c80', 142, 108], ['#9598a1', 106, 74], ['#5b9cf6', 72, 38], ['#2962ff', 36, 0]];
+    const pt = (a, r) => [cx + r * Math.cos(a * Math.PI / 180), cy - r * Math.sin(a * Math.PI / 180)];
+    const arc = ([c, a1, a2]) => { const [x1, y1] = pt(a1, R), [x2, y2] = pt(a2, R); return `<path d="M${x1},${y1} A${R},${R} 0 0 1 ${x2},${y2}" stroke="${c}" stroke-width="7" fill="none" stroke-linecap="round" opacity="${c === RCOL[g.label] ? 1 : 0.45}"/>`; };
+    const ang = 90 - g.r * 90, [nx, ny] = pt(ang, R - 16);
+    return `<svg viewBox="0 0 180 100" class="gauge ${big ? 'big' : ''}">${seg.map(arc).join('')}<line x1="${cx}" y1="${cy}" x2="${nx}" y2="${ny}" stroke="var(--text)" stroke-width="3" stroke-linecap="round"/><circle cx="${cx}" cy="${cy}" r="5" fill="var(--text)"/>
+      <text x="12" y="98" font-size="9" fill="var(--muted)">Predaj</text><text x="168" y="98" font-size="9" fill="var(--muted)" text-anchor="end">Nákup</text></svg>`;
+  }
+  async function techData(symbol, tf, force) {
+    const key = symbol + '|' + tf, c = techCache[key];
+    if (c && !force && Date.now() - c.at < (TF_SEC[tf] < 60 ? 5000 : 20000)) return c;
+    const bars = await fetchBars(symbol, tf, null, 1000);
+    const Dx = { t: bars.map(b => b.time), o: bars.map(b => b.open), h: bars.map(b => b.high), l: bars.map(b => b.low), c: bars.map(b => b.close), v: bars.map(b => b.volume || 0) };
+    Dx.s = Dx.t.map(t => (SYM[symbol] && SYM[symbol].hours === 'gold' ? sessGold(t) : Math.floor(t / 86400)));
+    const ta = TA.compute(Dx);
+    const n = bars.length - 1, Dc = sliceD(Dx, n), R = n > 80 ? TL.run(Dc, { k: TL.zigK(tf, TF_SEC[tf]) }) : null;
+    const ideas = R ? TL.ideas(Dc, R, ideaOpts()) : [], near = R ? TL.snapshot(R, n - 1, bars[n].close).near : [];
+    const per = TA.pivotPeriod(TF_SEC[tf]);
+    let piv = techCache['piv|' + symbol + '|' + per];
+    if (!piv || Date.now() - piv.at > 600000) {
+      const pb = await fetchBars(symbol, per === '12M' ? '1M' : per, null, per === '12M' ? 40 : 5);
+      let prev = pb[pb.length - 2];
+      if (per === '12M') {
+        const y = new Date(pb[pb.length - 1].time * 1000).getUTCFullYear() - 1, ys = pb.filter(b => new Date(b.time * 1000).getUTCFullYear() === y);
+        prev = ys.length ? { open: ys[0].open, high: Math.max(...ys.map(b => b.high)), low: Math.min(...ys.map(b => b.low)), close: ys[ys.length - 1].close } : null;
+      }
+      piv = techCache['piv|' + symbol + '|' + per] = { at: Date.now(), v: prev ? TA.pivots({ o: prev.open, h: prev.high, l: prev.low, c: prev.close }) : null };
+    }
+    return (techCache[key] = { at: Date.now(), ta, ideas, near, piv: piv.v, per, price: bars[n].close, n: bars.length });
+  }
+  const tfName = tf => ({ s: 's', m: 'min', h: 'h', d: 'd', w: 'týž.', M: 'mes.' }[tf.slice(-1)] ? tf.replace(/(\d+)([smhdwM])$/, (_, n, u) => `${n} ${({ s: 's', m: 'min', h: 'h', d: 'd', w: 'týž.', M: 'mes.' })[u]}`) : tf);
+  async function paintTech() {
+    const sy = SYM[techSym] || {}, digits = sy.digits ?? 2, f = v => (Number.isFinite(v) ? (+v).toLocaleString('en-US', { minimumFractionDigits: digits, maximumFractionDigits: digits }) : '—');
+    $('#techHead').innerHTML = `<span class="tt"><b>${esc(sy.name || techSym)}</b> · Technicals</span>
+      <span class="tsyms">${META.symbols.map(s => `<span data-ts="${s.id}" class="${s.id === techSym ? 'on' : ''}">${esc(s.name)}</span>`).join('')}</span><span class="grow"></span>
+      <button class="btn sm" id="techRefresh">↻ Obnoviť</button><button class="btn sm" id="techBack">📈 Späť na graf</button>`;
+    $('#techTfs').innerHTML = TECH_TFS.map(tf => { const c = techCache[techSym + '|' + tf]; const lab = c ? c.ta.groups.sum.label : null;
+      return `<span data-tt="${tf}" class="${tf === techTf ? 'on' : ''}"><b>${tfName(tf)}</b><i style="background:${lab ? RCOL[lab] : 'transparent'}" title="${lab ? TA.SK[lab] : 'ešte nevypočítané'}"></i></span>`; }).join('');
+    $$('[data-ts]', techEl).forEach(x => x.onclick = () => { techSym = x.dataset.ts; paintTech(); overview(); });
+    $$('[data-tt]', techEl).forEach(x => x.onclick = () => { techTf = x.dataset.tt; paintTech(); });
+    $('#techBack').onclick = closeTech;
+    $('#techRefresh').onclick = () => { delete techCache[techSym + '|' + techTf]; paintTech(); };
+    const box = $('#techBody');
+    let c = techCache[techSym + '|' + techTf];
+    if (!c) {
+      box.innerHTML = `<div class="muted" style="padding:30px;text-align:center">Počítam ${esc(sy.name || '')} ${techTf}…</div>`;
+      try { c = await techData(techSym, techTf); } catch (e) { box.innerHTML = `<div class="muted" style="padding:30px">Dáta sa nepodarilo načítať: ${esc(e.message)}</div>`; return; }
+      if (!techEl.classList.contains('open')) return;
+      paintTech(); return;
+    }
+    const G = c.ta.groups, cnt = g => `<div class="tcnt"><div><small>Predaj</small><b>${g.sell}</b></div><div><small>Neutrálne</small><b>${g.neutral}</b></div><div><small>Nákup</small><b>${g.buy}</b></div></div>`;
+    const act = a => `<td class="act ${a.toLowerCase()}">${({ Buy: 'Nákup', Sell: 'Predaj', Neutral: 'Neutrálne' })[a]}</td>`;
+    const st = TL.stats(c.ideas), last = c.ideas.slice(-12).reverse();
+    const pv = c.piv, PK = ['R3', 'R2', 'R1', 'P', 'S1', 'S2', 'S3'];
+    box.innerHTML = `<div class="gauges"><div>${gauge(G.osc)}<div class="gl">Oscilátory</div><div class="gv" style="color:${RCOL[G.osc.label]}">${TA.SK[G.osc.label]}</div>${cnt(G.osc)}</div>
+        <div>${gauge(G.sum, true)}<div class="gl">Súhrn</div><div class="gv big" style="color:${RCOL[G.sum.label]}">${TA.SK[G.sum.label]}</div>${cnt(G.sum)}</div>
+        <div>${gauge(G.ma)}<div class="gl">Kĺzavé priemery</div><div class="gv" style="color:${RCOL[G.ma.label]}">${TA.SK[G.ma.label]}</div>${cnt(G.ma)}</div></div>
+      <div class="tcols"><div><div class="th2">Oscilátory</div><table class="tt"><tr><th>Názov</th><th>Hodnota</th><th>Akcia</th></tr>${c.ta.osc.map(x => `<tr><td>${esc(x.name)}</td><td>${Number.isFinite(x.value) ? x.value.toFixed(3) : '—'}</td>${act(x.action)}</tr>`).join('')}</table></div>
+        <div><div class="th2">Kĺzavé priemery</div><table class="tt"><tr><th>Názov</th><th>Hodnota</th><th>Akcia</th></tr>${c.ta.ma.map(x => `<tr><td>${esc(x.name)}</td><td>${f(x.value)}</td>${act(x.action)}</tr>`).join('')}</table></div></div>
+      <div class="th2">Pivoty <small class="muted">(z predchádzajúceho obdobia: ${({ '1d': 'deň', '1w': 'týždeň', '1M': 'mesiac', '12M': 'rok' })[c.per]})</small></div>
+      ${pv ? `<table class="tt piv"><tr><th>Pivot</th>${Object.keys(pv).map(k => `<th>${k}</th>`).join('')}</tr>${PK.map(k => `<tr><td>${k}</td>${Object.values(pv).map(p => `<td>${f(p[k])}</td>`).join('')}</tr>`).join('')}</table>` : '<div class="muted">Bez dát.</div>'}
+      <div class="th2">⚡ Obchodné nápady na ${esc(techTf)} <small class="muted">(auto trendové čiary a S/R + potvrdenia, rovnako ako v grafe)</small></div>
+      <div class="stats" style="max-width:520px"><div><b>${st.n}</b><small>nápadov</small></div><div><b>${st.win === null ? '–' : (100 * st.win).toFixed(0) + ' %'}</b><small>úspešnosť</small></div>
+        <div><b>${st.avgR === null ? '–' : (st.avgR >= 0 ? '+' : '') + st.avgR.toFixed(2) + 'R'}</b><small>priemer</small></div><div><b>${st.open}</b><small>otvorené</small></div></div>
+      ${c.near.length ? `<div class="tnear">👀 Cena je pri čiare: ${c.near.map(q => `<span class="pill ${q.kind === 'sup' ? 'win' : 'loss'}">${q.kind === 'sup' ? 'podpora' : 'rezistencia'} ${f(q.value)} · ${q.touches}×</span>`).join(' ')}</div>` : ''}
+      <table class="tt ideas"><tr><th>Čas</th><th>Smer</th><th>Signál</th><th>Vstup</th><th>SL</th><th>TP</th><th>Potvrdenia</th><th>Výsledok</th><th></th></tr>
+        ${last.map((x, k) => `<tr><td>${esc(fmtTime(x.time))}</td><td><span class="pill ${x.dir > 0 ? 'win' : 'loss'}">${x.dir > 0 ? 'LONG' : 'SHORT'}</span></td><td>${esc(x.name)}</td><td>${f(x.entry)}</td><td>${f(x.sl)}</td><td>${f(x.tp)}</td>
+          <td title="${esc(x.conf.join(', '))}">${'★'.repeat(x.score) || '☆'}</td><td>${x.result === null ? '⏳ otvorený' : x.result > 0 ? `<b class="up">✓ +${x.result}R</b>` : '<b class="dn">✗ −1R</b>'}</td>
+          <td><button class="btn sm" data-ti="${c.ideas.length - 1 - k}">📈 V grafe</button></td></tr>`).join('') || '<tr><td colspan="9" class="muted">Žiadne nápady.</td></tr>'}</table>
+      <div class="th2">Prehľad všetkých timeframov</div><table class="tt ovw"><tr><th>TF</th><th>Súhrn</th><th>Oscilátory</th><th>Kĺzavé priemery</th><th>Posledný nápad</th><th>Úspešnosť</th><th>Pri čiare</th></tr>
+        ${TECH_TFS.map(tf => { const o = techCache[techSym + '|' + tf]; if (!o) return `<tr data-ot="${tf}"><td><b>${tf}</b></td><td colspan="6" class="muted">${techBusy.has(techSym + '|' + tf) ? 'počítam…' : TF_SEC[tf] < 60 ? 'klikni pre výpočet' : 'čaká…'}</td></tr>`;
+          const li = o.ideas[o.ideas.length - 1], s2 = TL.stats(o.ideas), g = o.ta.groups;
+          return `<tr data-ot="${tf}" class="${tf === techTf ? 'on' : ''}"><td><b>${tf}</b></td><td style="color:${RCOL[g.sum.label]}">${TA.SK[g.sum.label]}</td><td style="color:${RCOL[g.osc.label]}">${TA.SK[g.osc.label]}</td><td style="color:${RCOL[g.ma.label]}">${TA.SK[g.ma.label]}</td>
+            <td>${li ? `<span class="pill ${li.dir > 0 ? 'win' : 'loss'}">${li.dir > 0 ? 'LONG' : 'SHORT'}</span> ${esc(li.name)} <small class="muted">${esc(fmtTime(li.time))}</small>` : '<span class="muted">—</span>'}</td>
+            <td>${s2.win === null ? '–' : (100 * s2.win).toFixed(0) + ' %'} <small class="muted">(${s2.done})</small></td><td>${o.near.length ? '👀 ' + o.near.length : ''}</td></tr>`; }).join('')}</table>`;
+    $$('[data-ti]', box).forEach(b => b.onclick = () => { const x = c.ideas[+b.dataset.ti]; closeTech(); jumpTo(techSym, techTf, x.time, x); });
+    $$('[data-ot]', box).forEach(r => r.onclick = async () => { techTf = r.dataset.ot; if (!techCache[techSym + '|' + techTf]) { techBusy.add(techSym + '|' + techTf); } paintTech(); });
+  }
+  async function overview() {
+    const sy = techSym, list = TECH_TFS.filter(tf => TF_SEC[tf] >= 60 && !techCache[sy + '|' + tf]);
+    const worker = async () => { while (list.length && techEl.classList.contains('open') && techSym === sy) { const tf = list.shift(); techBusy.add(sy + '|' + tf);
+      try { await techData(sy, tf); } catch (e) {} techBusy.delete(sy + '|' + tf); if (techEl.classList.contains('open')) { const sc = $('#techBody').scrollTop; await paintTech(); $('#techBody').scrollTop = sc; } } };
+    await Promise.all([worker(), worker()]);
+  }
+  function openTech() {
+    techSym = S.symbol; techTf = S.tf;
+    techEl.classList.add('open'); $('#bTech').classList.add('on');
+    paintTech(); overview();
+    clearInterval(techTimer);
+    techTimer = setInterval(async () => { if (!techEl.classList.contains('open')) return; try { await techData(techSym, techTf, true); const sc = $('#techBody').scrollTop; await paintTech(); $('#techBody').scrollTop = sc; } catch (e) {} }, 15000);
+  }
+  function closeTech() { techEl.classList.remove('open'); $('#bTech').classList.remove('on'); clearInterval(techTimer); }
+  $('#bTech').onclick = () => (techEl.classList.contains('open') ? closeTech() : openTech());
+
   // ---- keyboard ---------------------------------------------------------------------------------
   document.addEventListener('keydown', e => {
     const typing = e.target && /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName);
-    if (e.key === 'Escape') { if ($('#pop').classList.contains('open')) { closePop(); return; } if (dialogOpen()) { cancelDialog(); return; } closeMenu(); if (replayPick) { stopPick(); return; } }
+    if (e.key === 'Escape') { if ($('#pop').classList.contains('open')) { closePop(); return; } if (dialogOpen()) { cancelDialog(); return; } if ($('.dd')) { closeMenu(); return; } if (techEl.classList.contains('open')) { closeTech(); return; } closeMenu(); if (replayPick) { stopPick(); return; } }
     if (dialogOpen()) return;
     if (e.ctrlKey && e.key === 'Enter' && S.idea.open && current) { e.preventDefault(); if (e.shiftKey) openAlert(qi + 1); else saveLabel(); return; }
     if (e.altKey && !typing && e.code === 'KeyR' && !e.shiftKey) { e.preventDefault(); if (view.replay) exitReplay(); else startReplay(true); return; }
@@ -1453,12 +1821,14 @@
     try { META = await (await fetch('api/meta')).json(); } catch (e) { toast('Server neodpovedá'); }
     SYM = Object.fromEntries((META.symbols || []).map(s => [s.id, s]));
     TL.configure(META.structure);
+    try { PHOTOS = await (await fetch('static/photos/photos.json')).json(); } catch (e) { PHOTOS = []; }
     if (!SYM[S.symbol]) S.symbol = 'XAUUSD';
     if (S.labeler) await pullPrefs(S.labeler);
     applyPanel(); applyBg(); applyToolbar();
     await load();
     if (S.idea.open) toggleIdea(true);
     if (S.chat.open) toggleChat(true); else pollChat(true);
+    if (S.news.open) toggleNews(true);
     scheduleScan();
   })();
 })();

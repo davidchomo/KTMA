@@ -695,6 +695,7 @@ const DR = (() => {
       get keep() { return keep; }, set keep(v) { keep = v; },
       get hidden() { return hidden; }, set hidden(v) { hidden = v; select(null); redraw(); },
       lockAll(v) { list.forEach(d => { d.locked = v; }); changed(); },
+      hitAt: (x, y) => hit(x, y), openSettings: d => { select(d); openSettings(d); },
       styleOf,
     };
   }

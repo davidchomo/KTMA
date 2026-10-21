@@ -297,6 +297,76 @@ def chat_delete(msg_id: int, author: str):
     return {"ok": True}
 
 
+# ---- news (Google News RSS) and the economic calendar (Forex Factory weekly feed) ---------------------
+NEWS_TOPICS = {
+    "gold": "gold price OR XAUUSD OR \"gold futures\"",
+    "silver": "silver price OR XAGUSD OR \"silver futures\"",
+    "btc": "bitcoin price OR BTCUSD",
+    "macro": "Federal Reserve OR FOMC OR inflation CPI OR \"US dollar\" OR Treasury yields",
+}
+_news_cache: dict = {}
+
+
+def _cached(key: str, ttl: int, fn):
+    hit = _news_cache.get(key)
+    if hit and time.time() - hit[0] < ttl:
+        return hit[1]
+    try:
+        val = fn()
+    except Exception as e:  # keep serving the last good copy when the source is down
+        if hit:
+            return hit[1]
+        raise HTTPException(502, f"zdroj neodpovedá: {e}")
+    _news_cache[key] = (time.time(), val)
+    return val
+
+
+@app.get("/api/news")
+def news(topic: str = "gold", lang: str = "en"):
+    if topic not in NEWS_TOPICS:
+        raise HTTPException(404, "neznáma téma")
+    import email.utils
+    import xml.etree.ElementTree as ET
+
+    def load():
+        hl = {"en": ("en-US", "US", "US:en"), "sk": ("sk", "SK", "SK:sk"), "de": ("de", "DE", "DE:de")}.get(lang, ("en-US", "US", "US:en"))
+        r = http.get("https://news.google.com/rss/search", timeout=15,
+                     params={"q": NEWS_TOPICS[topic] + " when:3d", "hl": hl[0], "gl": hl[1], "ceid": hl[2]})
+        r.raise_for_status()
+        items = []
+        for it in ET.fromstring(r.content).iter("item"):
+            title, src = it.findtext("title") or "", it.find("source")
+            source = src.text if src is not None else ""
+            if source and title.endswith(" - " + source):
+                title = title[: -len(source) - 3]
+            try:
+                ts = int(email.utils.parsedate_to_datetime(it.findtext("pubDate")).timestamp())
+            except Exception:
+                ts = 0
+            items.append({"title": title, "link": it.findtext("link"), "source": source, "time": ts})
+        items.sort(key=lambda x: -x["time"])
+        return items[:60]
+    return _cached(f"news:{topic}:{lang}", 600, load)
+
+
+@app.get("/api/calendar")
+def calendar():
+    def load():
+        r = http.get("https://nfs.faireconomy.media/ff_calendar_thisweek.json", timeout=15,
+                     headers={"User-Agent": "Mozilla/5.0 NexusChart"})
+        r.raise_for_status()
+        out = []
+        for e in r.json():
+            try:
+                ts = int(pd.Timestamp(e["date"]).timestamp())
+            except Exception:
+                continue
+            out.append({"title": e.get("title"), "country": e.get("country"), "time": ts, "impact": e.get("impact"),
+                        "forecast": e.get("forecast"), "previous": e.get("previous"), "actual": e.get("actual", "")})
+        return out
+    return _cached("calendar", 1800, load)
+
+
 # ---- static page ---------------------------------------------------------------------------------
 @app.get("/")
 def index():

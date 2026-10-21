@@ -1,0 +1,123 @@
+[
+ {
+  "id": "alps-winter",
+  "name": "Zima · Kaukaz, strmé štíty",
+  "season": "Zima",
+  "file": "photos/alps-winter.jpg",
+  "thumb": "photos/alps-winter.thumb.jpg",
+  "author": "Ekaterina Kuzmina",
+  "license": "CC BY-SA 2.0",
+  "licenseUrl": "https://creativecommons.org/licenses/by-sa/2.0",
+  "source": "https://commons.wikimedia.org/wiki/File:%D0%90%D0%B7%D0%B0%D1%83-%D0%93%D0%B8%D1%82%D1%87%D0%B5-%D0%A7%D0%B5%D0%B3%D0%B5%D1%82-%D0%9A%D0%B0%D1%80%D0%B0%D0%B1%D0%B0%D1%88%D0%B8.jpg"
+ },
+ {
+  "id": "dolomites-winter",
+  "name": "Zima · Dolomity v snehu",
+  "season": "Zima",
+  "file": "photos/dolomites-winter.jpg",
+  "thumb": "photos/dolomites-winter.thumb.jpg",
+  "author": "Wolfgang Moroder",
+  "license": "CC BY-SA 3.0",
+  "licenseUrl": "https://creativecommons.org/licenses/by-sa/3.0",
+  "source": "https://commons.wikimedia.org/wiki/File:Langkofel_group_from_Sellajoch_Fassa.jpg"
+ },
+ {
+  "id": "aurora-lofoten",
+  "name": "Zima · polárna žiara, Lofoty",
+  "season": "Zima",
+  "file": "photos/aurora-lofoten.jpg",
+  "thumb": "photos/aurora-lofoten.thumb.jpg",
+  "author": "Christoph Strässler",
+  "license": "CC BY-SA 2.0",
+  "licenseUrl": "https://creativecommons.org/licenses/by-sa/2.0",
+  "source": "https://commons.wikimedia.org/wiki/File:Aurora_Borealis_(Northern_Light)_over_Svolv%C3%A6r,_Lofoten,_Norway2.jpg"
+ },
+ {
+  "id": "spring-blossom",
+  "name": "Jar · rozkvitnutá čerešňa",
+  "season": "Jar",
+  "file": "photos/spring-blossom.jpg",
+  "thumb": "photos/spring-blossom.thumb.jpg",
+  "author": "Dietmar Rabich",
+  "license": "CC BY-SA 4.0",
+  "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+  "source": "https://commons.wikimedia.org/wiki/File:M%C3%BCnster,_Park_Sentmaring,_Japanische_Bl%C3%BCtenkirsche_--_2015_--_5711.jpg"
+ },
+ {
+  "id": "summer-lake",
+  "name": "Leto · jazero pod Mount Shasta",
+  "season": "Leto",
+  "file": "photos/summer-lake.jpg",
+  "thumb": "photos/summer-lake.thumb.jpg",
+  "author": "Radomianin",
+  "license": "CC BY-SA 4.0",
+  "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+  "source": "https://commons.wikimedia.org/wiki/File:Mount_Shasta,_Lake_Siskiyou,_SW_view.jpg"
+ },
+ {
+  "id": "summer-mountain-lake",
+  "name": "Leto · horské jazero, N. Zéland",
+  "season": "Leto",
+  "file": "photos/summer-mountain-lake.jpg",
+  "thumb": "photos/summer-mountain-lake.thumb.jpg",
+  "author": "Michal Klajban",
+  "license": "CC BY-SA 4.0",
+  "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+  "source": "https://commons.wikimedia.org/wiki/File:Lake_Mystery,_Canterbury,_New_Zealand_05.jpg"
+ },
+ {
+  "id": "summer-sunset",
+  "name": "Leto · západ slnka na pláži",
+  "season": "Leto",
+  "file": "photos/summer-sunset.jpg",
+  "thumb": "photos/summer-sunset.thumb.jpg",
+  "author": "Vyacheslav Argenberg",
+  "license": "CC BY 4.0",
+  "licenseUrl": "https://creativecommons.org/licenses/by/4.0",
+  "source": "https://commons.wikimedia.org/wiki/File:Koh_Mak,_Thailand,_Sunset_on_the_island,_Sea_lagoon.jpg"
+ },
+ {
+  "id": "autumn-foliage",
+  "name": "Jeseň · farebný les v hmle",
+  "season": "Jeseň",
+  "file": "photos/autumn-foliage.jpg",
+  "thumb": "photos/autumn-foliage.thumb.jpg",
+  "author": "ForestWander",
+  "license": "CC BY-SA 3.0 us",
+  "licenseUrl": "https://creativecommons.org/licenses/by-sa/3.0/us/deed.en",
+  "source": "https://commons.wikimedia.org/wiki/File:Autumn-foliage-morning-fog_-_Virginia_-_ForestWander.jpg"
+ },
+ {
+  "id": "autumn-forest",
+  "name": "Jeseň · slnko v jesennom lese",
+  "season": "Jeseň",
+  "file": "photos/autumn-forest.jpg",
+  "thumb": "photos/autumn-forest.thumb.jpg",
+  "author": "Uroš Novina from Semič, Slovenia",
+  "license": "CC BY 2.0",
+  "licenseUrl": "https://creativecommons.org/licenses/by/2.0",
+  "source": "https://commons.wikimedia.org/wiki/File:Autumn_(49033696172).jpg"
+ },
+ {
+  "id": "night-milkyway",
+  "name": "Noc · Mliečna dráha nad horami",
+  "season": "Celý rok",
+  "file": "photos/night-milkyway.jpg",
+  "thumb": "photos/night-milkyway.thumb.jpg",
+  "author": "Kadir KARA",
+  "license": "CC BY-SA 4.0",
+  "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+  "source": "https://commons.wikimedia.org/wiki/File:Ka%C3%A7kar_Mountains_Night_Sky.jpg"
+ },
+ {
+  "id": "desert-dune",
+  "name": "Púšť · piesočná duna",
+  "season": "Leto",
+  "file": "photos/desert-dune.jpg",
+  "thumb": "photos/desert-dune.thumb.jpg",
+  "author": "Meshari Alawfi",
+  "license": "CC BY 4.0",
+  "licenseUrl": "https://creativecommons.org/licenses/by/4.0",
+  "source": "https://commons.wikimedia.org/wiki/File:Sand_Dunes_sa.jpg"
+ }
+]
