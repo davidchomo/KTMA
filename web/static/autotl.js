@@ -223,6 +223,6 @@ const TL = (() => {
              avgR: done.length ? done.reduce((s, x) => s + x.result, 0) / done.length : null, open: list.length - done.length };
   }
 
-  return { run, ideas, snapshot, stats, zigK, configure, NAMES, CFG, IDEA_DEF, STRATS, value };
+  return { run, ideas, snapshot, stats, zigK, zigzag, configure, NAMES, CFG, IDEA_DEF, STRATS, value };
 })();
 if (typeof module !== 'undefined') module.exports = TL;

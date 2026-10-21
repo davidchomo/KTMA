@@ -65,6 +65,12 @@ const I18N = (() => {
     'Odraz od horizontálnej rezistencie': 'Bounce off horizontal resistance', 'ako všetky': 'global', 'žiadne': 'none', 'trendová čiara · odraz': 'trendline · bounce',
     'trendová čiara · prerazenie': 'trendline · breakout', 'horizontálna úroveň · odraz': 'horizontal level · bounce', 'horizontálna úroveň · prerazenie': 'horizontal level · breakout',
     'Profil objemu': 'Volume profile', 'Prestať sledovať graf': 'Stop following the chart', 'Späť na môj graf': 'Back to my chart', 'Nákup': 'Buy', 'Neutrál': 'Neutral',
+    'Range a BOS': 'Range and BOS', 'Vidly (pitchfork)': 'Pitchfork', 'Dosah dozadu': 'Reach back', 'Krátky': 'Short', 'Stredný': 'Medium', 'Ďaleký (napr. 2h → týždeň)': 'Far (e.g. 2h → a week)',
+    'Veľmi ďaleký': 'Very far', 'Aj hlavné čiary z veľkých swingov (dni – týždne)': 'Also major lines from big swings (days – weeks)', 'Ako hľadať range': 'Range detection',
+    'Min. dĺžka (sviečok)': 'Min length (bars)', 'Max. výška (× ATR)': 'Max height (× ATR)', 'Min. dotykov každej hrany': 'Min tests of each edge', 'Koľko posledných range ukázať': 'Ranges to show',
+    'Značka BOS pri prerazení': 'BOS label at the break', 'Stredná čiara (polovica range)': 'Mid line (range half)', 'Výplň': 'Fill', 'Predĺženie živého range doprava': 'Extend the live range right',
+    'Farba range': 'Range colour', 'BOS nahor': 'BOS up', 'BOS nadol': 'BOS down', 'Typ': 'Type', 'Swingy (ZigZag × ATR)': 'Swings (ZigZag × ATR)', 'Počet vidiel': 'Number of pitchforks',
+    'Polovičné čiary (medzi stredom a krajmi)': 'Half lines (between median and tines)', 'Dĺžka doprava (sviečok)': 'Length to the right (bars)', 'Farba – hore': 'Colour – up', 'Farba – dole': 'Colour – down',
     // volume layers
     'Profil objemu (VPVR)': 'Volume profile (VPVR)', 'Heatmapa objemu': 'Volume heatmap', 'Heatmapa knihy príkazov (naživo)': 'Order book heatmap (live)', 'Kupujúci': 'Buyers', 'Predávajúci': 'Sellers',
     'Počet riadkov': 'Rows', 'Riadkov': 'Rows', 'Šírka (% grafu)': 'Width (% of chart)', 'Strana (0 = vpravo, 1 = vľavo)': 'Side (0 = right, 1 = left)',

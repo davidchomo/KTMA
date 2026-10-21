@@ -459,10 +459,10 @@ const NEXUS = (() => {
   }
   function chartMarkers(symbol) {
     const out = [];
-    for (const p of A().positions.filter(x => x.symbol === symbol)) out.push({ time: p.time / 1000, dir: p.dir, kind: 'in', text: `${p.dir > 0 ? 'BUY' : 'SELL'} ${p.lots0 || p.lots}` });
+    for (const p of A().positions.filter(x => x.symbol === symbol)) out.push({ time: p.time / 1000, dir: p.dir, kind: 'in', id: p.id, lots: p.lots0 || p.lots, text: `${p.dir > 0 ? 'BUY' : 'SELL'} ${p.lots0 || p.lots}` });
     for (const h of A().history.filter(x => x.symbol === symbol).slice(0, 80)) {
-      out.push({ time: h.time / 1000, dir: h.dir, kind: 'in', text: `${h.dir > 0 ? 'BUY' : 'SELL'} ${h.lots}` });
-      out.push({ time: h.exitTime / 1000, dir: h.dir, kind: 'out', win: h.pnl > 0, text: `✕ ${money(h.pnl)}` });
+      out.push({ time: h.time / 1000, dir: h.dir, kind: 'in', id: h.id, lots: h.lots0 || h.lots, text: `${h.dir > 0 ? 'BUY' : 'SELL'} ${h.lots0 || h.lots}` });
+      out.push({ time: h.exitTime / 1000, dir: h.dir, kind: 'out', win: h.pnl > 0, pnl: h.pnl, text: `✕ ${money(h.pnl)}` });
     }
     return out;
   }

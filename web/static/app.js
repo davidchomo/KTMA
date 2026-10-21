@@ -32,11 +32,13 @@
     bubbles: { on: false, group: 0, minPct: 70, scale: 100, opacity: 70, style: 'pie', labels: true },
     panel: { w: 118, h: 30, fs: 13, font: 'system', bg: '#1e222d', text: '#d1d4dc', accent: '#2962ff', show: 'both', opacity: 100 },
     bgImg: { id: 'none', auto: false, autoKind: 'photo', dim: 55, blur: 0, url: '', anim: 'none', animSpeed: 100, animOpacity: 70 },
-    auto: { on: false, maxLines: 3, maxLevels: 8, lines: true, channels: false, levels: true, pivots: false, ended: false, touches: true, labels: true, k: 0, ext: 30,
+    auto: { on: false, maxLines: 3, maxLevels: 8, reach: 1, major: false, lines: true, channels: false, levels: true, pivots: false, ended: false, touches: true, labels: true, k: 0, ext: 30,
             sup: { color: '#26a69a', opacity: 90, width: 2, style: 0 }, res: { color: '#ef5350', opacity: 90, width: 2, style: 0 },
             lvl: { color: '#ffb74d', opacity: 75, width: 1, style: 2 } },
     ideas: { on: true, markers: true, history: true, notify: true, sound: false, minTouches: 0, minLevel: 0, rr: 2, minScore: 1, strat: {} },
     tint: { on: false, opacity: 18, label: true },
+    range: { on: false, minLen: 15, maxAtr: 3.5, minTests: 2, count: 6, bos: true, mid: true, fill: 10, ext: 40, width: 1.5, color: '#5b9cf6', up: '#00c853', down: '#ff1744' },
+    fork: { on: false, type: 'andrews', k: 0, count: 1, half: false, fill: 6, ext: 80, width: 1.5, up: '#26a69a', down: '#ef5350' },
     scan: { symbols: ['XAUUSD', 'XAGUSD', 'BTCUSD'], tfs: ['1m', '5m', '15m', '1h', '4h'], fresh: 3, near: true, minScore: 0, every: 0 },
     chat: { open: false, x: null, y: null, kind: 'msg', filter: 'all', attach: false },
     replaySpeed: 2,
@@ -501,6 +503,7 @@
     if (panes.length > 1) { panes[0].setStretchFactor(Math.max(2, 6 - panes.length)); for (let i = 1; i < panes.length; i++) panes[i].setStretchFactor(1); }
     if (!units.some(u => u.def.custom === 'obheat')) bookClose();
     autoLayer = new AutoLayer(); main.attachPrimitive(autoLayer);
+    structLayer = new StructLayer(); main.attachPrimitive(structLayer); stKey = ''; computeStruct();
     bubbles = new Bubbles(); main.attachPrimitive(bubbles);
     tradeLines = new TradeLines(); main.attachPrimitive(tradeLines);
     computeTL(); checkNewIdeas();
@@ -532,6 +535,7 @@
     units.forEach(refreshUnit);
     if (computeTL()) { checkNewIdeas(); if (S.idea.open && S.idea.tab === 'live') renderIdea(); }
     autoLayer && autoLayer.update();
+    computeStruct(); structLayer && structLayer.update();
     bubbles && bubbles.update();
     applyTint();
     if (window.NEXUS && NEXUS.tick) NEXUS.tick();
@@ -666,7 +670,7 @@
       const h = r[def.histogram4], c = ['h1', 'h2', 'h3', 'h4'].map(k => rgba(s.plots[k].color, s.plots[k].opacity));
       ser('h4', LW.HistogramSeries, { priceLineVisible: false, lastValueVisible: s.out.priceLabels })
         .setData(D.t.map((t, i) => [t, h[i], h[i - 1]]).filter(([, v]) => Number.isFinite(v))
-          .map(([time, v, p]) => ({ time, value: v, color: v >= 0 ? (Number.isFinite(p) && v < p ? c[1] : c[0]) : (Number.isFinite(p) && v > p ? c[3] : c[2]) })));
+          .map(([time, v, p]) => ({ time, value: v, color: v >= 0 ? (Number.isFinite(p) && v < p ? c[1] : c[0]) : (Number.isFinite(p) && v > p ? c[2] : c[3]) })));
       u.values.hist = h;
     }
     for (const p of def.plots) {
@@ -739,10 +743,19 @@
     const nx = NX();
     if (nx && nx.chartMarkers && D && D.t.length) {
       const T = D.t, barAt = t => { if (t < T[0]) return null; let lo = 0, hi = T.length - 1; while (lo < hi) { const k = (lo + hi + 1) >> 1; if (T[k] <= t) lo = k; else hi = k - 1; } return T[lo]; };
+      // several trades on one bar (more entries, partial closes) → one marker with the total, not a stack
+      const grp = new Map();
       for (const x of nx.chartMarkers(S.symbol)) {
         const time = barAt(x.time); if (time === null) continue;
-        if (x.kind === 'in') m.push({ time, position: x.dir > 0 ? 'belowBar' : 'aboveBar', color: x.dir > 0 ? '#00c853' : '#ff1744', shape: x.dir > 0 ? 'arrowUp' : 'arrowDown', text: x.text, size: 1.6 });
-        else m.push({ time, position: x.dir > 0 ? 'aboveBar' : 'belowBar', color: x.win ? '#00c853' : '#ff1744', shape: 'square', text: x.text, size: 1 });
+        const key = `${time}|${x.kind}|${x.kind === 'in' ? x.dir : ''}`, g = grp.get(key) || grp.set(key, { time, kind: x.kind, dir: x.dir, n: 0, lots: 0, pnl: 0, text: x.text, ids: new Set() }).get(key);
+        if (x.kind === 'in' && x.id !== undefined) { if (g.ids.has(x.id)) continue; g.ids.add(x.id); }   // a partly closed trade shows its entry once
+        g.n++; g.lots += x.lots || 0; g.pnl += x.pnl || 0;
+      }
+      const usd = v => `${v < 0 ? '−' : '+'}$${Math.abs(v).toFixed(2)}`;
+      for (const g of grp.values()) {
+        const many = g.n > 1 ? ` (${g.n}×)` : '';
+        if (g.kind === 'in') m.push({ time: g.time, position: g.dir > 0 ? 'belowBar' : 'aboveBar', color: g.dir > 0 ? '#00c853' : '#ff1744', shape: g.dir > 0 ? 'arrowUp' : 'arrowDown', text: g.n > 1 ? `${g.dir > 0 ? 'BUY' : 'SELL'} ${+g.lots.toFixed(2)}${many}` : g.text, size: 1.6 });
+        else m.push({ time: g.time, position: g.dir > 0 ? 'aboveBar' : 'belowBar', color: g.pnl > 0 ? '#00c853' : '#ff1744', shape: 'square', text: g.n > 1 ? `✕ ${usd(g.pnl)}${many}` : g.text, size: 1 });
       }
     }
     m.push(...algoMarks());
@@ -1457,18 +1470,25 @@
   const ideaOpts = () => ({ minTouches: S.ideas.minTouches || (META.minTouches || {}).line || 3, minLevel: S.ideas.minLevel || (META.minTouches || {}).level || 2,
                             rr: S.ideas.rr, minScore: S.ideas.minScore, strat: S.ideas.strat || {} });
   // how many lines / levels the auto lines keep (the scanner keeps its own settings)
-  const tlCfg = () => { const n = S.auto.maxLines || 3; return { maxLines: n, lvMax: S.auto.maxLevels || 8, lookback: Math.max(6, Math.ceil(n * 1.5)), maxAge: n > 6 ? 1200 : 600 }; };
+  // reach: how far back the lines may start (pivots to pair with, how long an untouched line lives, how far price may move away)
+  const REACH = [[6, 600, 12], [12, 1500, 18], [25, 3000, 26], [50, 6000, 40]];
+  const tlCfg = () => { const n = S.auto.maxLines || 3, [lb, age, dist] = REACH[S.auto.reach ?? 1] || REACH[1];
+    return { maxLines: n, lvMax: S.auto.maxLevels || 8, lookback: Math.max(lb, Math.ceil(n * 1.5)), maxAge: Math.max(age, n > 6 ? 1200 : 600), maxDist: dist }; };
+  let tlMajor = null;
   const sliceD = (X, n) => Object.fromEntries(Object.entries(X).map(([k, v]) => [k, v.slice(0, n)]));
   function computeTL() {
     const n = closedCount();
-    if (!(S.auto.on || S.ideas.on) || n < 60) { const had = !!tlR; tlR = null; tlIdeas = []; tlSnap = null; tlKey = ''; return had; }
+    if (!(S.auto.on || S.ideas.on) || n < 60) { const had = !!tlR; tlR = null; tlMajor = null; tlIdeas = []; tlSnap = null; tlKey = ''; return had; }
     const k = S.auto.k || TL.zigK(S.tf, TF_SEC[S.tf]);
-    const key = [S.symbol, S.tf, S.type, n, disp[0].time, disp[n - 1].time, k, JSON.stringify(ideaOpts()), JSON.stringify(tlCfg()), S.ideas.on].join('|'), changed = key !== tlKey;
+    const key = [S.symbol, S.tf, S.type, n, disp[0].time, disp[n - 1].time, k, JSON.stringify(ideaOpts()), JSON.stringify(tlCfg()), S.auto.major, S.ideas.on].join('|'), changed = key !== tlKey;
     if (changed) {
       tlKey = key;
       const Dc = n === D.t.length ? D : sliceD(D, n);
       tlR = TL.run(Dc, { k, cfg: tlCfg() });
       tlIdeas = S.ideas.on ? TL.ideas(Dc, tlR, ideaOpts()) : [];
+      // major lines: the same method on swings 2.5× bigger – long lines across days / weeks
+      tlMajor = S.auto.major ? TL.run(Dc, { k: k * 2.5, cfg: { ...tlCfg(), maxLines: Math.max(2, Math.ceil((S.auto.maxLines || 3) / 2)), lookback: 40, maxAge: 8000, maxDist: 60 } }) : null;
+      if (tlMajor) tlMajor.lines.forEach(x => { x.major = true; });
     }
     tlSnap = TL.snapshot(tlR, n - 1, disp[disp.length - 1].close);
     return changed;
@@ -1508,16 +1528,16 @@
         const seg = (i1, p1, i2, p2) => { const x1 = X(i1), y1 = Y(p1), x2 = X(i2), y2 = Y(p2); if ([x1, y1, x2, y2].some(v => v === null)) return null;
           ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke(); return [x2, y2]; };
         const label = (txt, x, y, color, up) => { if (!A.labels || x === null || y === null) return; ctx.font = '11px ' + fontCss(S.look.font); ctx.fillStyle = color; ctx.textAlign = 'right'; ctx.fillText(txt, x - 4, y + (up ? -5 : 13)); };
-        if (A.lines) for (const ln of tlR.lines) {
+        if (A.lines) for (const ln of tlMajor ? [...tlR.lines, ...tlMajor.lines] : tlR.lines) {
           if (ln.created > n - 1) continue;
           const alive = ln.ended === null || ln.ended > n - 1;
           if (!alive && !(A.ended && ln.ended > n - 400)) continue;
           const st = ln.kind === 'sup' ? A.sup : A.res, to = alive ? last : ln.ended;
-          pen(st, !alive);
+          pen(st, !alive); if (ln.major) ctx.lineWidth = st.width + 1;
           const endPt = seg(ln.i1, ln.p1, to, val(ln, to));
           if (A.channels && alive) { pen(st, true, [4, 4]); seg(ln.i1, ln.p1 + ln.offset, to, val(ln, to) + ln.offset); }
           if (A.touches && alive) { ctx.fillStyle = rgba(st.color, st.opacity); for (const ti of ln.touchIdx) { const x = X(ti), y = Y(val(ln, ti)); if (x !== null && y !== null) { ctx.beginPath(); ctx.arc(x, y, 2.5, 0, 7); ctx.fill(); } } }
-          if (alive && endPt) label(`${ln.kind === 'sup' ? 'podpora' : 'rezistencia'} ${ln.touches}×`, endPt[0], endPt[1], rgba(st.color, st.opacity), ln.kind === 'res');
+          if (alive && endPt) label(`${ln.major ? 'hlavná ' : ''}${ln.kind === 'sup' ? 'podpora' : 'rezistencia'} ${ln.touches}×`, endPt[0], endPt[1], rgba(st.color, st.opacity), ln.kind === 'res');
         }
         if (A.levels) for (const lv of tlR.levels) {
           if (lv.created > n - 1) continue;
@@ -1545,6 +1565,8 @@
       <div class="it" style="cursor:default"><span class="grow">Max. trendových čiar na stranu</span><span class="op" style="width:150px"><input type="range" min="1" max="100" data-a="auto.maxLines" value="${A.maxLines || 3}"><b>${A.maxLines || 3}</b></span></div>
       <div class="it" style="cursor:default"><span class="grow">Max. horizontálnych úrovní</span><span class="op" style="width:150px"><input type="range" min="1" max="50" data-a="auto.maxLevels" value="${A.maxLevels || 8}"><b>${A.maxLevels || 8}</b></span></div>
       <div class="it" data-a-strat><span class="ic">⚡</span><span class="grow">Stratégie živých nápadov…</span></div>
+      <div class="it" style="cursor:default"><span class="grow">Dosah dozadu</span><select data-a="auto.reach">${opts([['Krátky', 0], ['Stredný', 1], ['Ďaleký (napr. 2h → týždeň)', 2], ['Veľmi ďaleký', 3]], A.reach ?? 1)}</select></div>
+      ${cb('auto.major', A.major, 'Aj hlavné čiary z veľkých swingov (dni – týždne)')}
       <div class="it" style="cursor:default"><span class="grow">Citlivosť ZigZag (× ATR)</span><select data-a="auto.k">${opts([['Ako skener', 0], ['1.0 · veľa čiar', 1], ['1.5', 1.5], ['2.0', 2], ['2.5', 2.5], ['3.0', 3], ['4.0 · málo čiar', 4]], A.k)}</select></div>
       <div class="it" data-a-style><span class="ic">🎨</span><span class="grow">Farby, hrúbka a štýl čiar…</span></div>
       <div class="sep"></div><div class="sec">⚡ Živé nápady (aj na sekundových grafoch)</div>
@@ -1935,6 +1957,8 @@
     const it = (k, ic, n, sub, on) => `<div class="it fn-it" data-fn2="${k}"><span class="ic">${ic}</span><span class="grow"><b>${n}</b><small>${sub}</small></span>${on ? '<span class="fn-on">●</span>' : ''}<span class="car-r">›</span></div>`;
     const html = () => `${it('lines', '📐', 'Čiary', 'Auto trendové čiary, úrovne, kanály, počet čiar', S.auto.on)}
       ${it('volume', '🫧', 'Objem', 'Bubliny, delta, CVD, tok obchodov, profil objemu', S.bubbles.on || FLOW.isOpen())}
+      ${it('range', '▭', 'Range a BOS', 'Bočné pásmo – vrch, spodok a prerazenie štruktúry', S.range.on)}
+      ${it('fork', '⋔', 'Vidly (pitchfork)', 'Automaticky hore v uptrende, dole v downtrende', S.fork.on)}
       ${it('strats', '⚡', 'Stratégie živých nápadov', `${onIdeas} z ${TL.STRATS.length} zapnutých · R:R, stop, potvrdenia, úspešnosť`, S.ideas.on)}
       <div class="sep"></div><div class="sec">🎨 Pozadie podľa Technicals</div>
       <label class="it"><input type="checkbox" data-tn="on" ${T.on ? 'checked' : ''}><span class="grow">Zafarbiť pozadie grafu podľa súhrnu Technicals<br><small>červená = predaj · sivomodrá = neutrál · zelená = nákup; čím istejšie, tým sýtejšie</small></span></label>
@@ -1944,7 +1968,7 @@
       $$('[data-fn2]', m).forEach(x => x.onclick = () => {
         closeMenu();
         const k = x.dataset.fn2;
-        if (k === 'lines') autoMenu(anchor); else if (k === 'volume') flowMenu(anchor); else strategiesDialog();
+        if (k === 'lines') autoMenu(anchor); else if (k === 'volume') flowMenu(anchor); else if (k === 'range' || k === 'fork') structMenu(anchor, k); else strategiesDialog();
       });
       $$('[data-tn]', m).forEach(x => x[x.type === 'range' ? 'oninput' : 'onchange'] = () => {
         const k = x.dataset.tn; T[k] = x.type === 'checkbox' ? x.checked : +x.value;
@@ -1955,6 +1979,94 @@
     openMenu(anchor, html(), bind, { side: side(), cls: 'func-menu' });
   }
   $('#bFunc').onclick = e => funcMenu(e.currentTarget);
+
+  // ---- structure: ranges with BOS and pitchforks (struct.js), one chart layer -----------------------------------
+  let stR = null, stKey = '', structLayer = null;
+  function computeStruct() {
+    const R = S.range, F = S.fork, n = closedCount();
+    if (!(R.on || F.on) || !D || n < 40) { stR = null; stKey = ''; return; }
+    const key = [S.symbol, S.tf, S.type, n, disp[0].time, disp[n - 1].time, JSON.stringify(R), JSON.stringify(F)].join('|');
+    if (key === stKey) return;
+    stKey = key;
+    const Dc = n === D.t.length ? D : sliceD(D, n);
+    stR = { ranges: R.on ? ST.ranges(Dc, { minLen: R.minLen, maxAtr: R.maxAtr, minTests: R.minTests }).slice(-R.count) : [],
+            forks: F.on ? ST.forks(Dc, { k: F.k || TL.zigK(S.tf, TF_SEC[S.tf]), count: F.count, type: F.type }) : [] };
+  }
+  class StructLayer {
+    attached(p) { this.p = p; } detached() { this.p = null; }
+    update() { if (this.p) this.p.requestUpdate(); }
+    updateAllViews() {}
+    paneViews() { return [{ zOrder: () => 'normal', renderer: () => ({ draw: t => this.draw(t) }) }]; }
+    draw(target) {
+      if (!this.p || !stR || hideL.auto) return;
+      const ts = this.p.chart.timeScale(), se = this.p.series, X = i => ts.logicalToCoordinate(i), Y = p => se.priceToCoordinate(p), R = S.range, F = S.fork;
+      target.useMediaCoordinateSpace(({ context: ctx }) => {
+        ctx.font = '600 11px ' + fontCss(S.look.font);
+        for (const r of stR.ranges) {
+          const to = r.live ? disp.length - 1 + R.ext : r.i1, x0 = X(r.i0), x1 = X(to), yt = Y(r.top), yb = Y(r.bot);
+          if ([x0, x1, yt, yb].some(v => v === null)) continue;
+          const col = r.brk > 0 ? R.up : r.brk < 0 ? R.down : R.color;
+          ctx.fillStyle = rgba(col, R.fill); ctx.fillRect(x0, yt, x1 - x0, yb - yt);
+          ctx.strokeStyle = rgba(col, 90); ctx.lineWidth = R.width; ctx.setLineDash(r.live ? [6, 4] : []);
+          ctx.beginPath(); ctx.moveTo(x0, yt); ctx.lineTo(x1, yt); ctx.moveTo(x0, yb); ctx.lineTo(x1, yb); ctx.stroke();
+          if (R.mid) { ctx.setLineDash([2, 4]); ctx.lineWidth = 1; const ym = Y((r.top + r.bot) / 2); ctx.beginPath(); ctx.moveTo(x0, ym); ctx.lineTo(x1, ym); ctx.stroke(); }
+          ctx.setLineDash([]);
+          ctx.fillStyle = rgba(col, 100); ctx.textAlign = 'left';
+          ctx.fillText(`Range ${fmt(r.top)}`, x0 + 3, yt - 4); ctx.fillText(`${fmt(r.bot)}`, x0 + 3, yb + 12);
+          if (r.brk && R.bos) {
+            const xb = X(r.i1), yl = r.brk > 0 ? yt : yb;
+            if (xb !== null) { ctx.textAlign = 'center'; ctx.fillStyle = r.brk > 0 ? rgba(R.up, 100) : rgba(R.down, 100);
+              const lab = `BOS ${r.brk > 0 ? '▲' : '▼'}`, w = ctx.measureText(lab).width + 10, yy = yl + (r.brk > 0 ? -22 : 8);
+              ctx.fillRect(xb - w / 2, yy, w, 15); ctx.fillStyle = '#fff'; ctx.fillText(lab, xb, yy + 11); }
+          } else if (r.live) { ctx.textAlign = 'right'; ctx.fillStyle = rgba(col, 100); ctx.fillText(`čaká na BOS (${r.testsTop}× hore · ${r.testsBot}× dole)`, x1 - 4, yt - 4); }
+        }
+        for (const f of stR.forks) {
+          const to = disp.length - 1 + F.ext, col = f.dir > 0 ? F.up : F.down;
+          const line = (i0, p0, dash, w) => { const x0 = X(i0), y0 = Y(p0), x1 = X(to), y1 = Y(p0 + f.slope * (to - i0)); if ([x0, y0, x1, y1].some(v => v === null)) return null;
+            ctx.setLineDash(dash); ctx.lineWidth = w; ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke(); return [x0, y0, x1, y1]; };
+          // tines through P1 and P2, the median from the origin; light fill between the tines
+          const a = [f.p1.idx, f.p1.price], b = [f.p2.idx, f.p2.price];
+          const pa = [X(a[0]), Y(a[1]), X(to), Y(a[1] + f.slope * (to - a[0]))], pb = [X(b[0]), Y(b[1]), X(to), Y(b[1] + f.slope * (to - b[0]))];
+          if (F.fill && ![...pa, ...pb].some(v => v === null)) { ctx.fillStyle = rgba(col, F.fill); ctx.beginPath(); ctx.moveTo(pa[0], pa[1]); ctx.lineTo(pa[2], pa[3]); ctx.lineTo(pb[2], pb[3]); ctx.lineTo(pb[0], pb[1]); ctx.closePath(); ctx.fill(); }
+          ctx.strokeStyle = rgba(col, 95);
+          line(f.o.i, f.o.p, [], F.width + 0.5);
+          line(a[0], a[1], [], F.width); line(b[0], b[1], [], F.width);
+          if (F.half) { ctx.strokeStyle = rgba(col, 55); const m1 = [(a[0] + f.mid.i) / 2, (a[1] + f.mid.p) / 2], m2 = [(b[0] + f.mid.i) / 2, (b[1] + f.mid.p) / 2]; line(m1[0], m1[1], [4, 4], 1); line(m2[0], m2[1], [4, 4], 1); }
+          // the three swings and the handle
+          ctx.strokeStyle = rgba(col, 60); ctx.setLineDash([3, 3]); ctx.lineWidth = 1;
+          const xs = [f.p0, f.p1, f.p2].map(p => [X(p.idx), Y(p.price)]);
+          if (!xs.flat().some(v => v === null)) { ctx.beginPath(); ctx.moveTo(...xs[1]); ctx.lineTo(...xs[2]); ctx.stroke(); ctx.setLineDash([]);
+            ctx.fillStyle = rgba(col, 100); xs.forEach(([x, y]) => { ctx.beginPath(); ctx.arc(x, y, 3, 0, 7); ctx.fill(); });
+            ctx.textAlign = 'left'; ctx.fillText(`Vidly ${f.dir > 0 ? '▲ uptrend' : '▼ downtrend'}`, xs[0][0] + 6, xs[0][1] + (f.dir > 0 ? 16 : -8)); }
+          ctx.setLineDash([]);
+        }
+      });
+    }
+  }
+  function structMenu(anchor, what) {
+    const X = S[what], cb = (k, label) => `<label class="it"><input type="checkbox" data-sx="${k}" ${X[k] ? 'checked' : ''}><span class="grow">${label}</span></label>`;
+    const rng = (k, min, max, step, label, unit = '') => `<div class="it" style="cursor:default"><span class="grow">${label}</span><span class="op" style="width:150px"><input type="range" min="${min}" max="${max}" step="${step}" data-sx="${k}" value="${X[k]}"><b>${X[k]}${unit}</b></span></div>`;
+    const sw = (k, label) => `<div class="it" style="cursor:default"><span class="grow">${label}</span>${swatch(k, X[k])}</div>`;
+    const html = what === 'range'
+      ? `${cb('on', '<b>Range a BOS</b><br><small>zvýrazní pásmo bočného trhu (vrch a spodok) a označí prerazenie – BOS</small>')}
+        <div class="sec">Ako hľadať range</div>${rng('minLen', 8, 100, 1, 'Min. dĺžka (sviečok)')}${rng('maxAtr', 1.5, 8, 0.5, 'Max. výška (× ATR)')}${rng('minTests', 1, 5, 1, 'Min. dotykov každej hrany')}${rng('count', 1, 30, 1, 'Koľko posledných range ukázať')}
+        <div class="sec">Vzhľad</div>${cb('bos', 'Značka BOS pri prerazení')}${cb('mid', 'Stredná čiara (polovica range)')}${rng('fill', 0, 40, 1, 'Výplň', ' %')}${rng('ext', 0, 200, 5, 'Predĺženie živého range doprava')}
+        ${sw('color', 'Farba range')}${sw('up', 'BOS nahor')}${sw('down', 'BOS nadol')}`
+      : `${cb('on', '<b>Vidly (pitchfork)</b><br><small>z troch posledných swingov: v uptrende smerom hore, v downtrende dole</small>')}
+        <div class="it" style="cursor:default"><span class="grow">Typ</span><select data-sx="type">${opts([['Andrews', 'andrews'], ['Schiff', 'schiff'], ['Upravený Schiff', 'mschiff']], X.type)}</select></div>
+        <div class="it" style="cursor:default"><span class="grow">Swingy (ZigZag × ATR)</span><select data-sx="k">${opts([['Ako auto čiary', 0], ['1.5 · menšie', 1.5], ['2', 2], ['3', 3], ['4 · väčšie', 4], ['6 · hlavné', 6]], X.k)}</select></div>
+        ${rng('count', 1, 5, 1, 'Počet vidiel')}${cb('half', 'Polovičné čiary (medzi stredom a krajmi)')}${rng('fill', 0, 30, 1, 'Výplň', ' %')}${rng('ext', 10, 300, 10, 'Dĺžka doprava (sviečok)')}
+        ${sw('up', 'Farba – hore')}${sw('down', 'Farba – dole')}`;
+    const apply = () => { save(); stKey = ''; computeStruct(); structLayer && structLayer.update(); };
+    openMenu(anchor, html, m => {
+      $$('[data-sx]', m).forEach(x => x[x.type === 'range' ? 'oninput' : 'onchange'] = () => {
+        const k = x.dataset.sx; X[k] = x.type === 'checkbox' ? x.checked : x.tagName === 'SELECT' && k === 'type' ? x.value : +x.value;
+        if (x.type === 'range') x.nextElementSibling.textContent = x.value + (x.nextElementSibling.textContent.endsWith('%') ? ' %' : '');
+        apply();
+      });
+      $$('[data-sw]', m).forEach(b => b.onclick = e => { e.stopPropagation(); colorPopover(b, X, { noOpacity: true }, apply, { color: b.dataset.sw }); });
+    }, { side: side(), cls: 'func-menu' });
+  }
 
   // the strategies of the live ideas: on / off, own R:R, stop and confirmations, results on this chart
   function strategiesDialog() {

@@ -22,6 +22,7 @@ Read this first; it replaces re-reading the whole code. Keep it up to date when 
 | technicals.js | `TA` | TradingView-like ratings, pivots |
 | library.js | `LIB` | Knižnica page (candles, chart patterns, STRATS, TIPS); `LIB.show(tab,id)` |
 | algos.js | `ALGO` | 9 published systems (`SYS`: tsmom, turtle, faber, rsi2, ibs, bbmr, supertrend, macd, orb) with sources; `run(id, D, {symbol})` honest backtest (next-open entry, spread `COST`, stop first) → trades/stats/half (last 30 %)/open; `score(stats, half)` |
+| struct.js | `ST` | `ranges(D, o)` boxes (≤ maxAtr × ATR, minLen bars, both edges tested) with BOS on a close beyond; `forks(D, o)` Andrews / Schiff pitchforks from 3 zigzag swings (up in uptrend, down in downtrend). Drawn by `StructLayer` in app.js (`S.range`, `S.fork`, Funkcie menu → `structMenu`). |
 | flow.js | `FLOW` | 🌊 tape window (Binance aggTrade WS) |
 | nexus.js | `NEXUS` (also `window.NEXUS`) | ◆ HUD, Nexus home screen (apps/windows/cloud/board, classic view, designs), paper accounts `A()`, robot, position cards, trade ticket, chart lines/markers API |
 | i18n.js | `I18N` | English layer: dictionary of whole phrases, MutationObserver translates text/title/placeholder (`I18N.set('en'|'sk')`, `S.lang`, Nastavenia → 🌐 Jazyk). Missing phrases stay Slovak; skips `.msg`, `.bd-area`, `.news-it`. |
@@ -54,4 +55,5 @@ app.js sections (grep `// ---- `): state/save/undo · data (fetchBars, live WS) 
 - [x] 🧠 Algo window: ranking on our data (weighs the last 30 %), sources, chart overlay, live signals → chat / Telegram / paper trades.
 - [x] Shared accounts (codes view/trade, merge on conflict, `by` on trades).
 - [x] v16: Funkcie button (Čiary + Objem + Stratégie + Technicals background), strategies on/off + own R:R/stop/confirmations (`S.ideas.strat`, `TL.STRATS`), auto lines max 1–100 (`S.auto.maxLines/maxLevels`, `tlCfg`), Technicals in Knižnica, dock collapse/hide, indicator colour presets (`PALETTES`), Sociálne = chat + news + board, English, VPVR + heatmaps, mirror for shared-account members.
+- [x] v17: MACD histogram below 0 – growing = strong red, shrinking = light; trade markers grouped per bar (sum lots / P&L, partial closes once); auto lines reach (`S.auto.reach` → `REACH`) + major lines (`S.auto.major`, zigzag 2.5×, `tlMajor`); Range + BOS; pitchfork.
 - [ ] Ideas: walk-forward parameter check per market; algo signals as alerts in the scanner; per-member permissions UI (owner can change roles via PUT members).
