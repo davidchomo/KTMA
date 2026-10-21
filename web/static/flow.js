@@ -22,7 +22,7 @@ const FLOW = (() => {
     ws.onmessage = ev => {
       const m = JSON.parse(ev.data);
       if (m.e !== 'aggTrade') return;
-      trades.push({ t: m.T, p: +m.p, q: +m.q, buy: !m.m });
+      trades.push({ t: m.T, p: +m.p + (window.NX_spotOff ? window.NX_spotOff(sym.id) : 0), q: +m.q, buy: !m.m });
       const cut = Date.now() - 15 * 60 * 1000;
       if (trades.length > 6000 || (trades.length && trades[0].t < cut)) trades = trades.filter(x => x.t >= cut).slice(-6000);
       if (!paintT) paintT = setTimeout(() => { paintT = null; paint(); }, 250);

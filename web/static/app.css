@@ -832,14 +832,27 @@ body.no-legend #legend { display: none; }
 #bAll .ic { font-size: 1.35em; }
 
 /* ---- workspace dock ---- */
-#wsDock { position: fixed; z-index: 29; display: flex; align-items: center; gap: 3px; padding: 4px; border-radius: 12px; background: rgba(20,23,32,.88);
+#wsDock { position: fixed; z-index: 29; display: flex; align-items: center; gap: 3px; padding: 4px; border-radius: 12px; background: var(--wd-bg, rgba(20,23,32,.88));
           border: 1px solid rgba(255,255,255,.1); box-shadow: 0 8px 24px rgba(0,0,0,.45); backdrop-filter: blur(6px); }
 #wsDock.vert { flex-direction: column; }
-#wsDock button { display: flex; align-items: center; gap: 5px; background: transparent; border: 1px solid transparent; color: #b2b5be; border-radius: 8px; padding: 4px 8px; cursor: pointer; font-size: 12px; }
+#wsDock button { display: flex; align-items: center; gap: 5px; background: transparent; border: 1px solid transparent; color: var(--wd-tx, #b2b5be); border-radius: 8px; padding: 4px 8px; cursor: pointer; font-size: 12px; }
 #wsDock button b { width: 18px; height: 18px; border-radius: 5px; background: rgba(255,255,255,.08); font-size: 11px; line-height: 18px; text-align: center; }
 #wsDock button small { color: #787b86; font-size: 10px; }
 #wsDock button:hover { background: rgba(255,255,255,.06); color: #fff; }
-#wsDock button.on { background: rgba(41,98,255,.3); border-color: rgba(91,156,246,.6); color: #fff; } #wsDock button.on b { background: #2962ff; }
+#wsDock button.on { background: var(--wd-on, rgba(41,98,255,.3)); border-color: var(--wd-acc, #5b9cf6); color: #fff; } #wsDock button.on b { background: var(--wd-acc, #2962ff); color: #fff; }
+#wsDock.light button.on { color: #111; } #wsDock.light button b { background: rgba(0,0,0,.08); } #wsDock.light button:hover { background: rgba(0,0,0,.06); color: #000; }
+#wsDock.nonames button span, #wsDock.nonames button small { display: none; }
+/* docked: tabs above the chart, or a side panel of tabs; the chart area makes room (--ws-dock) */
+body.ws-top #paneGrid { margin-top: var(--ws-dock, 34px); } body.ws-side #paneGrid { margin-left: var(--ws-dock, 120px); }
+#wsDock.dock-top, #wsDock.dock-side { border-radius: 0; box-shadow: none; backdrop-filter: none; border: 0; padding: 3px 6px; }
+#wsDock.dock-top { border-bottom: 1px solid var(--border); overflow-x: auto; }
+#wsDock.dock-top button[data-dws] { border-radius: 7px 7px 0 0; } #wsDock.dock-top button.on { border-bottom-color: transparent; box-shadow: inset 0 -2px 0 var(--wd-acc); }
+#wsDock.dock-side { flex-direction: column; align-items: stretch; border-right: 1px solid var(--border); overflow-y: auto; max-width: 220px; }
+#wsDock.dock-side button[data-dws] { justify-content: flex-start; text-align: left; } #wsDock.dock-side button[data-dws] span { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 140px; }
+#wsDock.dock-side button.on { box-shadow: inset 3px 0 0 var(--wd-acc); }
+.dock-themes { display: flex; flex-wrap: wrap; gap: 6px; padding: 4px 12px 8px; }
+.dock-themes span { display: inline-flex; align-items: center; gap: 5px; padding: 4px 9px; border: 1px solid; border-radius: 14px; cursor: pointer; font-size: 12px; }
+.dock-themes span.on { outline: 2px solid #fff; } .dock-themes i { width: 10px; height: 10px; border-radius: 50%; }
 #wsDock .ws-grip { cursor: grab; color: #5d606b; padding: 0 4px; letter-spacing: -2px; user-select: none; touch-action: none; }
 #wsDock.vert button span, #wsDock.vert button small { display: none; }
 

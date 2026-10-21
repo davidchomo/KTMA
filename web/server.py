@@ -157,14 +157,46 @@ def meta():
                            "level": CFG.get("notify_filters", {}).get("min_level_touches", 2)}}
 
 
+# ---- spot price: Binance XAUUSDT (futures) trades a few dollars away from spot gold, which TradingView and brokers show.
+# Swissquote's public quote is spot; the difference to Binance (smoothed, checked once a minute) shifts our prices.
+SPOT_REF = {"XAUUSD": "XAU/USD", "XAGUSD": "XAG/USD", "EURUSD": "EUR/USD", "GBPUSD": "GBP/USD", "AUDUSD": "AUD/USD"}
+_spot: dict = {}
+
+
+def _spot_offset(symbol: str) -> float:
+    ref, hit = SPOT_REF.get(symbol), _spot.get(symbol)
+    if not ref:
+        return 0.0
+    if hit and time.time() - hit[0] < 60:
+        return hit[1]
+    off = hit[1] if hit else 0.0
+    try:
+        q = requests.get(f"https://forex-data-feed.swissquote.com/public-quotes/bboquotes/instrument/{ref}", timeout=4).json()
+        best = min(q[0]["spreadProfilePrices"], key=lambda x: x["ask"] - x["bid"])
+        mid = (best["bid"] + best["ask"]) / 2
+        sym = SYMBOLS[symbol]
+        b = float(requests.get(API[sym["market"]][0] + "/ticker/price", params={"symbol": sym["ticker"]}, timeout=4).json()["price"])
+        if mid > 0 and b > 0 and abs(mid / b - 1) < 0.02:
+            off = mid - b if not hit else 0.7 * hit[1] + 0.3 * (mid - b)
+    except Exception:
+        pass
+    _spot[symbol] = (time.time(), off)
+    return off
+
+
+@app.get("/api/spot")
+def spot():
+    return {k: round(_spot_offset(k), 5) for k in SPOT_REF if k in SYMBOLS}
+
+
 @app.get("/api/candles")
 def candles(symbol: str, tf: str, end: int | None = None, limit: int = Query(1000, ge=10, le=5000),
-            hours: bool = True):
+            hours: bool = True, spot: bool = True):
     """Bars oldest first as [time_s, open, high, low, close, volume, buy volume]; the last one may still be forming."""
     sym = SYMBOLS.get(symbol)
     if sym is None or tf not in TIMEFRAMES:
         raise HTTPException(404, "neznámy symbol alebo timeframe")
-    key = (symbol, tf, end, limit, hours)
+    key = (symbol, tf, end, limit, hours, spot)
     with _lock:
         hit = _cache.get(key)
         if hit and time.time() - hit[0] < (3 if end is None else 300):
@@ -175,7 +207,11 @@ def candles(symbol: str, tf: str, end: int | None = None, limit: int = Query(100
         rows = _klines(sym, tf, end, limit)
     if hours:
         rows = _market_hours(sym, tf, rows)
-    out = {"symbol": symbol, "tf": tf, "bars": [[r[0] // 1000, *r[1:]] for r in rows]}
+    off = _spot_offset(symbol) if spot else 0.0
+    nd = sym["digits"] + 1
+    if off:
+        rows = [[r[0], round(r[1] + off, nd), round(r[2] + off, nd), round(r[3] + off, nd), round(r[4] + off, nd), *r[5:]] for r in rows]
+    out = {"symbol": symbol, "tf": tf, "offset": round(off, nd), "bars": [[r[0] // 1000, *r[1:]] for r in rows]}
     with _lock:
         if len(_cache) > 300:
             _cache.clear()
