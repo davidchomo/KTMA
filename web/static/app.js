@@ -450,8 +450,8 @@
   $('#chartWrap').addEventListener('pointerdown', e => {
     const nx = NX();
     if (!tradeLines || !nx || !chart || e.button !== 0 || e.target.closest('.no-chart')) return;
-    const r = el.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top;
-    if (x > chart.paneSize(0).width) return;
+    const r = el.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top - mainTop();
+    if (x > chart.paneSize(mainIdx).width || y < 0) return;
     const h = tradeLines.lineAt(x, y) || tradeLines.hits.find(q => q.del && Math.abs(q.y - y) <= 9 && x >= q.x0 && x <= q.x1);
     if (!h) return;
     e.stopPropagation(); e.preventDefault();
@@ -459,13 +459,13 @@
     tradeLines.drag = { key: lineKey(h.l), l: h.l };
     chart.applyOptions({ handleScroll: false, handleScale: false });
     const move = ev => {
-      const yy = ev.clientY - el.getBoundingClientRect().top, price = main.coordinateToPrice(yy);
+      const yy = ev.clientY - el.getBoundingClientRect().top - mainTop(), price = main.coordinateToPrice(yy);
       if (price === null) return;
       nx.moveLine(h.l.pid, h.l.kind, h.l.idx, price, false); tradeLines.update();
     };
     const up = ev => {
       window.removeEventListener('pointermove', move, true); window.removeEventListener('pointerup', up, true);
-      const yy = ev.clientY - el.getBoundingClientRect().top, price = main.coordinateToPrice(yy);
+      const yy = ev.clientY - el.getBoundingClientRect().top - mainTop(), price = main.coordinateToPrice(yy);
       if (price !== null) nx.moveLine(h.l.pid, h.l.kind, h.l.idx, price, true);
       tradeLines.drag = null; el.style.cursor = '';
       const o = chartOptions(); chart.applyOptions({ handleScroll: o.handleScroll, handleScale: o.handleScale });
@@ -475,11 +475,14 @@
   }, true);
   $('#chartWrap').addEventListener('pointermove', e => {
     if (!tradeLines || !chart || tradeLines.drag) return;
-    const r = el.getBoundingClientRect(), h = tradeLines.lineAt(e.clientX - r.left, e.clientY - r.top);
+    const r = el.getBoundingClientRect(), h = tradeLines.lineAt(e.clientX - r.left, e.clientY - r.top - mainTop());
     const key = h ? lineKey(h.l) : null;
     if (key !== tradeLines.hover) { tradeLines.hover = key; el.style.cursor = h ? 'ns-resize' : ''; tradeLines.update(); }
   });
 
+  // pane index of the price chart (indicator panels can sit above it) and its top edge inside #chart
+  let mainIdx = 0;
+  const mainTop = () => { if (!chart || !mainIdx) return 0; const P = chart.panes(); let t = 0; for (let i = 0; i < mainIdx; i++) t += P[i].getHeight() + 1; return t; };
   function buildChart(keepRange) {
     // undefined = keep the current zoom; null = new data, start fresh (alert focus or the newest bars)
     const range = keepRange === undefined ? (chart ? chart.timeScale().getVisibleLogicalRange() : null) : keepRange;
@@ -490,7 +493,7 @@
     main = mainSeries(chart);
     main.setData(mainData());
     markersApi = LW.createSeriesMarkers(main, []);
-    units = [];
+    units = []; mainIdx = 0;
     let pane = 1;
     for (const s of studies) {
       if (!shown(s) || hideL.studies) continue;
@@ -499,8 +502,16 @@
       units.push(u);
       refreshUnit(u);
     }
+    // indicator panels marked "above" go over the price chart, the rest under it; u.pane then holds the real index
+    const pu = units.filter(u => u.pane > 0), above = pu.filter(u => u.s.above);
+    if (above.length) {
+      const P = chart.panes(), order = [...above.map(u => u.pane), 0, ...pu.filter(u => !u.s.above).map(u => u.pane)], at = {};
+      order.forEach((old, i) => { P[old].moveTo(i); at[old] = i; });
+      mainIdx = above.length;
+      for (const u of units) u.pane = at[u.pane];
+    }
     const panes = chart.panes();
-    if (panes.length > 1) { panes[0].setStretchFactor(Math.max(2, 6 - panes.length)); for (let i = 1; i < panes.length; i++) panes[i].setStretchFactor(1); }
+    if (panes.length > 1) panes.forEach((p, i) => p.setStretchFactor(i === mainIdx ? Math.max(2, 6 - panes.length) : 1));
     if (!units.some(u => u.def.custom === 'obheat')) bookClose();
     autoLayer = new AutoLayer(); main.attachPrimitive(autoLayer);
     structLayer = new StructLayer(); main.attachPrimitive(structLayer); stKey = ''; computeStruct();
@@ -514,7 +525,7 @@
     if (view.position) draw.add(view.position);
     if (ideaPos) draw.add(ideaPos);
     legendRows();
-    showOHLC();
+    showOHLC(); if (mainIdx) requestAnimationFrame(() => showOHLC());
     chart.subscribeCrosshairMove(p => { lastCross = p; crossTime = p && p.time !== undefined ? p.time : null; showOHLC(crossTime); });
     const ts = chart.timeScale();
     if (range) ts.setVisibleLogicalRange(range);
@@ -550,7 +561,7 @@
       lineType: st.type === 3 ? 0 : st.type, lineVisible: st.type !== 3, pointMarkersVisible: st.type === 3,
       ...(st.type === 3 ? { pointMarkersRadius: st.width + 1 } : {}),
       ...(prec === null ? {} : { priceFormat: { type: 'price', precision: prec, minMove: 1 / 10 ** prec } }),
-      ...(u.pane === 0 && u.s.type !== 'volume' ? { autoscaleInfoProvider: () => null } : {}) };
+      ...(u.pane === mainIdx && u.s.type !== 'volume' ? { autoscaleInfoProvider: () => null } : {}) };
   }
   // ---- custom volume layers: volume profile (VPVR), volume heatmap, live order book heatmap ----------------------
   // A bar's volume is spread evenly over its high–low range (the exchange gives no volume per price for candles).
@@ -717,7 +728,7 @@
     }
     const fills = def.plots.filter(p => p.kind === 'fill' && s.plots[p.k].visible && s.plots[p.k].opacity > 0);
     if (fills.length) {
-      const target = u.pane === 0 ? main : u.host;
+      const target = u.pane === mainIdx ? main : u.host;
       if (target && !u.fill) { u.fill = new BandFill(); target.attachPrimitive(u.fill); }
       if (u.fill) {
         const val = name => (name[0] === '=' ? D.t.map(() => s.inputs[name.slice(1)]) : (r[name] || []));
@@ -770,6 +781,7 @@
   // ---- legend ------------------------------------------------------------------------------------
   function showOHLC(time) {
     if (!disp.length) return;
+    const lg = $('#legend'), lt = mainIdx ? 6 + mainTop() + 'px' : ''; if (lg.style.top !== lt) lg.style.top = lt;   // sits on the price chart
     const i = time === null || time === undefined ? disp.length - 1 : disp.findIndex(b => b.time === time);
     const b = disp[i < 0 ? disp.length - 1 : i], prev = disp[(i < 0 ? disp.length - 1 : i) - 1];
     const c = b.close >= b.open ? S.look.up : S.look.down, ch = prev ? b.close - prev.close : 0, G = S.legend;
@@ -813,7 +825,7 @@
   // ---- drawings ----------------------------------------------------------------------------------
   const currentDrawings = () => S.drawings[S.symbol] || [];
   const draw = DR.create({
-    el, chart: () => chart, series: () => main, bars: () => disp,
+    el, chart: () => chart, series: () => main, bars: () => disp, pane: () => mainIdx, top: mainTop,
     timeToLogical: t => { const T = D ? D.t : []; const n = T.length; if (!n) return 0; const bs = TF_SEC[S.tf];
       if (t <= T[0]) return (t - T[0]) / bs; if (t >= T[n - 1]) return n - 1 + (t - T[n - 1]) / bs;
       let lo = 0, hi = n - 1; while (hi - lo > 1) { const m = (lo + hi) >> 1; if (T[m] <= t) lo = m; else hi = m; } return lo + (t - T[lo]) / (T[hi] - T[lo]); },
@@ -2786,14 +2798,26 @@
     }
     return false;
   }
+  // move an indicator panel one place up or down; past the price chart it switches between "above" and "below"
+  function movePanel(s, dir) {
+    const vis = units.filter(u => u.pane !== mainIdx), k = vis.findIndex(u => u.s === s); if (k < 0) return;
+    const j = vis.findIndex(u => u.pane === vis[k].pane + dir);
+    if (j < 0) {                                // crossing the price chart: it becomes the panel right next to it
+      const cross = dir < 0 ? !s.above && vis[k].pane === mainIdx + 1 : s.above && vis[k].pane === mainIdx - 1; if (!cross) return;
+      s.above = dir < 0; studies = studies.filter(x => x !== s); if (s.above) studies.push(s); else studies.unshift(s);
+    } else { const o = vis[j].s, a = studies.indexOf(s), b = studies.indexOf(o); studies[a] = o; studies[b] = s; }
+    studiesChanged();
+  }
   function studyMenu(ev, s) {
     const def = KS.STUDIES[s.type];
     ctxMenu(ev, `<div class="sec">${esc(def.label(s))}</div>${item('cfg', '⚙', 'Nastavenia… (farby, dĺžka, štýl)')}${item('hide', '👁', 'Skryť')}${item('dup', '⧉', 'Duplikovať')}
+      ${def.pane === true ? `<div class="sep"></div>${item('above', s.above ? '⬇' : '⬆', s.above ? 'Panel pod graf' : 'Panel nad graf')}${item('pup', '↑', 'Posunúť panel vyššie')}${item('pdn', '↓', 'Posunúť panel nižšie')}<div class="sep"></div>` : ''}
       ${item('def', '⭐', 'Uložiť ako predvolené')}${item('del', '🗑', 'Odstrániť')}<div class="sep"></div>${item('add', 'ƒx', 'Pridať ďalší indikátor…')}`, m => bindItems(m, {
       cfg: () => studySettings(s), hide: () => { s.visible = false; studiesChanged(); },
       dup: () => { studies.push(KS.normalize({ ...JSON.parse(JSON.stringify(s)), uid: undefined })); studiesChanged(); },
       def: () => { S.toolDefaults['study:' + s.type] = { inputs: s.inputs, plots: s.plots, tfs: s.tfs, out: s.out }; save(); toast('Uložené ako predvolené'); },
       del: () => { studies = studies.filter(x => x !== s); studiesChanged(); }, add: () => $('#bInd').click(),
+      above: () => { s.above = !s.above; studiesChanged(); }, pup: () => movePanel(s, -1), pdn: () => movePanel(s, 1),
     }));
   }
   function candleMenu(ev, bar, price) {
@@ -2846,15 +2870,16 @@
   el.addEventListener('contextmenu', e => {
     if (!chart) return;
     e.preventDefault(); e.stopPropagation();
-    const r = el.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top;
-    const W = chart.paneSize(0).width, pane = paneAt(y);
+    const r = el.getBoundingClientRect(), x = e.clientX - r.left; let y = e.clientY - r.top;
+    const W = chart.paneSize(mainIdx).width, pane = paneAt(y);
     if (!pane) return timeMenu(e);
     if (x > W) return scaleMenu(e);
-    if (pane.i === 0) {
+    if (pane.i === mainIdx) {
+      y -= pane.top;
       const h = draw.hitAt(x, y);
       if (h && !h.d.temp) return ctxMenu(e, `<div class="sec">${esc(DR.TOOLS[h.d.type].name)}</div>${item('cfg', '⚙', 'Nastavenia… (farba, štýl, text)')}${item('lock', '🔒', h.d.locked ? 'Odomknúť' : 'Zamknúť')}${item('del', '🗑', 'Zmazať')}`,
         m => bindItems(m, { cfg: () => draw.openSettings(h.d), lock: () => { h.d.locked = !h.d.locked; S.drawings[S.symbol] = draw.list().filter(d => !d.temp); save(); }, del: () => draw.remove(h.d) }));
-      const u = unitAt(0, x, y);
+      const u = unitAt(mainIdx, x, y);
       if (u) return studyMenu(e, u.s);
       if (autoLineAt(x, y)) return ctxMenu(e, `<div class="sec">Auto čiara</div>${item('style', '🎨', 'Farby, hrúbka a štýl auto čiar…')}${item('menu', '📐', 'Čo kresliť, citlivosť…')}${item('off', '🙈', 'Vypnúť auto čiary')}`,
         m => bindItems(m, { style: () => autoStyle(), menu: () => autoMenu($('#bAuto')), off: () => toggleAuto(false) }));

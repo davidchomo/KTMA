@@ -499,8 +499,8 @@ const DR = (() => {
     let list = [], selected = null, mode = null, drag = null, hidden = false, layer = null, keep = false;
     const measureCtx = document.createElement('canvas').getContext('2d');
     const E = {
-      get W() { return env.chart() ? env.chart().paneSize(0).width : 0; },
-      get H() { return env.chart() ? env.chart().paneSize(0).height : 0; },
+      get W() { return env.chart() ? env.chart().paneSize(env.pane ? env.pane() : 0).width : 0; },
+      get H() { return env.chart() ? env.chart().paneSize(env.pane ? env.pane() : 0).height : 0; },
       px: pt => ({ x: env.chart().timeScale().logicalToCoordinate(env.timeToLogical(pt.t)), y: env.series().priceToCoordinate(pt.p) }),
       py: p => env.series().priceToCoordinate(p),
       fmt: p => env.fmt(p),
@@ -632,7 +632,7 @@ const DR = (() => {
     }
 
     // ---- pointer handling on the chart element (capture: the chart must not pan while we work) ----
-    const rel = e => { const b = env.el.getBoundingClientRect(); return { x: e.clientX - b.left, y: e.clientY - b.top }; };
+    const rel = e => { const b = env.el.getBoundingClientRect(); return { x: e.clientX - b.left, y: e.clientY - b.top - (env.top ? env.top() : 0) }; };
     const inPane = ({ x, y }) => env.chart() && x >= 0 && x < E.W && y >= 0 && y < E.H;
     const ignore = e => e.target.closest('.no-chart');
     let downAt = null;

@@ -611,7 +611,7 @@ const KS = (() => {
     for (const tf of TIMEFRAMES) tfs[tf] = !(x.tfs && x.tfs[tf] === false);
     const o = x.out || {};
     return { uid: x.uid || `s${Date.now().toString(36)}${(seq++).toString(36)}`, type: x.type, v: def.v || 1, visible: x.visible !== false,
-             inputs, plots, tfs, temp: !!x.temp,
+             inputs, plots, tfs, temp: !!x.temp, above: !!x.above,
              out: { precision: o.precision ?? 'auto', priceLabels: !!o.priceLabels, legendValues: o.legendValues !== false } };
   }
   function rgba(hex, opacity) {
