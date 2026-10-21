@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Nexus</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M8 1l7 7-7 7-7-7z' fill='%232962ff'/%3E%3C/svg%3E">
-<link rel="stylesheet" href="static/app.css?v=15">
+<link rel="stylesheet" href="static/app.css?v=16">
 </head>
 <body class="tb-top">
 <div id="app">
@@ -23,17 +23,18 @@
     <button class="tbtn" id="bScan" title="Skenovať trh – možné vstupy"><span class="ic">🔍</span><span class="tx">Skenovať</span><span class="car"></span></button>
     <button class="tbtn" id="bIdea" title="Obchodný nápad a labelovanie"><span class="ic">💡</span><span class="tx">Nápad</span><span class="car"></span></button>
     <button class="tbtn" id="bReplay" title="Replay – zastaviť trh, skryť budúcnosť (Alt+R)"><span class="ic">⏯</span><span class="tx">Replay</span><span class="car">▾</span></button>
-    <button class="tbtn" id="bAuto" title="Auto trendové čiary a živé nápady (Alt+A)"><span class="ic">📐</span><span class="tx">Auto čiary</span><span class="car">▾</span></button>
-    <button class="tbtn" id="bFlow" title="Objem a tok príkazov – bubliny kupujúcich a predávajúcich, delta, páska obchodov"><span class="ic">🫧</span><span class="tx">Objem</span><span class="car">▾</span></button>
+    <button class="tbtn" id="bFunc" title="Funkcie: čiary, objem, stratégie živých nápadov, pozadie podľa Technicals"><span class="ic">🧩</span><span class="tx">Funkcie</span><span class="car">▾</span></button>
+    <button class="tbtn gone" id="bAuto" title="Auto trendové čiary a živé nápady (Alt+A)"><span class="ic">📐</span><span class="tx">Auto čiary</span><span class="car">▾</span></button>
+    <button class="tbtn gone" id="bFlow" title="Objem a tok príkazov – bubliny kupujúcich a predávajúcich, delta, páska obchodov"><span class="ic">🫧</span><span class="tx">Objem</span><span class="car">▾</span></button>
     <button class="tbtn" id="bAlgo" title="Algoritmické obchodovanie: overené stratégie, test na dátach, živé signály a ich vysielanie"><span class="ic">🧠</span><span class="tx">Algo</span><span class="car"></span></button>
-    <button class="tbtn" id="bTech" title="Technicals – súhrn indikátorov, pivoty a nápady pre každý timeframe"><span class="ic">📊</span><span class="tx">Technicals</span><span class="car"></span></button>
+    <button class="tbtn gone" id="bTech" title="Technicals – súhrn indikátorov, pivoty a nápady pre každý timeframe"><span class="ic">📊</span><span class="tx">Technicals</span><span class="car"></span></button>
     <button class="tbtn" id="bLib" title="Knižnica – sviečkové formácie, grafické formácie, stratégie, tipy"><span class="ic">📚</span><span class="tx">Knižnica</span><span class="car"></span></button>
     </div><span class="tb-div"></span>
     <div class="tb-sec" id="tbRight">
     <button class="tbtn sq" id="bUndo" title="Späť o krok (Ctrl+Z)" disabled><span class="ic">↶</span></button>
     <button class="tbtn sq" id="bRedo" title="Znova – krok dopredu (Ctrl+Y / Ctrl+Shift+Z)" disabled><span class="ic">↷</span></button>
     <button class="tbtn sq" id="bLayout" title="Rozloženie: 1 až 4 grafy na jednej obrazovke"><span class="ic">▦</span></button>
-    <button class="tbtn" id="bChat" title="Chat a správy – tím, nápady, signály, otázky pre Clauda, novinky a kalendár"><span class="ic">💬</span><span class="tx">Chat</span><span class="car"><i id="chatBadge" class="badge"></i></span></button>
+    <button class="tbtn" id="bChat" title="Sociálne: chat (tím, nápady, signály, Claude), správy a kalendár, nástenka"><span class="ic">👥</span><span class="tx">Sociálne</span><span class="car"><i id="chatBadge" class="badge"></i></span></button>
     <button class="tbtn" id="bSettings" title="Nastavenia grafu a panelu"><span class="ic">⚙</span><span class="tx">Nastavenia</span><span class="car"></span></button>
     <button class="tbtn sq" id="bFull" title="Celá obrazovka (F11)"><span class="ic" id="fullIcon">⛶</span></button>
     <span id="status" class="status" title="Stav dát"><i></i><span id="statusText">…</span></span>
@@ -83,7 +84,7 @@
   <div id="flowFoot" class="muted"></div>
 </section>
 <section id="chatWin" class="no-chart">
-  <header id="chatHead"><span class="cw-tabs"><span data-cw="chat">💬 Chat</span><span data-cw="news">📰 Správy</span></span><span class="grow"></span>
+  <header id="chatHead"><span class="cw-tabs"><span data-cw="chat">💬 Chat</span><span data-cw="news">📰 Správy</span><span data-cw="board">📌 Nástenka</span></span><span class="grow"></span>
     <select id="chatFilter" class="sm" title="Zobraziť kategóriu alebo priečinok"></select>
     <button class="ib" id="chatMin" title="Zbaliť">–</button><button class="ib" id="chatClose" title="Zavrieť">✕</button></header>
   <div id="chatBody"></div>
@@ -93,16 +94,17 @@
 <div id="modal" class="no-chart"></div>
 <div id="toast"></div>
 <script src="lib/lightweight-charts-5.2.1.js"></script>
-<script src="static/studies.js?v=15"></script>
-<script src="static/ui.js?v=15"></script>
-<script src="static/drawings.js?v=15"></script>
-<script src="static/autotl.js?v=15"></script>
-<script src="static/backgrounds.js?v=15"></script>
-<script src="static/technicals.js?v=15"></script>
-<script src="static/library.js?v=15"></script>
-<script src="static/algos.js?v=15"></script>
-<script src="static/flow.js?v=15"></script>
-<script src="static/nexus.js?v=15"></script>
-<script src="static/app.js?v=15"></script>
+<script src="static/studies.js?v=16"></script>
+<script src="static/ui.js?v=16"></script>
+<script src="static/drawings.js?v=16"></script>
+<script src="static/autotl.js?v=16"></script>
+<script src="static/backgrounds.js?v=16"></script>
+<script src="static/technicals.js?v=16"></script>
+<script src="static/library.js?v=16"></script>
+<script src="static/algos.js?v=16"></script>
+<script src="static/flow.js?v=16"></script>
+<script src="static/nexus.js?v=16"></script>
+<script src="static/i18n.js?v=16"></script>
+<script src="static/app.js?v=16"></script>
 </body>
 </html>

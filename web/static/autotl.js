@@ -159,12 +159,16 @@ const TL = (() => {
     NEAR_SUP: 'Cena pri podpore – čakaj na odraz', NEAR_RES: 'Cena pri rezistencii – čakaj na odraz',
   };
   const IDEA_DEF = { minTouches: 3, minLevel: 2, rr: 2, slAtr: 1, minScore: 0, rsiP: 14 };
+  // the eight setups the live ideas are made of (each can be switched off / tuned in Funkcie → Stratégie)
+  const STRATS = ['TL_TOUCH_SUPPORT', 'TL_TOUCH_RESISTANCE', 'TL_BREAK_UP', 'TL_BREAK_DOWN', 'SR_BOUNCE_SUPPORT', 'SR_BOUNCE_RESISTANCE', 'SR_BREAK_UP', 'SR_BREAK_DOWN'];
 
   function ideas(D, R, opt = {}) {
     const O = { ...IDEA_DEF, ...opt }, n = R.n, { h, l, c, v } = D;
     const rsi = KS.rsi(c, O.rsiP), hist = KS.macd(c, 12, 26, 9).hist, vw = KS.vwap(D, KS.source(D, 'hlc3')).vwap, vol = KS.sma(v, 20);
     const byBar = new Map();
+    const ST = O.strat || {};
     for (const e of R.events) {
+      if (ST[e.signal] && ST[e.signal].on === false) continue;           // strategy switched off
       const touches = e.what === 'line' ? e.ref.touchConf.filter(x => x <= e.i).length || e.ref.touches : e.ref.touchConf.filter(x => x <= e.i).length;
       if (e.what === 'line' ? touches < O.minTouches : touches < O.minLevel) continue;
       const key = e.i * 2 + (e.dir > 0 ? 1 : 0);
@@ -174,11 +178,11 @@ const TL = (() => {
     }
     const out = [];
     for (const e of [...byBar.values()].sort((x, y) => x.i - y.i)) {
-      const i = e.i, d = e.dir, a = e.atr, entry = c[i];
+      const i = e.i, d = e.dir, a = e.atr, entry = c[i], P = { ...O, ...(ST[e.signal] || {}) };
       const breakout = /BREAK/.test(e.signal);
-      let sl = e.value - d * (breakout ? 1 : 0.75) * O.slAtr * a;
+      let sl = e.value - d * (breakout ? 1 : 0.75) * P.slAtr * a;
       if (d * (entry - sl) < 0.5 * a) sl = entry - d * 0.5 * a;
-      const risk = Math.abs(entry - sl), tp = entry + d * O.rr * risk;
+      const risk = Math.abs(entry - sl), tp = entry + d * P.rr * risk;
       const conf = [];
       if (Number.isFinite(rsi[i]) && Number.isFinite(rsi[i - 1]) && (d > 0 ? rsi[i] > rsi[i - 1] && rsi[i] < 70 : rsi[i] < rsi[i - 1] && rsi[i] > 30)) conf.push(`RSI ${rsi[i].toFixed(0)} ${d > 0 ? '↑' : '↓'}`);
       if (Number.isFinite(hist[i]) && Number.isFinite(hist[i - 1]) && d * (hist[i] - hist[i - 1]) > 0) conf.push('MACD hist. ' + (d > 0 ? 'rastie' : 'klesá'));
@@ -186,16 +190,16 @@ const TL = (() => {
       if (Number.isFinite(vol[i]) && vol[i] > 0 && v[i] > 1.5 * vol[i]) conf.push(`objem ${(v[i] / vol[i]).toFixed(1)}×`);
       if (R.trend[i] === d) conf.push(d > 0 ? 'swingy HH/HL' : 'swingy LH/LL');
       if (e.touches >= 4) conf.push(`${e.touches} dotykov`);
-      if (conf.length < O.minScore) continue;
+      if (conf.length < P.minScore) continue;
       // Outcome on the bars after the signal (only what is already on the chart); SL first if both in one bar.
       let result = null, exitI = null;
       for (let j = i + 1; j < n; j++) {
         const hitSL = d > 0 ? l[j] <= sl : h[j] >= sl, hitTP = d > 0 ? h[j] >= tp : l[j] <= tp;
         if (hitSL) { result = -1; exitI = j; break; }
-        if (hitTP) { result = O.rr; exitI = j; break; }
+        if (hitTP) { result = P.rr; exitI = j; break; }
       }
       out.push({ i, time: D.t[i], dir: d, signal: e.signal, signals: e.signals, name: e.signals.map(s => NAMES[s] || s).join(' + '),
-                 entry, sl, tp, rr: O.rr, atr: a, touches: e.touches, line: e.value, conf, score: conf.length,
+                 entry, sl, tp, rr: P.rr, atr: a, touches: e.touches, line: e.value, conf, score: conf.length,
                  rsi: rsi[i], result, exitI, exitTime: exitI === null ? null : D.t[exitI] });
     }
     return out;
@@ -219,6 +223,6 @@ const TL = (() => {
              avgR: done.length ? done.reduce((s, x) => s + x.result, 0) / done.length : null, open: list.length - done.length };
   }
 
-  return { run, ideas, snapshot, stats, zigK, configure, NAMES, CFG, IDEA_DEF, value };
+  return { run, ideas, snapshot, stats, zigK, configure, NAMES, CFG, IDEA_DEF, STRATS, value };
 })();
 if (typeof module !== 'undefined') module.exports = TL;

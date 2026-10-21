@@ -607,7 +607,7 @@ const LIB = (() => {
     const items = filtered(), sel = items.find(x => x.id === st.sel) || null;
     const hasDir = st.tab === 'candles' || st.tab === 'charts';
     el.innerHTML = `<div class="lib-head"><span class="tt">📚 Knižnica</span><span class="lib-tabs">${TABS.map(([k, n, l]) => `<span data-lt="${k}" class="${k === st.tab ? 'on' : ''}">${n}<small>${l.length}</small></span>`).join('')}</span>
-        <span class="grow" style="flex:1"></span><input id="libQ" placeholder="🔍 Hľadať (napr. pohltenie, vlajka, RSI)…" value="${esc(st.q)}"><button class="btn sm" id="libBack">📈 Späť na graf</button></div>
+        <span class="grow" style="flex:1"></span><input id="libQ" placeholder="🔍 Hľadať (napr. pohltenie, vlajka, RSI)…" value="${esc(st.q)}"><button class="btn sm" id="libTech" title="Súhrn indikátorov, pivoty a nápady pre všetky timeframy">📊 Technicals</button><button class="btn sm" id="libBack">📈 Späť na graf</button></div>
       <div class="lib-main"><div class="lib-list">
         ${hasDir ? `<div class="lib-filter">${[['all', 'Všetko'], ['bull', '▲ Býčie'], ['bear', '▼ Medvedie'], ['neutral', '◆ Neutrálne']].map(([k, n]) => `<span data-ld="${k}" class="${st.dir === k ? 'on' : ''}">${n}</span>`).join('')}</div>` : ''}
         <div class="lib-it ${sel ? '' : 'on'}" data-li=""><span style="width:46px;text-align:center">▦</span><span class="nm"><b>Prehľad všetkého</b><small>${items.length} položiek</small></span></div>
@@ -622,6 +622,7 @@ const LIB = (() => {
     const pt = $('[data-pat]', el); if (pt) pt.onclick = () => hooks.onPattern && hooks.onPattern(pt.dataset.pat);
     const q = $('#libQ'); q.oninput = () => { st.q = q.value; const pos = q.selectionStart; paint(); const q2 = $('#libQ'); q2.focus(); q2.selectionStart = q2.selectionEnd = pos; };
     $('#libBack').onclick = close;
+    $('#libTech').onclick = () => { close(); hooks.onTech && hooks.onTech(); };
   }
   function overview(items) {
     if (st.tab === 'tips' || st.tab === 'strats') return `<div class="lib-cards">${items.map(x => `<div class="lib-card" data-card="${x.id}"><div style="font-size:26px">${x.ic}</div><b>${esc(x.name)}</b><small>${esc(x.who || x.text[0].slice(0, 80) + '…')}</small></div>`).join('')}</div>`;

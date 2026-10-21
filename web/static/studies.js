@@ -436,6 +436,20 @@ const KS = (() => {
     plots: [P('up', 'Rastúca sviečka', '#26a69a', { kind: 'color', opacity: 50 }), P('down', 'Klesajúca sviečka', '#ef5350', { kind: 'color', opacity: 50 }), P('vma', 'Priemer', '#ff9800')],
     label: () => 'Objem', calc: (D, s) => ({ vol: D.v, vma: s.inputs.ma > 0 ? sma(D.v, s.inputs.ma) : nan(D.c.length) }) };
 
+  // drawn by the chart itself (custom layers in app.js): volume profile and heatmaps
+  S.vprofile = { name: 'Profil objemu (VPVR)', title: 'Objem podľa ceny vo viditeľnom úseku: POC, value area, kupujúci / predávajúci', cat: 'vol', pane: false, custom: 'vprofile',
+    inputs: [{ k: 'rows', label: 'Počet riadkov', def: 70, min: 10, max: 300 }, { k: 'width', label: 'Šírka (% grafu)', def: 28, min: 5, max: 90 },
+             { k: 'va', label: 'Value area (%)', def: 70, min: 10, max: 95 }, { k: 'side', label: 'Strana (0 = vpravo, 1 = vľavo)', def: 0, min: 0, max: 1 }],
+    plots: [P('buy', 'Kupujúci', '#26a69a', { kind: 'color', opacity: 55 }), P('sell', 'Predávajúci', '#ef5350', { kind: 'color', opacity: 55 }),
+            P('va', 'Value area (zvýraznenie)', '#5b9cf6', { kind: 'color', opacity: 85 }), P('poc', 'POC (najväčší objem)', '#ffeb3b', { width: 2 })],
+    label: s => `VPVR ${s.inputs.rows}`, calc: () => ({}) };
+  S.vheat = { name: 'Heatmapa objemu', title: 'Kde sa obchodovalo najviac – čas × cena (kĺzavý profil objemu)', cat: 'vol', pane: false, custom: 'vheat',
+    inputs: [{ k: 'rows', label: 'Riadkov', def: 60, min: 10, max: 200 }, { k: 'win', label: 'Okno (sviečok)', def: 50, min: 5, max: 500 }, { k: 'opacity', label: 'Krytie (%)', def: 45, min: 5, max: 100 }], plots: [],
+    label: () => 'Heatmapa objemu', calc: () => ({}) };
+  S.obheat = { name: 'Heatmapa knihy príkazov (naživo)', title: 'Limitné príkazy v knihe Binance – zbiera sa, kým je graf otvorený', cat: 'vol', pane: false, custom: 'obheat',
+    inputs: [{ k: 'rows', label: 'Riadkov', def: 90, min: 20, max: 300 }, { k: 'opacity', label: 'Krytie (%)', def: 70, min: 5, max: 100 }], plots: [],
+    label: () => 'Heatmapa knihy príkazov', calc: () => ({}) };
+
   const osc = (k, def) => { S[k] = { cat: 'osc', pane: true, ...def }; };
   osc('rsi', { name: 'RSI', title: 'Index relatívnej sily', inputs: [LEN(14), SRC, ...LEVELS(70, 30)],
     plots: [P('rsi', 'RSI', '#7e57c2'), LV(), F('bg', 'Pozadie medzi úrovňami', '#7e57c2', 8, ['=upper', '=lower'])],

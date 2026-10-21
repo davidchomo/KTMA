@@ -678,6 +678,7 @@ const NEXUS = (() => {
           return `<div class="nx-acc ${x === a ? 'on' : ''}" data-ac="${x.id}"><b>${esc(x.name)} ${sh ? `<span class="nx-shb">🔗 ${sh.role === 'owner' ? 'zdieľaný' : sh.role === 'trade' ? 'obchodujem' : 'sledujem'}</span>` : ''}</b><span class="priv">${usd(x.start + r)}</span>
             <small>${x.positions.length} otvorené · ${x.history.length} obchodov${sh ? ` · vlastník ${esc(sh.owner)}${(sh.members || []).length ? ' · ' + sh.members.map(m => `${esc(m.name)} (${m.role === 'trade' ? 'obchoduje' : 'sleduje'})`).join(', ') : ''}` : ''}</small>
             ${sh && sh.role === 'owner' ? `<div class="nx-codes">Kód na sledovanie <code data-copy="${sh.code_view}">${sh.code_view}</code> · na obchodovanie <code data-copy="${sh.code_trade}">${sh.code_trade}</code></div>` : ''}
+            ${sh && sh.role !== 'owner' && ctx.mirror ? `<div class="nx-codes"><button class="btn sm" data-acm="${esc(sh.owner)}">${ctx.mirroring() === sh.owner ? '⏹ Prestať sledovať graf' : `👁 Vidieť graf ${esc(sh.owner)} (indikátory, kresby, poznámky)`}</button></div>` : ''}
             <span class="nx-acc-b">${sh ? '' : `<button class="ib" data-acs="${x.id}" title="Zdieľať s kamarátom">🔗</button>`}<button class="ib" data-acr="${x.id}" title="Premenovať">✎</button>${S().accounts.length > 1 ? `<button class="ib" data-acd="${x.id}" title="Odstrániť účet">🗑</button>` : ''}</span></div>`; }).join('')}</div>
         <div class="nx-sub">Pripojiť sa k účtu kamaráta</div><div class="nx-new"><input class="idea-in" id="acCode" placeholder="Kód od kamaráta (napr. 3F9A1C2B)" style="flex:1"><button class="btn sm pri" id="acJoin">🔗 Pripojiť</button></div>
         <div class="muted" style="font-size:11px;margin-top:8px">Papierové (demo) účty – žiadne skutočné peniaze ani broker. Nové obchody idú na zvýraznený účet.</div>
@@ -700,7 +701,7 @@ const NEXUS = (() => {
         <div class="muted" style="font-size:11px;margin-top:6px">Robot kontroluje trh každých 30 s a koná raz za každú uzavretú sviečku daného timeframu. Beží, kým je stránka otvorená.</div>`; },
     ideas: () => '<div id="nxIdeaBox"></div>',
     fold: () => '<div id="nxFolders"></div>',
-    board: () => '<div class="bd-bar"><button class="btn sm" data-bd="note">＋ Poznámka</button><button class="btn sm" data-bd="list">＋ Zoznam úloh</button><span class="grow"></span><span class="muted" id="bdCount"></span></div><div class="bd-area" id="bdArea"></div>',
+    board: () => '<div class="bd-bar"><button class="btn sm" data-bd="note">＋ Poznámka</button><button class="btn sm" data-bd="list">＋ Zoznam úloh</button><span class="grow"></span><span class="muted bd-count"></span></div><div class="bd-area" id="bdArea"></div>',
   };
   const WIN_SIZE = { acc: [430, 560], pos: [760, 380], hist: [820, 560], bot: [820, 560], ideas: [480, 460], fold: [480, 520], board: [880, 600] };
   let histFilter = 'all';
@@ -843,6 +844,7 @@ const NEXUS = (() => {
         img.src = u;
       };
       const after = () => { ctx.save(); paint(); paintCards(); ctx.onTrades(true); };
+      $$('[data-acm]', el).forEach(x => x.onclick = () => { ctx.mirror(ctx.mirroring() === x.dataset.acm ? null : x.dataset.acm); paint(); });
       $$('[data-acs]', el).forEach(x => x.onclick = () => shareAccount(S().accounts.find(y => y.id === x.dataset.acs)).then(() => paint()));
       $$('[data-copy]', el).forEach(x => x.onclick = e => { e.stopPropagation(); navigator.clipboard && navigator.clipboard.writeText(x.dataset.copy); ctx.toast('📋 Kód skopírovaný: ' + x.dataset.copy); });
       $('#acJoin', el).onclick = () => { const c = $('#acCode', el).value.trim(); if (c) joinAccount(c).then(() => { paint(); paintCards(); ctx.onTrades(true); }); };
@@ -887,10 +889,11 @@ const NEXUS = (() => {
 
   // ---- board: sticky notes and to-do lists ---------------------------------------------------------------
   const BD_COLORS = ['#facc15', '#38bdf8', '#4ade80', '#f472b6', '#a78bfa', '#fb923c', '#94a3b8'];
-  function paintBoard() {
-    const area = $('#bdArea'); if (!area) return;
+  // the board can be open in the Nexus window and in the Social window at once: paint every copy
+  function paintBoard() { $$('.bd-area').forEach(paintBoardIn); }
+  function paintBoardIn(area) {
     const B = S().board, notes = B.notes;
-    const cnt = $('#bdCount'); if (cnt) { const items = notes.flatMap(n => n.items || []); cnt.textContent = `${notes.length} lístkov${items.length ? ` · úlohy ${items.filter(i => i.done).length}/${items.length}` : ''}`; }
+    const cnt = $('.bd-count', area.parentElement); if (cnt) { const items = notes.flatMap(n => n.items || []); cnt.textContent = `${notes.length} lístkov${items.length ? ` · úlohy ${items.filter(i => i.done).length}/${items.length}` : ''}`; }
     area.innerHTML = notes.map(n => { const it = n.items, done = it ? it.filter(i => i.done).length : 0;
       return `<div class="bd-note" data-n="${n.id}" style="left:${n.x}px;top:${n.y}px;width:${n.w}px;height:${n.h}px;--nc:${n.color}">
         <div class="bd-h" data-nd><input class="bd-t" value="${esc(n.title)}" data-nt><span class="bd-tools"><button data-nc title="Farba">◐</button><button data-ndel title="Zmazať">✕</button></span></div>
@@ -1042,6 +1045,7 @@ const NEXUS = (() => {
     chartLines: s => (ctx ? chartLines(s) : []), chartTrades: s => (ctx ? chartTrades(s) : []), chartMarkers: s => (ctx ? chartMarkers(s) : []),
     moveLine, removeLine,
     algoTrade,
+    renderBoard(el) { if (!ctx) return; el.innerHTML = BODY.board(); BIND.board(el); paintBoard(); },
     toggleTicket() { const P = PL(); P.open = !P.open; ctx.save(); paintTicket(); ctx.onTrades(); },
     chartChanged() { if (!ctx) return; lineSig = ''; paintCards(); },
   };
