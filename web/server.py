@@ -136,7 +136,11 @@ def _market_hours(sym: dict, tf: str, rows: list[list]) -> list[list]:
 @app.get("/api/meta")
 def meta():
     return {"symbols": [{"id": k, **{x: v[x] for x in ("name", "desc", "digits", "market", "ticker", "hours")}} for k, v in SYMBOLS.items()],
-            "timeframes": list(TIMEFRAMES), "alertTimeframes": CFG["alert_timeframes"]}
+            "timeframes": list(TIMEFRAMES), "alertTimeframes": CFG["alert_timeframes"],
+            # the scanner's trendline settings, so the in-browser auto lines are exactly the scanner's
+            "structure": CFG.get("structure", {}),
+            "minTouches": {"line": CFG.get("notify_filters", {}).get("min_line_touches", 3),
+                           "level": CFG.get("notify_filters", {}).get("min_level_touches", 2)}}
 
 
 @app.get("/api/candles")
@@ -249,6 +253,47 @@ def get_prefs(name: str):
 @app.put("/api/prefs/{name}")
 def put_prefs(name: str, value: dict = Body(...)):
     STORE.set_pref(f"web:{name.strip().lower()}", value)
+    return {"ok": True}
+
+
+# ---- chat: notes for the developers and trading ideas ------------------------------------------------
+STORE.conn.execute("""CREATE TABLE IF NOT EXISTS web_chat (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, author TEXT, kind TEXT, text TEXT,
+    symbol TEXT, timeframe TEXT, bar_time INTEGER, price REAL, created_at TEXT)""")
+STORE.conn.commit()
+CHAT_KINDS = ("msg", "dev", "idea", "bug")
+
+
+@app.get("/api/chat")
+def chat_list(after: int = 0, limit: int = Query(300, ge=1, le=1000)):
+    rows = STORE.conn.execute("SELECT * FROM (SELECT * FROM web_chat WHERE id > ? ORDER BY id DESC LIMIT ?) ORDER BY id",
+                              (after, limit)).fetchall()
+    return [dict(r) for r in rows]
+
+
+@app.post("/api/chat")
+def chat_post(msg: dict = Body(...)):
+    author, text = str(msg.get("author") or "").strip()[:40], str(msg.get("text") or "").strip()[:4000]
+    if not author or not text:
+        raise HTTPException(400, "chýba meno alebo text")
+    kind = msg.get("kind") if msg.get("kind") in CHAT_KINDS else "msg"
+    sym = msg.get("symbol") if msg.get("symbol") in SYMBOLS else None
+    tf = msg.get("timeframe") if msg.get("timeframe") in TIMEFRAMES else None
+    num = lambda k, t: t(msg[k]) if isinstance(msg.get(k), (int, float)) else None
+    cur = STORE.conn.execute(
+        "INSERT INTO web_chat (author, kind, text, symbol, timeframe, bar_time, price, created_at) VALUES (?,?,?,?,?,?,?,?)",
+        (author, kind, text, sym, tf, num("bar_time", int) if sym else None, num("price", float) if sym else None,
+         pd.Timestamp.now(tz="UTC").isoformat(timespec="seconds")))
+    STORE.conn.commit()
+    return dict(STORE.conn.execute("SELECT * FROM web_chat WHERE id=?", (cur.lastrowid,)).fetchone())
+
+
+@app.delete("/api/chat/{msg_id}")
+def chat_delete(msg_id: int, author: str):
+    n = STORE.conn.execute("DELETE FROM web_chat WHERE id=? AND lower(author)=lower(?)", (msg_id, author.strip())).rowcount
+    STORE.conn.commit()
+    if not n:
+        raise HTTPException(403, "zmazať môžeš iba vlastnú správu")
     return {"ok": True}
 
 

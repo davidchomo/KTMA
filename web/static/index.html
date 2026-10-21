@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Nexus</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M8 1l7 7-7 7-7-7z' fill='%232962ff'/%3E%3C/svg%3E">
-<link rel="stylesheet" href="static/app.css">
+<link rel="stylesheet" href="static/app.css?v=3">
 </head>
 <body class="tb-top">
 <div id="app">
@@ -15,7 +15,12 @@
     <button class="tbtn" id="bTf" title="Časový rámec"><span class="ic">⏱</span><span class="tx" id="tfLabel">5m</span><span class="car">▾</span></button>
     <button class="tbtn" id="bDraw" title="Kreslenie"><span class="ic">✎</span><span class="tx">Kreslenie</span><span class="car">▾</span></button>
     <button class="tbtn" id="bInd" title="Indikátory a vzory"><span class="ic">ƒx</span><span class="tx">Indikátory</span><span class="car">▾</span></button>
+    <button class="tbtn" id="bAuto" title="Auto trendové čiary a živé nápady (Alt+A)"><span class="ic">📐</span><span class="tx">Auto čiary</span><span class="car">▾</span></button>
+    <button class="tbtn" id="bReplay" title="Replay – zastaviť trh, skryť budúcnosť (Alt+R)"><span class="ic">⏯</span><span class="tx">Replay</span><span class="car">▾</span></button>
+    <button class="tbtn" id="bScan" title="Skenovať trh – možné vstupy"><span class="ic">🔍</span><span class="tx">Skenovať</span><span class="car"></span></button>
     <button class="tbtn" id="bIdea" title="Obchodný nápad a labelovanie"><span class="ic">💡</span><span class="tx">Nápad</span><span class="car"></span></button>
+    <button class="tbtn" id="bChat" title="Chat – poznámky pre vývojárov a nápady"><span class="ic">💬</span><span class="tx">Chat</span><span class="car"><i id="chatBadge" class="badge"></i></span></button>
+    <button class="tbtn" id="bStyle" title="Štýly a pozadia (ročné obdobia, vlastný obrázok, témy)"><span class="ic">🖼</span><span class="tx">Štýly</span><span class="car"></span></button>
     <button class="tbtn" id="bSettings" title="Nastavenia grafu"><span class="ic">⚙</span><span class="tx">Nastavenia</span><span class="car"></span></button>
     <button class="tbtn" id="bPanel" title="Poloha panelu"><span class="ic">⇅</span><span class="tx">Panel</span><span class="car">▾</span></button>
     <button class="tbtn" id="bFull" title="Celá obrazovka (F11)"><span class="ic" id="fullIcon">⛶</span><span class="tx" id="fullLabel">Celá obr.</span><span class="car"></span></button>
@@ -23,11 +28,13 @@
     <span id="status" class="status" title="Stav dát"><i></i><span id="statusText">…</span></span>
   </nav>
   <main id="chartWrap">
+    <div id="bgLayer"></div><div id="bgDim"></div>
     <div id="chart"></div>
     <div id="legend" class="no-chart"><div id="ohlc"></div><div id="studies"></div></div>
     <div id="hint" class="no-chart"></div>
     <div id="drawbar" class="no-chart"></div>
     <div id="histBar" class="no-chart"><span id="histText"></span><button class="btn sm" id="backLive">↩ Späť na živý graf</button></div>
+    <div id="replayBar" class="no-chart"></div>
     <button id="showToolbar" class="no-chart" title="Zobraziť panel">☰</button>
   </main>
 </div>
@@ -37,13 +44,22 @@
     <button class="ib" id="ideaMin" title="Zbaliť">–</button><button class="ib" id="ideaClose" title="Zavrieť">✕</button></header>
   <div id="ideaBody"></div>
 </section>
+<section id="chatWin" class="no-chart">
+  <header id="chatHead"><span>💬 Chat</span><span class="grow"></span>
+    <select id="chatFilter" class="sm" title="Zobraziť"><option value="all">Všetko</option><option value="msg">💬 Správy</option><option value="dev">🛠 Pre vývojárov</option><option value="idea">💡 Nápady</option><option value="bug">🐞 Chyby</option></select>
+    <button class="ib" id="chatMin" title="Zbaliť">–</button><button class="ib" id="chatClose" title="Zavrieť">✕</button></header>
+  <div id="chatBody"></div>
+  <div id="chatFoot"></div>
+</section>
 <div id="pop" class="no-chart"></div>
 <div id="modal" class="no-chart"></div>
 <div id="toast"></div>
 <script src="lib/lightweight-charts-5.2.1.js"></script>
-<script src="static/studies.js"></script>
-<script src="static/ui.js"></script>
-<script src="static/drawings.js"></script>
-<script src="static/app.js"></script>
+<script src="static/studies.js?v=3"></script>
+<script src="static/ui.js?v=3"></script>
+<script src="static/drawings.js?v=3"></script>
+<script src="static/autotl.js?v=3"></script>
+<script src="static/backgrounds.js?v=3"></script>
+<script src="static/app.js?v=3"></script>
 </body>
 </html>

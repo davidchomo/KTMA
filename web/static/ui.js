@@ -63,7 +63,60 @@ const UI = (() => {
     m.innerHTML = `<div class="dlg ${cls || ''}">${html}</div>`;
     m.classList.add('open');
     cancelFn = onCancel || null;
-    return m.firstElementChild;
+    const d = m.firstElementChild;
+    sizable(d);
+    return d;
+  }
+  // Every dialog: drag by the header, resize from the corner, A− / A+ zoom and maximise; remembered per dialog.
+  function sizable(d) {
+    const head = $('.dlg-h', d);
+    if (!head) return;
+    const key = 'nx-dlg:' + ((d.className.split(' ')[1] || '') + ':' + (head.firstElementChild ? head.firstElementChild.textContent : '')).trim().slice(0, 60);
+    const st = LS.get(key, {});
+    const apply = () => {
+      d.classList.toggle('max', !!st.max);
+      d.style.zoom = st.zoom && st.zoom !== 100 ? st.zoom / 100 : '';
+      if (st.max) { d.style.left = d.style.top = d.style.width = d.style.height = ''; d.style.position = ''; return; }
+      if (st.w) { d.style.width = st.w + 'px'; d.style.height = st.h + 'px'; d.style.maxHeight = 'none'; }
+      if (st.x !== undefined) { d.style.position = 'fixed'; d.style.left = Math.max(0, Math.min(innerWidth - 120, st.x)) + 'px'; d.style.top = Math.max(0, Math.min(innerHeight - 40, st.y)) + 'px'; }
+    };
+    const store = () => LS.set(key, st);
+    const close = head.querySelector('[data-x], [data-cancel]');
+    const tools = document.createElement('span');
+    tools.className = 'dlg-tools';
+    tools.innerHTML = '<button class="ib" data-z="-" title="Zmenšiť písmo">A−</button><button class="ib" data-z="+" title="Zväčšiť písmo">A+</button><button class="ib" data-z="max" title="Maximalizovať / obnoviť">⤢</button><button class="ib" data-z="reset" title="Pôvodná veľkosť a poloha">↺</button>';
+    head.insertBefore(tools, close || null);
+    tools.addEventListener('click', e => {
+      const z = e.target.dataset.z; if (!z) return;
+      if (z === '+' || z === '-') st.zoom = Math.max(70, Math.min(180, (st.zoom || 100) + (z === '+' ? 10 : -10)));
+      else if (z === 'max') st.max = !st.max;
+      else { for (const k in st) delete st[k]; d.removeAttribute('style'); }
+      store(); apply();
+    });
+    let drag = null;
+    head.addEventListener('pointerdown', e => {
+      if (e.target.closest('button, input, select') || st.max) return;
+      const r = d.getBoundingClientRect(), zm = (st.zoom || 100) / 100;
+      drag = { dx: e.clientX - r.left, dy: e.clientY - r.top, zm }; head.setPointerCapture(e.pointerId); e.preventDefault();
+    });
+    head.addEventListener('pointermove', e => { if (!drag) return; st.x = (e.clientX - drag.dx) / drag.zm; st.y = (e.clientY - drag.dy) / drag.zm; apply(); });
+    head.addEventListener('pointerup', () => { if (drag) { drag = null; store(); } });
+    head.addEventListener('dblclick', e => { if (!e.target.closest('button')) { st.max = !st.max; store(); apply(); } });
+    let first = true;
+    new ResizeObserver(() => {
+      if (first) { first = false; return; }
+      if (st.max || !d.isConnected) return;
+      const w = Math.round(d.offsetWidth), h = Math.round(d.offsetHeight);
+      if (Math.abs((st.w || 0) - w) > 2 || Math.abs((st.h || 0) - h) > 2) {
+        if (!d.dataset.user) return;               // only sizes the person set with the corner handle
+        st.w = w; st.h = h; clearTimeout(d._t); d._t = setTimeout(store, 300);
+      }
+    }).observe(d);
+    d.addEventListener('pointerdown', e => {      // the native resize corner (bottom-right 16 px)
+      const r = d.getBoundingClientRect();
+      if (e.clientX > r.right - 18 && e.clientY > r.bottom - 18) d.dataset.user = 1;
+    });
+    apply();
   }
   function closeDialog() { closePop(); const m = $('#modal'); m.classList.remove('open'); m.innerHTML = ''; cancelFn = null; }
   function cancelDialog() { if (cancelFn) cancelFn(); else closeDialog(); }
