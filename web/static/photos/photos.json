@@ -119,5 +119,188 @@
   "license": "CC BY 4.0",
   "licenseUrl": "https://creativecommons.org/licenses/by/4.0",
   "source": "https://commons.wikimedia.org/wiki/File:Sand_Dunes_sa.jpg"
+ },
+ {
+  "id": "space-earth-aurora",
+  "name": "Vesmír · polárna žiara nad Zemou",
+  "season": "Vesmír",
+  "file": "photos/space-earth-aurora.jpg",
+  "thumb": "photos/space-earth-aurora.thumb.jpg",
+  "author": "NASA",
+  "license": "Public domain",
+  "source": "https://commons.wikimedia.org/wiki/File:Image_of_aurora_at_night_from_the_ISS_02.jpg"
+ },
+ {
+  "id": "space-earth-night",
+  "name": "Vesmír · nočná Zem a Mesiac",
+  "season": "Vesmír",
+  "file": "photos/space-earth-night.jpg",
+  "thumb": "photos/space-earth-night.thumb.jpg",
+  "author": "NASA",
+  "license": "Public domain",
+  "source": "https://commons.wikimedia.org/wiki/File:ISS-39_Moscow,_Aurora_borealis_and_Moon.jpg"
+ },
+ {
+  "id": "space-carina",
+  "name": "Vesmír · hmlovina Carina",
+  "season": "Vesmír",
+  "file": "photos/space-carina.jpg",
+  "thumb": "photos/space-carina.thumb.jpg",
+  "author": "Dylan O'Donnell, deography.com",
+  "license": "CC0",
+  "licenseUrl": "http://creativecommons.org/publicdomain/zero/1.0/deed.en",
+  "source": "https://commons.wikimedia.org/wiki/File:Carina_Nebula_in_Hubble_Palette_Rasa_8_ORIGINAL_unsharpened.jpg"
+ },
+ {
+  "id": "storm-lightning-hill",
+  "name": "Búrka · blesky nad kopcom",
+  "season": "Búrky",
+  "file": "photos/storm-lightning-hill.jpg",
+  "thumb": "photos/storm-lightning-hill.thumb.jpg",
+  "author": "ESO/Gerhard Hüdepohl",
+  "license": "CC BY 4.0",
+  "licenseUrl": "https://creativecommons.org/licenses/by/4.0",
+  "source": "https://commons.wikimedia.org/wiki/File:Thunderbolts_and_lightning.jpg"
+ },
+ {
+  "id": "storm-lightning-sky",
+  "name": "Búrka · rozvetvené blesky",
+  "season": "Búrky",
+  "file": "photos/storm-lightning-sky.jpg",
+  "thumb": "photos/storm-lightning-sky.thumb.jpg",
+  "author": "Yuriy Stolypin",
+  "license": "CC BY 4.0",
+  "licenseUrl": "https://creativecommons.org/licenses/by/4.0",
+  "source": "https://commons.wikimedia.org/wiki/File:Fury_of_the_sky.jpg"
+ },
+ {
+  "id": "storm-lightning-dark",
+  "name": "Búrka · blesk v tme",
+  "season": "Búrky",
+  "file": "photos/storm-lightning-dark.jpg",
+  "thumb": "photos/storm-lightning-dark.thumb.jpg",
+  "author": "A Guy Named Nyal",
+  "license": "CC BY-SA 2.0",
+  "licenseUrl": "https://creativecommons.org/licenses/by-sa/2.0",
+  "source": "https://commons.wikimedia.org/wiki/File:Lightning_In_The_Blue_Hour.jpg"
+ },
+ {
+  "id": "storm-supercell",
+  "name": "Búrka · supercela v Kansase",
+  "season": "Búrky",
+  "file": "photos/storm-supercell.jpg",
+  "thumb": "photos/storm-supercell.thumb.jpg",
+  "author": "NOAA National Severe Storms Laboratory",
+  "license": "Public domain",
+  "source": "https://commons.wikimedia.org/wiki/File:Supercell-thunderstorm-in-Kansas.jpg"
+ },
+ {
+  "id": "storm-supercell-road",
+  "name": "Búrka · supercela nad poľom",
+  "season": "Búrky",
+  "file": "photos/storm-supercell-road.jpg",
+  "thumb": "photos/storm-supercell-road.thumb.jpg",
+  "author": "Rollingskyphoto",
+  "license": "CC BY 4.0",
+  "licenseUrl": "https://creativecommons.org/licenses/by/4.0",
+  "source": "https://commons.wikimedia.org/wiki/File:Supercell_with_bell-bottom_updraft.jpg"
+ },
+ {
+  "id": "storm-shelf",
+  "name": "Búrka · húľavový mrak nad morom",
+  "season": "Búrky",
+  "file": "photos/storm-shelf.jpg",
+  "thumb": "photos/storm-shelf.thumb.jpg",
+  "author": "Šime Barešić from Drage, Croatia",
+  "license": "CC0",
+  "licenseUrl": "http://creativecommons.org/publicdomain/zero/1.0/deed.en",
+  "source": "https://commons.wikimedia.org/wiki/File:Shelf_cloud_-_Flickr_-_otrow_photography.jpg"
+ },
+ {
+  "id": "storm-tornado",
+  "name": "Extrémne · tornádo F5",
+  "season": "Búrky",
+  "file": "photos/storm-tornado.jpg",
+  "thumb": "photos/storm-tornado.thumb.jpg",
+  "author": "Justin Hobson (Justin1569 at English Wikipedia)",
+  "license": "CC BY-SA 3.0",
+  "licenseUrl": "http://creativecommons.org/licenses/by-sa/3.0/",
+  "source": "https://commons.wikimedia.org/wiki/File:F5_tornado_Elie_Manitoba_2007.jpg"
+ },
+ {
+  "id": "forest-mist",
+  "name": "Les · vrcholky smrekov v hmle",
+  "season": "Lesy a kopce",
+  "file": "photos/forest-mist.jpg",
+  "thumb": "photos/forest-mist.thumb.jpg",
+  "author": "capt_tain Tom",
+  "license": "CC BY 2.0",
+  "licenseUrl": "https://creativecommons.org/licenses/by/2.0",
+  "source": "https://commons.wikimedia.org/wiki/File:Forest_in_fog,_Alaska_(12063016686).jpg"
+ },
+ {
+  "id": "hills-mist",
+  "name": "Kopce · hrebene v opare",
+  "season": "Lesy a kopce",
+  "file": "photos/hills-mist.jpg",
+  "thumb": "photos/hills-mist.thumb.jpg",
+  "author": "Jb Lardizabal",
+  "license": "CC BY 3.0",
+  "licenseUrl": "https://creativecommons.org/licenses/by/3.0",
+  "source": "https://commons.wikimedia.org/wiki/File:Mountains_And_Mist_(118676755).jpeg"
+ },
+ {
+  "id": "tatra-dawn",
+  "name": "Zima · Tatry pred východom slnka",
+  "season": "Zima",
+  "file": "photos/tatra-dawn.jpg",
+  "thumb": "photos/tatra-dawn.thumb.jpg",
+  "author": "Maciej Kraus",
+  "license": "CC BY 2.0",
+  "licenseUrl": "https://creativecommons.org/licenses/by/2.0",
+  "source": "https://commons.wikimedia.org/wiki/File:Winter_view_in_Tatra_mountains_-_before_sunrise_(24506164452).jpg"
+ },
+ {
+  "id": "snow-night-valley",
+  "name": "Zima · zasnežené údolie v noci",
+  "season": "Zima",
+  "file": "photos/snow-night-valley.jpg",
+  "thumb": "photos/snow-night-valley.thumb.jpg",
+  "author": "Billjones94",
+  "license": "CC BY-SA 4.0",
+  "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
+  "source": "https://commons.wikimedia.org/wiki/File:Night_view_of_the_snowy_mountains_in_Himachal_Pradesh,_photographed_on_June_3,_2023.jpg"
+ },
+ {
+  "id": "snow-crest",
+  "name": "Zima · zasnežený hrebeň, tmavá obloha",
+  "season": "Zima",
+  "file": "photos/snow-crest.jpg",
+  "thumb": "photos/snow-crest.thumb.jpg",
+  "author": "Nathan Anderson nathananderson",
+  "license": "CC0",
+  "licenseUrl": "http://creativecommons.org/publicdomain/zero/1.0/deed.en",
+  "source": "https://commons.wikimedia.org/wiki/File:Mountain_crest_at_night_(Unsplash).jpg"
+ },
+ {
+  "id": "snow-night-blue",
+  "name": "Zima · modrá noc v horách",
+  "season": "Zima",
+  "file": "photos/snow-night-blue.jpg",
+  "thumb": "photos/snow-night-blue.thumb.jpg",
+  "author": "Great Sand Dunes National Park and Preserve",
+  "license": "Public domain",
+  "source": "https://commons.wikimedia.org/wiki/File:Snowy_Night,_Forest,_Dunes,_and_Cleveland_Peak_(53406270337).jpg"
+ },
+ {
+  "id": "snow-forest",
+  "name": "Zima · zamrznutý les na kopci",
+  "season": "Zima",
+  "file": "photos/snow-forest.jpg",
+  "thumb": "photos/snow-forest.thumb.jpg",
+  "author": "Les Anderson lesanderson",
+  "license": "CC0",
+  "licenseUrl": "http://creativecommons.org/publicdomain/zero/1.0/deed.en",
+  "source": "https://commons.wikimedia.org/wiki/File:Frozen_winter_forest_(Unsplash).jpg"
  }
 ]

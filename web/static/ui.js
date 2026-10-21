@@ -102,21 +102,33 @@ const UI = (() => {
     head.addEventListener('pointermove', e => { if (!drag) return; st.x = (e.clientX - drag.dx) / drag.zm; st.y = (e.clientY - drag.dy) / drag.zm; apply(); });
     head.addEventListener('pointerup', () => { if (drag) { drag = null; store(); } });
     head.addEventListener('dblclick', e => { if (!e.target.closest('button')) { st.max = !st.max; store(); apply(); } });
-    let first = true;
-    new ResizeObserver(() => {
-      if (first) { first = false; return; }
-      if (st.max || !d.isConnected) return;
-      const w = Math.round(d.offsetWidth), h = Math.round(d.offsetHeight);
-      if (Math.abs((st.w || 0) - w) > 2 || Math.abs((st.h || 0) - h) > 2) {
-        if (!d.dataset.user) return;               // only sizes the person set with the corner handle
-        st.w = w; st.h = h; clearTimeout(d._t); d._t = setTimeout(store, 300);
-      }
-    }).observe(d);
-    d.addEventListener('pointerdown', e => {      // the native resize corner (bottom-right 16 px)
-      const r = d.getBoundingClientRect();
-      if (e.clientX > r.right - 18 && e.clientY > r.bottom - 18) d.dataset.user = 1;
-    });
+    edges(d, r => { const zm = (st.zoom || 100) / 100; st.x = r.x / zm; st.y = r.y / zm; st.w = r.w / zm; st.h = r.h / zm; apply(); }, store);
     apply();
+  }
+  // ---- resize handles on every edge and corner (windows and dialogs) --------------------------------
+  // onMove({x, y, w, h}) gets the new screen rectangle, onEnd() runs when the mouse is released.
+  function edges(el, onMove, onEnd) {
+    for (const dir of ['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw']) {
+      const h = document.createElement('div');
+      h.className = 'rz rz-' + dir;
+      el.appendChild(h);
+      h.addEventListener('pointerdown', e => {
+        if (el.classList.contains('max') || el.classList.contains('min')) return;
+        e.preventDefault(); e.stopPropagation(); h.setPointerCapture(e.pointerId);
+        const r = el.getBoundingClientRect(), x0 = e.clientX, y0 = e.clientY;
+        const move = ev => {
+          const dx = ev.clientX - x0, dy = ev.clientY - y0;
+          let x = r.left, y = r.top, w = r.width, hh = r.height;
+          if (dir.includes('e')) w = Math.max(260, Math.min(innerWidth - r.left, r.width + dx));
+          if (dir.includes('s')) hh = Math.max(100, Math.min(innerHeight - r.top, r.height + dy));
+          if (dir.includes('w')) { w = Math.max(260, Math.min(r.right, r.width - dx)); x = r.right - w; }
+          if (dir.includes('n')) { hh = Math.max(100, Math.min(r.bottom, r.height - dy)); y = r.bottom - hh; }
+          onMove({ x: Math.round(x), y: Math.round(y), w: Math.round(w), h: Math.round(hh) });
+        };
+        const up = () => { h.removeEventListener('pointermove', move); h.removeEventListener('pointerup', up); if (onEnd) onEnd(); };
+        h.addEventListener('pointermove', move); h.addEventListener('pointerup', up);
+      });
+    }
   }
   function closeDialog() { closePop(); const m = $('#modal'); m.classList.remove('open'); m.innerHTML = ''; cancelFn = null; }
   function cancelDialog() { if (cancelFn) cancelFn(); else closeDialog(); }
@@ -171,6 +183,6 @@ const UI = (() => {
     t.textContent = text; t.classList.add('show');
     clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), ms);
   }
-  return { $, $$, esc, LS, PALETTE, openMenu, closeMenu, place, openDialog, closeDialog, cancelDialog, dialogOpen,
+  return { $, $$, esc, LS, PALETTE, openMenu, closeMenu, place, openDialog, closeDialog, cancelDialog, dialogOpen, edges,
            colorPopover, closePop, swatch, opts, toast, rgba };
 })();

@@ -51,10 +51,12 @@
   if (!Array.isArray(S.studies)) S.studies = [{ type: 'volume' }];
   let studies = S.studies.map(KS.normalize).filter(Boolean);
   let syncT = null;
+  let hist = [], hpos = -1, histT = null, restoring = false;
   function save() {
     S.studies = studies.filter(s => !s.temp).map(({ temp, ...s }) => s);
     S.savedAt = Date.now();
     LS.set('nx2', S);
+    record();
     if (S.labeler) { clearTimeout(syncT); syncT = setTimeout(() => fetch(`api/prefs/${encodeURIComponent(S.labeler)}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(S) }).catch(() => {}), 1500); }
   }
   async function pullPrefs(name) {
@@ -449,7 +451,7 @@
 
   // ---- loading and live data ---------------------------------------------------------------------
   let ws = null, wsTimer = null, refreshTimer = null;
-  function setStatus(kind, text) { const s = $('#status'); s.className = 'status ' + kind; $('#statusText').textContent = text; }
+  function setStatus(kind, text) { const s = $('#status'); s.className = 'status ' + kind; $('#statusText').textContent = text; s.title = 'Stav dát: ' + text; }
   async function load() {
     closeLive();
     olderDone = false;
@@ -521,6 +523,36 @@
     $('#typeLabel').textContent = t[1]; $('#typeIcon').textContent = t[2];
     $('#tfLabel').textContent = S.tf;
   }
+  // ---- undo / redo: drawings, indicators, symbol, timeframe, chart type, look… (not window positions) ----
+  const HIST_SKIP = ['savedAt', 'chat', 'news', 'idea', 'labeler', 'legendOpen', 'lastToolbar'];
+  function snap() { const o = { ...S }; HIST_SKIP.forEach(k => delete o[k]); return JSON.stringify(o, (k, v) => (k[0] === '_' ? undefined : v)); }
+  function pushHist() {
+    clearTimeout(histT); histT = null;
+    const s = snap(); if (s === hist[hpos]) return;
+    hist = hist.slice(0, hpos + 1); hist.push(s);
+    if (hist.length > 150) hist.shift();
+    hpos = hist.length - 1; paintHist();
+  }
+  function record() { if (restoring || hpos < 0) return; clearTimeout(histT); histT = setTimeout(pushHist, 400); }
+  function paintHist() { $('#bUndo').disabled = hpos <= 0; $('#bRedo').disabled = hpos >= hist.length - 1; }
+  function stepHist(d) {
+    if (histT) pushHist();
+    const to = hpos + d; if (to < 0 || to >= hist.length) return;
+    const before = S;
+    restoring = true;
+    S = merge(DEF, JSON.parse(hist[to]));
+    HIST_SKIP.forEach(k => { if (k in before) S[k] = before[k]; });   // the same objects: the windows keep references to them
+    studies = S.studies.map(KS.normalize).filter(Boolean);
+    hpos = to; save();
+    applyPanel(); applyBg(); applyToolbar();
+    if (['symbol', 'tf', 'hours', 'bars'].some(k => before[k] !== S[k])) { exitReplay(); view = { mode: 'live' }; alertMark = null; ideaPos = null; load(); }
+    else { Object.keys(tzFmt).forEach(z => delete tzFmt[z]); buildChart((S.type === 'renko') !== (before.type === 'renko') ? null : undefined); }
+    restoring = false; paintHist();
+    toast(d < 0 ? '↶ Späť o krok' : '↷ Znova (krok dopredu)', 900);
+  }
+  $('#bUndo').onclick = () => stepHist(-1);
+  $('#bRedo').onclick = () => stepHist(1);
+
   function setAndReload(changes) { Object.assign(S, changes); save(); applyToolbar(); exitReplay(); view = { mode: 'live' }; alertMark = null; ideaPos = null; load(); }
 
   $('#bSymbol').onclick = e => openMenu(e.currentTarget, META.symbols.map(s => `<div class="it ${s.id === S.symbol ? 'on' : ''}" data-s="${s.id}"><span class="ic">◆</span><span class="grow">${esc(s.name)}<br><small>${esc(s.desc)}</small></span></div>`).join(''),
@@ -547,14 +579,9 @@
       });
     }, { side: side(), cls: 'draw' });
   };
-  $('#bPanel').onclick = e => openMenu(e.currentTarget, [['top', '⬆', 'Hore'], ['bottom', '⬇', 'Dole'], ['left', '⬅', 'Vľavo (zboku)'], ['right', '➡', 'Vpravo (zboku)'], ['hidden', '🙈', 'Skryť (☰ alebo Alt+P ho vráti)']]
-    .map(([k, ic, n]) => `<div class="it ${S.toolbar === k ? 'on' : ''}" data-p="${k}"><span class="ic">${ic}</span><span class="grow">${n}</span></div>`).join('') +
-    '<div class="sep"></div><div class="it" data-look><span class="ic">🎨</span><span class="grow">Vzhľad panelu… (veľkosť, písmo, farby)</span></div>',
-    m => { $$('[data-p]', m).forEach(x => x.onclick = () => { closeMenu(); if (x.dataset.p === 'hidden') S.lastToolbar = S.toolbar; S.toolbar = x.dataset.p; save(); applyToolbar(); });
-           $('[data-look]', m).onclick = () => { closeMenu(); panelDialog(); }; }, { side: side() });
   $('#showToolbar').onclick = () => { S.toolbar = S.lastToolbar && S.lastToolbar !== 'hidden' ? S.lastToolbar : 'top'; save(); applyToolbar(); };
   $('#bFull').onclick = () => (document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen().catch(() => {}));
-  document.addEventListener('fullscreenchange', () => { $('#fullIcon').textContent = document.fullscreenElement ? '🗗' : '⛶'; $('#fullLabel').textContent = document.fullscreenElement ? 'Ukončiť' : 'Celá obr.'; });
+  document.addEventListener('fullscreenchange', () => { $('#fullIcon').textContent = document.fullscreenElement ? '🗗' : '⛶'; $('#bFull').title = document.fullscreenElement ? 'Ukončiť celú obrazovku' : 'Celá obrazovka (F11)'; });
   $('#backLive').onclick = () => { exitReplay(); view = { mode: 'live' }; alertMark = null; load(); };
 
   // ---- indicator menu (search, favourites, studies, patterns, templates, on chart) -------------------
@@ -715,6 +742,18 @@
       renko: `<div class="fld"><span>Veľkosť tehly</span><select data-k="renko.method">${opts([['ATR (automaticky)', 'atr'], ['Pevná cena', 'fixed'], ['Percento ceny', 'pct']], R.method)}</select></div>
         <div class="fld"><span>ATR perióda</span>${num('renko.atr', R.atr, 1, 500)}</div><div class="fld"><span>Pevná veľkosť</span>${num('renko.box', R.box, 0.0001, 100000, 'any')}</div>
         <div class="fld"><span>Percento</span>${num('renko.pct', R.pct, 0.001, 50, 'any')}</div><div class="fld">${cb('renko.wicks', R.wicks, 'Knôty')}</div>`,
+      panel: (() => { const P = S.panel, rng = (k, min, max) => `<span class="op" style="width:250px"><input type="range" min="${min}" max="${max}" data-pl="${k}" value="${P[k]}"><b>${P[k]} px</b></span>`;
+        return `<div class="sec2">Poloha panelu</div>
+        <div class="fld"><span class="ctl" style="flex-wrap:wrap">${[['top', '⬆ Hore'], ['bottom', '⬇ Dole'], ['left', '⬅ Vľavo'], ['right', '➡ Vpravo'], ['hidden', '🙈 Skryť']].map(([k, n]) => `<button class="btn sm ${S.toolbar === k ? 'pri' : ''}" data-pos="${k}">${n}</button>`).join('')}</span></div>
+        <div class="muted" style="font-size:11px">Skrytý panel vrátiš tlačidlom ☰ v rohu grafu alebo Alt+P.</div>
+        <div class="sec2">Vzhľad panelu</div>
+        <div class="fld"><span>Šírka tlačidla</span>${rng('w', 40, 240)}</div><div class="fld"><span>Výška panelu</span>${rng('h', 22, 56)}</div>
+        <div class="fld"><span>Veľkosť písma</span>${rng('fs', 9, 22)}</div>
+        <div class="fld"><span>Písmo</span><select data-pl="font">${opts(FONTS, P.font)}</select></div>
+        <div class="fld"><span>Zobraziť</span><select data-pl="show">${opts([['Ikona + text', 'both'], ['Iba ikony', 'icons'], ['Iba text', 'text']], P.show)}</select></div>
+        <div class="fld"><span>Pozadie panelu</span>${swatch('pbg', P.bg, P.opacity)}</div><div class="fld"><span>Text</span>${swatch('ptext', P.text)}</div>
+        <div class="fld"><span>Zvýraznenie (aktívne tlačidlá, výber)</span>${swatch('paccent', P.accent)}</div>
+        <div class="fld"><span>Vzhľad panelu na predvolený</span><button class="btn sm" data-preset>Predvolené</button></div>`; })(),
       data: `<div class="fld">${cb('hours', S.hours, 'Zlato a striebro: iba obchodné hodiny (bez víkendu a dennej pauzy)')}</div>
         <div class="fld"><span>Sviečok načítať</span>${num('bars', S.bars, 200, 5000, 100)}</div>
         <div class="fld"><span>Tvoje meno (nastavenia na všetkých zariadeniach)</span><input type="text" data-k="labeler" value="${esc(S.labeler)}"></div>
@@ -723,9 +762,16 @@
     const set = (path, v) => { const ks = path.split('.'); let o = S; while (ks.length > 1) o = o[ks.shift()]; o[ks[0]] = v; };
     const paint = () => {
       const d = openDialog(`<div class="dlg-h"><span>Nastavenia grafu</span><button class="ib" data-x>✕</button></div><div class="dlg-b">
-        <div class="tabs">${[['bars', 'Sviečky'], ['canvas', 'Plátno'], ['legend', 'Legenda'], ['scale', 'Mierka'], ['cross', 'Kurzor'], ['time', 'Čas'], ['renko', 'Renko'], ['data', 'Dáta']].map(([k, n]) => `<span class="tab ${tab === k ? 'on' : ''}" data-tab="${k}">${n}</span>`).join('')}</div>${body()}</div>
+        <div class="tabs">${[['bars', 'Sviečky'], ['canvas', 'Plátno'], ['legend', 'Legenda'], ['scale', 'Mierka'], ['cross', 'Kurzor'], ['time', 'Čas'], ['renko', 'Renko'], ['panel', 'Panel'], ['data', 'Dáta']].map(([k, n]) => `<span class="tab ${tab === k ? 'on' : ''}" data-tab="${k}">${n}</span>`).join('')}</div>${body()}</div>
         <div class="dlg-f"><button class="btn" data-reset>Predvolené</button><span class="grow"></span><button class="btn pri" data-x>Hotovo</button></div>`, null, 'wide');
       $$('[data-tab]', d).forEach(x => x.onclick = () => { tab = x.dataset.tab; paint(); });
+      const P = S.panel;
+      $$('[data-pos]', d).forEach(x => x.onclick = () => { if (x.dataset.pos === 'hidden') S.lastToolbar = S.toolbar; S.toolbar = x.dataset.pos; save(); applyToolbar(); paint(); });
+      $$('[data-pl]', d).forEach(x => x[x.type === 'range' ? 'oninput' : 'onchange'] = () => { const k = x.dataset.pl; P[k] = x.type === 'range' ? +x.value : x.value;
+        if (x.type === 'range') x.nextElementSibling.textContent = `${P[k]} px`; save(); applyPanel(); });
+      [['pbg', 'bg', 'opacity', {}], ['ptext', 'text', '_ot', { noOpacity: true }], ['paccent', 'accent', '_oa', { noOpacity: true }]].forEach(([id, color, opacity, o]) => {
+        const b = $(`[data-sw=${id}]`, d); if (b) b.onclick = () => colorPopover(b, P, o, () => { save(); applyPanel(); }, { color, opacity }); });
+      const pr = $('[data-preset]', d); if (pr) pr.onclick = () => { S.panel = { ...DEF.panel }; save(); applyPanel(); paint(); };
       $$('[data-k]', d).forEach(x => x.onchange = async () => {
         const k = x.dataset.k, v = x.type === 'checkbox' ? x.checked : x.type === 'number' || x.tagName === 'SELECT' && /^-?\d+(\.\d+)?$/.test(x.value) ? +x.value : x.value;
         set(k, v); save();
@@ -1329,19 +1375,33 @@
   $('#chatClose').onclick = () => toggleChat(false);
   $('#chatMin').onclick = () => chatEl.classList.toggle('min');
   $('#chatFilter').onchange = e => { S.chat.filter = e.target.value; save(); renderChatList(); };
-  // floating windows (idea, chat): drag by the header, remember position and size
+  // floating windows (idea, chat, news): drag by the header, resize from any edge or corner, A− / A+ text size,
+  // maximise; position, size and zoom are remembered
   function placeWin(w, st) {
+    w.classList.toggle('max', !!st.max);
+    const zoom = st.zoom && st.zoom !== 100 ? st.zoom / 100 : '';
+    [...w.children].forEach(c => { if (c.tagName !== 'HEADER' && !c.classList.contains('rz')) c.style.zoom = zoom; });
     if (st.x !== null && st.x !== undefined) { w.style.left = Math.max(0, Math.min(innerWidth - 80, st.x)) + 'px'; w.style.top = Math.max(0, Math.min(innerHeight - 40, st.y)) + 'px'; w.style.right = 'auto'; w.style.bottom = 'auto'; }
-    if (st.w) { w.style.width = st.w + 'px'; w.style.height = st.h + 'px'; w.style.maxHeight = 'none'; }
+    if (st.w) { w.style.width = Math.min(st.w, innerWidth) + 'px'; w.style.height = Math.min(st.h, innerHeight) + 'px'; w.style.maxHeight = 'none'; }
   }
   function dragWin(w, head, st) {
     let d = null;
-    head.addEventListener('pointerdown', e => { if (e.target.closest('button, select, input')) return; const r = w.getBoundingClientRect(); d = { x: e.clientX - r.left, y: e.clientY - r.top }; e.preventDefault(); });
+    head.addEventListener('pointerdown', e => { if (e.target.closest('button, select, input') || st.max) return; const r = w.getBoundingClientRect(); d = { x: e.clientX - r.left, y: e.clientY - r.top }; e.preventDefault(); });
     window.addEventListener('pointermove', e => { if (!d) return; st.x = e.clientX - d.x; st.y = e.clientY - d.y; placeWin(w, st); });
     window.addEventListener('pointerup', () => { if (d) { d = null; save(); } });
-    let first = true;
-    new ResizeObserver(() => { if (first || !w.classList.contains('open') || w.classList.contains('min')) { first = false; return; }
-      const r = w.getBoundingClientRect(); if (Math.abs((st.w || 0) - r.width) > 2 || Math.abs((st.h || 0) - r.height) > 2) { st.w = Math.round(r.width); st.h = Math.round(r.height); clearTimeout(w._t); w._t = setTimeout(save, 400); } }).observe(w);
+    head.addEventListener('dblclick', e => { if (!e.target.closest('button, select, input')) { st.max = !st.max; placeWin(w, st); save(); } });
+    UI.edges(w, r => { Object.assign(st, r); placeWin(w, st); }, save);
+    const tools = document.createElement('span');
+    tools.className = 'dlg-tools';
+    tools.innerHTML = '<button class="ib" data-z="-" title="Zmenšiť písmo">A−</button><button class="ib" data-z="+" title="Zväčšiť písmo">A+</button><button class="ib" data-z="max" title="Maximalizovať / obnoviť (dvojklik na hlavičku)">⤢</button><button class="ib" data-z="reset" title="Pôvodná veľkosť a poloha">↺</button>';
+    head.insertBefore(tools, head.querySelector('.grow') ? head.querySelector('.grow').nextSibling : null);
+    tools.addEventListener('click', e => {
+      const z = e.target.dataset.z; if (!z) return;
+      if (z === '+' || z === '-') st.zoom = Math.max(70, Math.min(180, (st.zoom || 100) + (z === '+' ? 10 : -10)));
+      else if (z === 'max') st.max = !st.max;
+      else { st.x = st.y = st.w = st.h = null; st.zoom = 100; st.max = false; w.style.cssText = ''; }
+      placeWin(w, st); save();
+    });
   }
   dragWin(chatEl, $('#chatHead'), S.chat);
 
@@ -1385,27 +1445,6 @@
     r.setProperty('--tb-bg', rgba(P.bg, P.opacity)); r.setProperty('--tb-text', P.text); r.setProperty('--accent', P.accent);
     document.body.classList.toggle('tb-icons', P.show === 'icons'); document.body.classList.toggle('tb-text', P.show === 'text');
   }
-  function panelDialog() {
-    const P = S.panel, before = JSON.stringify(P);
-    const num = (k, min, max, unit) => `<span class="op" style="width:250px"><input type="range" min="${min}" max="${max}" data-p="${k}" value="${P[k]}"><b>${P[k]} ${unit}</b></span>`;
-    const d = openDialog(`<div class="dlg-h"><span>🎨 Vzhľad panelu</span><button class="ib" data-x>✕</button></div><div class="dlg-b">
-      <div class="fld"><span>Šírka tlačidla</span>${num('w', 40, 240, 'px')}</div><div class="fld"><span>Výška panelu</span>${num('h', 22, 56, 'px')}</div>
-      <div class="fld"><span>Veľkosť písma</span>${num('fs', 9, 22, 'px')}</div>
-      <div class="fld"><span>Písmo</span><select data-p="font">${opts(FONTS, P.font)}</select></div>
-      <div class="fld"><span>Zobraziť</span><select data-p="show">${opts([['Ikona + text', 'both'], ['Iba ikony', 'icons'], ['Iba text', 'text']], P.show)}</select></div>
-      <div class="fld"><span>Pozadie panelu</span>${swatch('bg', P.bg, P.opacity)}</div><div class="fld"><span>Text</span>${swatch('text', P.text)}</div>
-      <div class="fld"><span>Zvýraznenie (aktívne tlačidlá, výber)</span>${swatch('accent', P.accent)}</div></div>
-      <div class="dlg-f"><button class="btn" data-reset>Predvolené</button><span class="grow"></span><button class="btn" data-cancel>Zrušiť</button><button class="btn pri" data-x>OK</button></div>`,
-      () => { S.panel = JSON.parse(before); save(); applyPanel(); closeDialog(); });
-    $$('[data-p]', d).forEach(x => x[x.type === 'range' ? 'oninput' : 'onchange'] = () => { const k = x.dataset.p; P[k] = x.type === 'range' ? +x.value : x.value;
-      if (x.type === 'range') x.nextElementSibling.textContent = `${P[k]} px`; save(); applyPanel(); });
-    $('[data-sw=bg]', d).onclick = e => colorPopover(e.currentTarget, P, {}, () => { save(); applyPanel(); }, { color: 'bg', opacity: 'opacity' });
-    $('[data-sw=text]', d).onclick = e => colorPopover(e.currentTarget, P, { noOpacity: true }, () => { save(); applyPanel(); }, { color: 'text', opacity: '_ot' });
-    $('[data-sw=accent]', d).onclick = e => colorPopover(e.currentTarget, P, { noOpacity: true }, () => { save(); applyPanel(); }, { color: 'accent', opacity: '_oa' });
-    $('[data-reset]', d).onclick = () => { S.panel = { ...DEF.panel }; save(); applyPanel(); closeDialog(); panelDialog(); };
-    $('[data-cancel]', d).onclick = UI.cancelDialog;
-    $$('[data-x]', d).forEach(x => x.onclick = closeDialog);
-  }
 
   // ---- styles window: photos, drawn scenes, candle colours, themes -----------------------------------
   // Real photos (Wikimedia Commons, free licences, credited in the window) live in static/photos/.
@@ -1447,8 +1486,9 @@
     const body = () => {
       if (stTab === 'photos') {
         const cust = LS.get('nx-bg-custom', '') || B.url, sel = PHOTOS.find(p => 'photo:' + p.id === (B.auto ? seasonId() : B.id));
-        return `<div class="tiles">${tile('none', 'Bez obrázka', `background:${S.look.bg}`)}${PHOTOS.map(p => tile('photo:' + p.id, p.name, `background-image:url('${q('static/' + p.thumb)}')`, `<small>${esc(p.season)}</small>`, `${p.name} · foto: ${p.author} (${p.license})`)).join('')}
-          ${tile('custom', 'Vlastný obrázok', cust ? `background-image:url('${q(cust)}')` : 'background:repeating-linear-gradient(45deg,#2a2e39 0 8px,#1e222d 8px 16px)')}</div>
+        const groups = [...new Set(['Vesmír', 'Búrky', 'Lesy a kopce', 'Zima', 'Jar', 'Leto', 'Jeseň', 'Celý rok', ...PHOTOS.map(p => p.season)])].filter(g => PHOTOS.some(p => p.season === g));
+        return `<div class="tiles">${tile('none', 'Bez obrázka', `background:${S.look.bg}`)}${tile('custom', 'Vlastný obrázok', cust ? `background-image:url('${q(cust)}')` : 'background:repeating-linear-gradient(45deg,#2a2e39 0 8px,#1e222d 8px 16px)')}</div>
+          ${groups.map(g => `<div class="tgroup">${esc(g)}</div><div class="tiles">${PHOTOS.filter(p => p.season === g).map(p => tile('photo:' + p.id, p.name.replace(/^[^·]*·\s*/, ''), `background-image:url('${q('static/' + p.thumb)}')`, '', `${p.name} · foto: ${p.author} (${p.license})`)).join('')}</div>`).join('')}
           ${sel ? `<div class="muted credit">📷 ${esc(sel.name)} · foto: ${esc(sel.author)} · <a href="${esc(sel.licenseUrl || sel.source)}" target="_blank" rel="noopener">${esc(sel.license)}</a> · <a href="${esc(sel.source)}" target="_blank" rel="noopener">Wikimedia Commons</a></div>` : ''}
           ${common()}
           <div class="fld"><span>Vlastný obrázok zo zariadenia</span><label class="btn sm">📁 Vybrať súbor<input type="file" accept="image/*" data-file hidden></label></div>
@@ -1796,13 +1836,24 @@
     techTimer = setInterval(async () => { if (!techEl.classList.contains('open')) return; try { await techData(techSym, techTf, true); const sc = $('#techBody').scrollTop; await paintTech(); $('#techBody').scrollTop = sc; } catch (e) {} }, 15000);
   }
   function closeTech() { techEl.classList.remove('open'); $('#bTech').classList.remove('on'); clearInterval(techTimer); }
-  $('#bTech').onclick = () => (techEl.classList.contains('open') ? closeTech() : openTech());
+  $('#bTech').onclick = () => (techEl.classList.contains('open') ? closeTech() : (LIB.close(), openTech()));
+
+  // ---- library: candlestick and chart patterns, strategies, tips ------------------------------------------
+  LIB.init({
+    onPattern: key => {
+      const type = 'pat_' + key;
+      if (!studies.some(s => s.type === type)) { studies.push(KS.normalize({ type, visible: true })); studiesChanged(); }
+      LIB.close(); toast(`📈 ${KS.STUDIES[type].name} – značky v grafe`, 2500);
+    },
+  });
+  $('#bLib').onclick = () => { if (!LIB.isOpen()) closeTech(); LIB.toggle(); };
 
   // ---- keyboard ---------------------------------------------------------------------------------
   document.addEventListener('keydown', e => {
     const typing = e.target && /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName);
     if (e.key === 'Escape') { if ($('#pop').classList.contains('open')) { closePop(); return; } if (dialogOpen()) { cancelDialog(); return; } if ($('.dd')) { closeMenu(); return; } if (techEl.classList.contains('open')) { closeTech(); return; } closeMenu(); if (replayPick) { stopPick(); return; } }
     if (dialogOpen()) return;
+    if ((e.ctrlKey || e.metaKey) && !typing && !e.altKey && (e.code === 'KeyZ' || e.code === 'KeyY')) { e.preventDefault(); stepHist(e.code === 'KeyY' || e.shiftKey ? 1 : -1); return; }
     if (e.ctrlKey && e.key === 'Enter' && S.idea.open && current) { e.preventDefault(); if (e.shiftKey) openAlert(qi + 1); else saveLabel(); return; }
     if (e.altKey && !typing && e.code === 'KeyR' && !e.shiftKey) { e.preventDefault(); if (view.replay) exitReplay(); else startReplay(true); return; }
     if (e.altKey && !typing && e.code === 'KeyA' && !e.shiftKey) { e.preventDefault(); toggleAuto(); return; }
@@ -1830,5 +1881,6 @@
     if (S.chat.open) toggleChat(true); else pollChat(true);
     if (S.news.open) toggleNews(true);
     scheduleScan();
+    hist = [snap()]; hpos = 0; paintHist();
   })();
 })();
