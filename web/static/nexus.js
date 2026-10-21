@@ -1244,6 +1244,8 @@ Aktuálne plochy, grafy, indikátory a kresby sa nahradia (ak ich chceš zachova
     moveLine, removeLine,
     algoTrade,
     renderBoard(el) { if (!ctx) return; el.innerHTML = BODY.board(); BIND.board(el); paintBoard(); },
+    // prepare a trade in the panel (from the Buy / Sell scanner): side, stop and target as distances from the price
+    plan(o) { if (!ctx) return; const P = PL(); P.open = true; P.dir = o.dir > 0 ? 1 : -1; if (o.slD) { P.slOn = true; P.slD = o.slD; } if (o.tpD) { P.tpOn = true; P.tpD = o.tpD; } ctx.save(); paintTicket(); ctx.onTrades(); },
     toggleTicket() { const P = PL(); P.open = !P.open; ctx.save(); paintTicket(); ctx.onTrades(); },
     chartChanged() { if (!ctx) return; lineSig = ''; paintCards(); },
   };

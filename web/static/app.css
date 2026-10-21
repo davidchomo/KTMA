@@ -1071,3 +1071,19 @@ table.al-t tr.bad { opacity: .62; }
 .ar-t th { position: sticky; top: 0; background: var(--panel, #1e222d); font-weight: 600; } .ar-t th small { display: block; font-weight: 400; color: var(--muted); font-size: 10px; }
 .ar-ev { display: flex; flex-wrap: wrap; gap: 4px; font-size: 11px; } .ar-ev span { border: 1px solid var(--border); border-radius: 10px; padding: 1px 7px; }
 .ar-dlg textarea { width: 100%; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 5px; font: inherit; }
+
+/* 🕯 candles menu */
+.cc-sw { display: inline-block; width: 12px; height: 18px; border-radius: 2px; margin: 0 1px; }
+.cm-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; padding: 4px 12px 8px; font-size: 12px; } .cm-row label { display: flex; align-items: center; gap: 4px; }
+.cm-row input[type=color] { width: 28px; height: 22px; border: 0; background: none; padding: 0; cursor: pointer; }
+/* 🎯 Buy / Sell scanner */
+.dlg.sig-dlg { width: min(820px, calc(100vw - 24px)); }
+.sig-now { margin-bottom: 8px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.sig-t td { text-align: center !important; cursor: pointer; } .sig-t td:first-child { text-align: left !important; cursor: default; font-weight: 600; } .sig-t th { text-align: center !important; }
+.sig-t tr.cur td:first-child { color: var(--accent); } .sig-t td.sel { outline: 2px solid var(--accent); outline-offset: -2px; }
+.sg { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 11px; font-weight: 700; white-space: nowrap; }
+.sg small { font-weight: 400; opacity: .85; } .sg.big { font-size: 14px; padding: 3px 12px; }
+.sg.b { background: rgba(8,153,129,.25); color: #4cd6b5; } .sg.s { background: rgba(242,54,69,.25); color: #ff7b86; } .sg.n { background: rgba(255,255,255,.07); color: var(--muted); }
+.sig-det { margin-top: 10px; border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; font-size: 12px; min-height: 40px; }
+.sig-det ul { margin: 6px 0; padding-left: 4px; list-style: none; } .sig-det li { margin: 2px 0; } .sig-det .up { color: #4cd6b5; } .sig-det .dn { color: #ff7b86; }
+.sig-h { display: flex; align-items: center; gap: 10px; font-weight: 600; } .sig-b { display: flex; gap: 6px; margin-top: 8px; }

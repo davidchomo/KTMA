@@ -464,7 +464,7 @@ const KS = (() => {
              { k: 'smooth', label: '%K vyhladenie', def: 3, min: 1, max: 100 }, { k: 'd', label: '%D', def: 3, min: 1, max: 100 }, SRC, ...LEVELS(80, 20)],
     plots: [P('k', '%K', BLUE), P('d', '%D', ORANGE), LV(), F('bg', 'Pozadie', BLUE, 6, ['=upper', '=lower'])],
     label: s => `Stoch RSI ${s.inputs.rsi} ${s.inputs.k}`, calc: (D, s) => stochOf(rsi(source(D, s.inputs.source), s.inputs.rsi), s.inputs.k, s.inputs.smooth, s.inputs.d) });
-  osc('macd', { name: 'MACD', title: 'MACD',
+  osc('macd', { name: 'MACD', title: 'MACD', alpha: 55,
     inputs: [{ k: 'fast', label: 'Rýchla', def: 12, min: 1, max: 500 }, { k: 'slow', label: 'Pomalá', def: 26, min: 1, max: 500 }, { k: 'signal', label: 'Signál', def: 9, min: 1, max: 500 }, SRC],
     plots: [P('macd', 'MACD', BLUE), P('signal', 'Signál', ORANGE),
             P('h1', 'Histogram rastie nad 0', '#26a69a', { kind: 'color' }), P('h2', 'Histogram klesá nad 0', '#b2dfdb', { kind: 'color' }),
@@ -611,7 +611,7 @@ const KS = (() => {
     for (const tf of TIMEFRAMES) tfs[tf] = !(x.tfs && x.tfs[tf] === false);
     const o = x.out || {};
     return { uid: x.uid || `s${Date.now().toString(36)}${(seq++).toString(36)}`, type: x.type, v: def.v || 1, visible: x.visible !== false,
-             inputs, plots, tfs, temp: !!x.temp, above: !!x.above,
+             inputs, plots, tfs, temp: !!x.temp, above: !!x.above, alpha: num(x.alpha, def.alpha ?? 100), overlay: !!x.overlay, ovH: num(x.ovH, 30),
              out: { precision: o.precision ?? 'auto', priceLabels: !!o.priceLabels, legendValues: o.legendValues !== false } };
   }
   function rgba(hex, opacity) {

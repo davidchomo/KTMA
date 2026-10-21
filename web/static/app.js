@@ -661,9 +661,9 @@
     units = []; mainIdx = 0;
     let pane = 1;
     for (const s of studies) {
-      if (!shown(s) || hideL.studies) continue;
+      if (!shown(s) || hideL.studies || S.hideStudies) continue;
       const def = KS.STUDIES[s.type];
-      const u = { s, def, pane: def.pane === true ? pane++ : 0, lines: {}, hists: {}, values: {}, fill: null, levels: false, host: null, marks: [] };
+      const ov = def.pane === true && s.overlay, u = { s, def, ov: ov ? 'ov' + units.length : null, pane: def.pane === true && !ov ? pane++ : 0, lines: {}, hists: {}, values: {}, fill: null, levels: false, host: null, marks: [] };
       units.push(u);
       refreshUnit(u);
     }
@@ -722,11 +722,11 @@
   function lineOptions(u, st) {
     const prec = u.s.out.precision === 'auto' ? null : +u.s.out.precision;
     return { priceLineVisible: false, crosshairMarkerVisible: false, lastValueVisible: u.s.out.priceLabels,
-      color: rgba(st.color, st.opacity), lineWidth: st.width, lineStyle: st.style, visible: st.visible,
+      color: rgba(st.color, st.opacity * (u.s.alpha ?? 100) / 100), lineWidth: st.width, lineStyle: st.style, visible: st.visible,
       lineType: st.type === 3 ? 0 : st.type, lineVisible: st.type !== 3, pointMarkersVisible: st.type === 3,
       ...(st.type === 3 ? { pointMarkersRadius: st.width + 1 } : {}),
       ...(prec === null ? {} : { priceFormat: { type: 'price', precision: prec, minMove: 1 / 10 ** prec } }),
-      ...(u.pane === mainIdx && u.s.type !== 'volume' ? { autoscaleInfoProvider: () => null } : {}) };
+      ...(u.pane === mainIdx && !u.ov && u.s.type !== 'volume' ? { autoscaleInfoProvider: () => null } : {}) };
   }
   // ---- custom volume layers: volume profile (VPVR), volume heatmap, live order book heatmap ----------------------
   // A bar's volume is spread evenly over its high–low range (the exchange gives no volume per price for candles).
@@ -830,11 +830,13 @@
   }
   function customLayer(u) { if (!u.layer) { u.layer = new VolLayer(u); main.attachPrimitive(u.layer); } u.layer.update(); }
   function refreshUnit(u) {
-    const { s, def } = u, n = D.t.length;
+    const { s, def } = u, n = D.t.length, al = (s.alpha ?? 100) / 100, rgba = (c, op) => UI.rgba(c, (op ?? 100) * al);   // the indicator's own transparency
     if (def.pattern) { u.marks = KS.patternMarks(D, s); return; }
     if (def.custom) { customLayer(u); return; }
     const r = def.calc(D, s);
-    const ser = (key, type, o) => (u.hists[key] = u.hists[key] || chart.addSeries(type, o, u.pane));
+    // an oscillator laid over the price chart gets its own hidden scale in the bottom part of the chart
+    const mk = (type, o) => { const x = chart.addSeries(type, u.ov ? { ...o, priceScaleId: u.ov } : o, u.pane); if (u.ov) x.priceScale().applyOptions({ scaleMargins: { top: 1 - (s.ovH || 30) / 100, bottom: 0.02 } }); return x; };
+    const ser = (key, type, o) => (u.hists[key] = u.hists[key] || mk(type, o));
     if (s.type === 'volume') {
       const v = ser('vol', LW.HistogramSeries, { priceFormat: { type: 'volume' }, priceScaleId: 'vol', priceLineVisible: false, lastValueVisible: s.out.priceLabels });
       v.priceScale().applyOptions({ scaleMargins: { top: 0.82, bottom: 0 } });
@@ -880,7 +882,7 @@
       const list = u.lines[p.k] = u.lines[p.k] || [];
       while (list.length > groups.length) chart.removeSeries(list.pop());
       groups.forEach((g, gi) => {
-        if (!list[gi]) list[gi] = chart.addSeries(LW.LineSeries, { ...lineOptions(u, st), lastValueVisible: s.out.priceLabels && gi === groups.length - 1 }, u.pane);
+        if (!list[gi]) list[gi] = mk(LW.LineSeries, { ...lineOptions(u, st), lastValueVisible: s.out.priceLabels && gi === groups.length - 1 });
         list[gi].setData(g.d);
       });
       u.host = u.host || list[0];
@@ -893,7 +895,7 @@
     }
     const fills = def.plots.filter(p => p.kind === 'fill' && s.plots[p.k].visible && s.plots[p.k].opacity > 0);
     if (fills.length) {
-      const target = u.pane === mainIdx ? main : u.host;
+      const target = u.pane === mainIdx && !u.ov ? main : u.host;
       if (target && !u.fill) { u.fill = new BandFill(); target.attachPrimitive(u.fill); }
       if (u.fill) {
         const val = name => (name[0] === '=' ? D.t.map(() => s.inputs[name.slice(1)]) : (r[name] || []));
@@ -1229,7 +1231,7 @@
     ['Čiernobiela', ['#ffffff', '#bdbdbd', '#757575', '#e0e0e0', '#9e9e9e', '#616161']], ['Farboslepé', ['#0072b2', '#e69f00', '#56b4e9', '#009e73', '#f0e442', '#d55e00']],
     ['Býk / medveď', ['#26a69a', '#ef5350', '#66bb6a', '#ff7043', '#00897b', '#e53935']]];
   function studySettings(s) {
-    const def = KS.STUDIES[s.type], before = JSON.stringify({ inputs: s.inputs, plots: s.plots, tfs: s.tfs, out: s.out });
+    const def = KS.STUDIES[s.type], before = JSON.stringify({ inputs: s.inputs, plots: s.plots, tfs: s.tfs, out: s.out, alpha: s.alpha, overlay: s.overlay, ovH: s.ovH, above: s.above });
     let tab = def.inputs.length ? 'in' : 'st', t = null;
     const live = () => { save(); clearTimeout(t); t = setTimeout(() => buildChart(), 60); };
     const cb = (attrs, on) => `<input type="checkbox" ${attrs} ${on ? 'checked' : ''}>`;
@@ -1250,8 +1252,11 @@
       return `<div class="sec2">Rýchle predvoľby</div><div class="pre-row">${PALETTES.map(([n, c], k) => `<button class="pre" data-pal="${k}" title="${n}"><span>${c.slice(0, 5).map(x => `<i style="background:${x}"></i>`).join('')}</span><small>${n}</small></button>`).join('')}</div>
         <div class="fld"><span>Hrúbka všetkých čiar</span><span class="ctl">${[1, 2, 3, 4, 6].map(w => `<button class="btn sm" data-allw="${w}">${w} px</button>`).join('')}</span></div>
         <div class="fld"><span>Krytie všetkého</span><span class="ctl">${[100, 80, 60, 40, 25].map(o => `<button class="btn sm" data-allo="${o}">${o} %</button>`).join('')}</span></div>
+        <div class="fld"><span>Priehľadnosť celého indikátora</span><span class="op" style="width:250px"><input type="range" min="10" max="100" step="5" data-alpha value="${s.alpha ?? 100}"><b>${s.alpha ?? 100} %</b></span></div>
         <div class="sec2">Jednotlivo</div>` + lines.map(row).join('') + (fills.length ? '<div class="sec2">Výplne</div>' + fills.map(row).join('') : '') +
-        (def.pane === true ? `<div class="sec2">Panel</div><div class="fld"><span>Umiestnenie panelu</span><select data-place>${opts([['⬇ Pod grafom', '0'], ['⬆ Nad grafom (hore)', '1']], s.above ? '1' : '0')}</select></div>` : '') +
+        (def.pane === true ? `<div class="sec2">Panel</div><div class="fld"><label class="ctl">${cb('data-ov', s.overlay)} Prekryť graf – priehľadne cez spodok grafu, bez vlastného panelu</label></div>
+          ${s.overlay ? `<div class="fld"><span>Výška prekrytia</span><span class="op" style="width:250px"><input type="range" min="15" max="70" step="5" data-ovh value="${s.ovH || 30}"><b>${s.ovH || 30} %</b></span></div>`
+            : `<div class="fld"><span>Umiestnenie panelu</span><select data-place>${opts([['⬇ Pod grafom', '0'], ['⬆ Nad grafom (hore)', '1']], s.above ? '1' : '0')}</select></div>`}` : '') +
         `<div class="sec2">Výstupné hodnoty</div><div class="fld"><span>Presnosť</span><select data-out="precision">${opts([['Predvolená', 'auto'], ['0', 0], ['1', 1], ['2', 2], ['3', 3], ['4', 4]], s.out.precision)}</select></div>
          <div class="fld"><label class="ctl">${cb('data-out="priceLabels"', s.out.priceLabels)} Hodnoty na cenovej osi</label></div>
          <div class="fld"><label class="ctl">${cb('data-out="legendValues"', s.out.legendValues)} Hodnoty v legende</label></div>`;
@@ -1261,7 +1266,7 @@
       const d = openDialog(`<div class="dlg-h"><span>${esc(def.name)} <small class="muted" style="font-weight:400">${esc(def.title)}</small></span><button class="ib" data-cancel>✕</button></div>
         <div class="dlg-b"><div class="tabs">${def.inputs.length ? `<span class="tab ${tab === 'in' ? 'on' : ''}" data-tab="in">Vstupy</span>` : ''}<span class="tab ${tab === 'st' ? 'on' : ''}" data-tab="st">Štýl</span>
         <span class="tab ${tab === 'vis' ? 'on' : ''}" data-tab="vis">Viditeľnosť</span></div>${body()}</div>
-        <div class="dlg-f"><button class="btn" data-defmenu>Predvolené ▾</button><span class="grow"></span><button class="btn" data-cancel>Zrušiť</button><button class="btn pri" data-ok>OK</button></div>`, cancel);
+        <div class="dlg-f"><button class="btn" data-defmenu>Predvolené ▾</button><button class="btn" data-sall title="Tieto nastavenia (farby, dĺžky, priehľadnosť…) dostane ${esc(def.name)} vo všetkých grafoch a plochách">🔁 Na všetky grafy</button><span class="grow"></span><button class="btn" data-cancel>Zrušiť</button><button class="btn pri" data-ok>OK</button></div>`, cancel);
       $$('[data-tab]', d).forEach(x => x.onclick = () => { tab = x.dataset.tab; paint(); });
       $$('[data-in]', d).forEach(x => x.onchange = () => { const i = def.inputs.find(y => y.k === x.dataset.in);
         if (i.type === 'source') s.inputs[i.k] = x.value; else { const v = Math.min(i.max, Math.max(i.min, +x.value)); if (Number.isFinite(v)) s.inputs[i.k] = v; x.value = s.inputs[i.k]; } live(); });
@@ -1275,6 +1280,10 @@
       $$('[data-allo]', d).forEach(x => x.onclick = () => { for (const p of def.plots) if (s.plots[p.k] && p.kind !== 'fill') s.plots[p.k].opacity = +x.dataset.allo; live(); paint(); });
       $$('[data-out]', d).forEach(x => x.onchange = () => { s.out[x.dataset.out] = x.type === 'checkbox' ? x.checked : (x.value === 'auto' ? 'auto' : +x.value); live(); });
       const pl = $('[data-place]', d); if (pl) pl.onchange = () => { s.above = pl.value === '1'; live(); };
+      const al = $('[data-alpha]', d); if (al) al.oninput = () => { s.alpha = +al.value; al.nextElementSibling.textContent = s.alpha + ' %'; live(); };
+      const ov = $('[data-ov]', d); if (ov) ov.onchange = () => { s.overlay = ov.checked; live(); paint(); };
+      const oh = $('[data-ovh]', d); if (oh) oh.oninput = () => { s.ovH = +oh.value; oh.nextElementSibling.textContent = s.ovH + ' %'; live(); };
+      $('[data-sall]', d).onclick = () => { closeDialog(); applyStudyAll(s); };
       $$('[data-sw]', d).forEach(b => b.onclick = () => { const [k, two] = b.dataset.sw.split(':'), p = def.plots.find(x => x.k === k);
         const lineish = p.kind === 'line' || p.kind === 'level'; colorPopover(b, s.plots[k], { width: lineish, style: lineish }, live, two ? { color: 'color2' } : null); });
       $('[data-defmenu]', d).onclick = e => {
@@ -1370,7 +1379,7 @@
     const paint = () => {
       const d = openDialog(`<div class="dlg-h"><span>Nastavenia grafu</span><button class="ib" data-x>✕</button></div><div class="dlg-b">
         <div class="tabs">${[['bars', 'Sviečky'], ['canvas', 'Plátno'], ['legend', 'Legenda'], ['scale', 'Mierka'], ['cross', 'Kurzor'], ['time', 'Čas'], ['renko', 'Renko'], ['panel', 'Panel'], ['styles', '🖼 Štýly a pozadia'], ['lang', '🌐 Jazyk / Language'], ['data', 'Dáta']].map(([k, n]) => `<span class="tab ${tab === k ? 'on' : ''}" data-tab="${k}">${n}</span>`).join('')}</div>${body()}</div>
-        <div class="dlg-f"><button class="btn" data-reset>Predvolené</button><span class="grow"></span><button class="btn pri" data-x>Hotovo</button></div>`, null, 'wide');
+        <div class="dlg-f"><button class="btn" data-reset>Predvolené</button><button class="btn" data-allc title="Sviečky, farby, pozadie, mriežka, kurzor, legenda a typ grafu aj vo všetkých ostatných grafoch a plochách">🔁 Na všetky grafy</button><span class="grow"></span><button class="btn pri" data-x>Hotovo</button></div>`, null, 'wide');
       $$('[data-tab]', d).forEach(x => x.onclick = () => { if (x.dataset.tab === 'styles') { closeDialog(); stylesDialog(); return; } tab = x.dataset.tab; paint(); });
       const br = $('[data-bright]', d); if (br) br.oninput = () => { L.bright = +br.value; br.nextElementSibling.textContent = L.bright + ' %'; applyBright(); save(); };
       const CS = L.candle;
@@ -2678,12 +2687,157 @@
   }
   $('#bTools').onclick = e => toolsMenu(e.currentTarget);
 
+  // ---- 🔁 the same look / candles / background / indicator style on every chart (every workspace, the small charts too) ----
+  // The small charts keep their own copy of the settings (localStorage nx2:pane…); open ones reload it at once.
+  const LOOK_KEYS = ['look', 'bgImg', 'type', 'renko', 'crosshair', 'legend', 'tint'], VIEW_KEYS = ['hideScale', 'hideTime', 'hideLegend'];
+  const clone = x => JSON.parse(JSON.stringify(x));
+  const lookNow = () => Object.fromEntries(LOOK_KEYS.map(k => [k, S[k]]));
+  const studyStyle = s => ({ type: s.type, set: clone({ inputs: s.inputs, plots: s.plots, tfs: s.tfs, out: s.out, alpha: s.alpha, overlay: s.overlay, ovH: s.ovH }) });
+  const lookPatch = src => st => { const keep = Object.fromEntries(VIEW_KEYS.map(k => [k, (st.look || {})[k]])); for (const k of LOOK_KEYS) if (src[k] !== undefined) st[k] = clone(src[k]); st.look = { ...st.look, ...keep }; };
+  const studyPatch = (style, add) => st => {
+    const list = Array.isArray(st.studies) ? st.studies : (st.studies = []), same = list.filter(x => x && x.type === style.type);
+    same.forEach(x => Object.assign(x, clone(style.set)));
+    if (!same.length && add) list.push({ ...clone(style.set), type: style.type, visible: true });
+  };
+  function applyAll(what, src, add) {
+    if (EMBED) { try { parent.NX_applyAll(what, clone(src), add); } catch (e) {} return; }
+    const patch = what === 'look' ? lookPatch(src) : studyPatch(src, add);
+    if (what === 'look') { const keep = clone(S.look); patch(S); VIEW_KEYS.forEach(k => { S.look[k] = keep[k]; }); }
+    else {
+      const me = { studies }; patch(me); studies = me.studies.map(KS.normalize).filter(Boolean);
+      (S.workspaces || []).forEach(w => { if (w.own) patch(w.own); }); if (S.wsShared) patch(S.wsShared);
+    }
+    save(); applyPanel(); applyBg(); applyBright(); applyToolbar(); applyView(); buildChart();
+    const keys = []; for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k && k.startsWith('nx2:pane')) keys.push(k); }
+    for (const k of keys) { const st = LS.get(k, null); if (st && typeof st === 'object') { patch(st); LS.set(k, st); } }
+    eachPane(w => w.NX_reloadState && w.NX_reloadState());
+    toast(`🔁 ${what === 'look' ? 'Vzhľad, sviečky a pozadie' : KS.STUDIES[src.type].name} – použité na všetky grafy (${keys.length + 1})`);
+  }
+  window.NX_applyAll = applyAll;
+  window.NX_reloadState = () => {
+    const st = LS.get(KEY, null); if (!st) return;
+    for (const k of [...LOOK_KEYS, 'studies', 'hideStudies']) if (k in st) S[k] = DEF[k] && typeof DEF[k] === 'object' && !Array.isArray(DEF[k]) ? merge(DEF[k], st[k]) : st[k];
+    studies = (S.studies || []).map(KS.normalize).filter(Boolean);
+    applyPanel(); applyBg(); applyBright(); applyToolbar(); applyView(); buildChart();
+  };
+  function applyStudyAll(s) {
+    const add = confirm(`Nastavenia ${KS.STUDIES[s.type].name} použiť vo všetkých grafoch.\n\nOK = pridať ${KS.STUDIES[s.type].name} aj do grafov, kde ešte nie je\nZrušiť = iba tam, kde už je`);
+    applyAll('study', studyStyle(s), add);
+  }
+  document.addEventListener('click', e => { if (e.target.closest('[data-allc]')) applyAll('look', lookNow()); });
+
+  // ---- shortcut buttons next to 🧰 Tools: hide all indicators, candles, all functions, Buy / Sell scanner ---------------
+  function setHideStudies(on, all) {
+    S.hideStudies = on; save(); buildChart(); paintHideBtn();
+    if (all) eachPane(w => w.NX_hideStudies && w.NX_hideStudies(on));
+  }
+  window.NX_hideStudies = on => setHideStudies(on, false);
+  function paintHideBtn() { const b = $('#bHideInd'); if (!b) return; b.classList.toggle('on', !!S.hideStudies); $('.tx', b).textContent = S.hideStudies ? 'Zobraziť ind.' : 'Skryť ind.'; $('.ic', b).textContent = S.hideStudies ? '🙈' : '👁'; }
+  $('#bHideInd').onclick = () => { setHideStudies(!S.hideStudies, true); toast(S.hideStudies ? '🙈 Všetky indikátory skryté (vo všetkých grafoch) · Alt+H' : '👁 Indikátory znova zobrazené'); };
+  $('#bAll2').onclick = e => $('#bAll').onclick({ currentTarget: e.currentTarget });
+  const CANDLE_COLORS = [['TradingView', '#089981', '#f23645'], ['Klasika', '#26a69a', '#ef5350'], ['Neón', '#00e676', '#ff1744'], ['Modrá / oranžová', '#2962ff', '#ff6d00'],
+    ['Čiernobiela', '#e0e3eb', '#5d606b'], ['Zlato', '#d4a017', '#8d6e63'], ['Fialová', '#7c4dff', '#ff4081'], ['Farboslepé', '#0072b2', '#e69f00']];
+  const shapeSvg = p => `<svg viewBox="0 0 40 24" width="40" height="24">${[[4, 14, 4, 20], [7, 17, 3, 22], [10, 12, 2, 18]].map(([y, h, top, bot], i) => { const x = 6 + i * 12, w = Math.max(1.5, 9 * p.body / 100);
+    return `<line x1="${x}" y1="${top}" x2="${x}" y2="${bot}" stroke="currentColor" stroke-width="${p.wick}"/><rect x="${x - w / 2}" y="${y}" width="${w}" height="${h - y + 2}" rx="${Math.min(w / 2, p.radius / 12)}" fill="${i === 1 ? 'var(--down)' : 'var(--up)'}"/>`; }).join('')}</svg>`;
+  function candlesMenu(anchor) {
+    const L = S.look, CS = L.candle;
+    const html = () => `<div class="tl-head"><b>🕯 Sviečky</b><span class="muted">typ grafu, tvar, farby</span></div>
+      <div class="sec">Typ grafu</div><div class="tl-grid">${TYPES.map(([k, n, ic]) => `<div class="tl-t ${k === S.type ? 'on' : ''}" data-ct="${k}"><span class="tl-ic">${ic}</span><small>${esc(n)}</small></div>`).join('')}</div>
+      <div class="sec">Tvar sviečok</div><div class="tl-grid">${Object.entries(CANDLE_PRESETS).map(([k, [n, p]]) => `<div class="tl-t ${CS.preset === k ? 'on' : ''}" data-cpr="${k}"><span class="tl-ic">${shapeSvg(p)}</span><small>${esc(n)}</small></div>`).join('')}</div>
+      <div class="sec">Farby</div><div class="tl-grid">${CANDLE_COLORS.map(([n, u, d], k) => `<div class="tl-t ${L.up === u && L.down === d ? 'on' : ''}" data-ccol="${k}"><span class="tl-ic"><i class="cc-sw" style="background:${u}"></i><i class="cc-sw" style="background:${d}"></i></span><small>${esc(n)}</small></div>`).join('')}</div>
+      <div class="cm-row"><label>▲ rast <input type="color" data-cc="up" value="${L.up}"></label><label>▼ pokles <input type="color" data-cc="down" value="${L.down}"></label>
+        ${[['body', 'Telo'], ['wicks', 'Knôty'], ['borders', 'Okraje']].map(([k, n]) => `<label><input type="checkbox" data-cb="${k}" ${L[k] ? 'checked' : ''}> ${n}</label>`).join('')}</div>
+      <div class="it" data-cset><span class="ic">⚙</span><span class="grow">Všetky nastavenia sviečok (hrúbka, knôty, zaoblenie, rozostup)…</span></div>
+      <div class="it" data-allc><span class="ic">🔁</span><span class="grow">Použiť sviečky, farby a pozadie na všetky grafy</span></div>`;
+    const re = m => { m.innerHTML = html(); bind(m); };
+    const bind = m => {
+      $$('[data-ct]', m).forEach(x => x.onclick = () => { const k = x.dataset.ct, fresh = (k === 'renko') !== (S.type === 'renko'); S.type = k; save(); applyToolbar(); buildChart(fresh ? null : undefined); re(m); });
+      $$('[data-cpr]', m).forEach(x => x.onclick = () => { Object.assign(CS, CANDLE_PRESETS[x.dataset.cpr][1], { preset: x.dataset.cpr }); save(); buildChart(); chart.timeScale().applyOptions({ barSpacing: CS.spacing }); re(m); });
+      $$('[data-ccol]', m).forEach(x => x.onclick = () => { const [, u, d] = CANDLE_COLORS[+x.dataset.ccol]; Object.assign(L, { up: u, borderUp: u, wickUp: u, down: d, borderDown: d, wickDown: d }); save(); buildChart(); re(m); });
+      $$('[data-cc]', m).forEach(x => x.onchange = () => { const k = x.dataset.cc, c = x.value; if (k === 'up') Object.assign(L, { up: c, borderUp: c, wickUp: c }); else Object.assign(L, { down: c, borderDown: c, wickDown: c }); save(); buildChart(); });
+      $$('[data-cb]', m).forEach(x => x.onchange = () => { L[x.dataset.cb] = x.checked; save(); buildChart(); });
+      $('[data-cset]', m).onclick = () => { closeMenu(); settings('bars'); };
+      $('[data-allc]', m).addEventListener('click', () => closeMenu());
+    };
+    openMenu(anchor, html(), bind, { side: side(), cls: 'tools-menu' });
+  }
+  $('#bCandles').onclick = e => candlesMenu(e.currentTarget);
+
+  // ---- 🎯 Buy / Sell scanner: one verdict per market and timeframe ----------------------------------------------------
+  // Votes: TradingView-like technical ratings 35 %, trend (EMA 50 / 200) 20 %, MACD histogram 20 %, RSI 10 %, a fresh live
+  // idea (trendline / level) 15 %. ≥ +20 % = BUY, ≤ −20 % = SELL. Stop 1.5 ATR, target 3 ATR (or the idea's own levels).
+  const SIG_TFS = ['5m', '15m', '1h', '4h'], SIG_W = { '5m': 1, '15m': 1.3, '1h': 1.6, '4h': 2 };
+  let sigRes = {}, sigBusy = false, sigAt = 0, sigSel = null;
+  function verdict(Dx, tf) {
+    const n = Dx.c.length, i = n - 1, c = Dx.c[i], atr = KS.atr(Dx, 14)[i], why = [];
+    const add = (v, w, txt) => { why.push({ v, txt }); return v * w; };
+    const ta = TA.compute(Dx).groups.sum, e50 = KS.ema(Dx.c, 50)[i], e200 = KS.ema(Dx.c, 200)[i], m = KS.macd(Dx.c, 12, 26, 9), r = KS.rsi(Dx.c, 14)[i];
+    let sc = add(ta.r, 0.35, `Technicals: ${TA.SK[ta.label] || ta.label} (${ta.buy}× nákup, ${ta.sell}× predaj)`);
+    const tr = c > e50 && e50 > e200 ? 1 : c < e50 && e50 < e200 ? -1 : 0;
+    sc += add(tr, 0.2, tr > 0 ? 'Trend hore: cena > EMA 50 > EMA 200' : tr < 0 ? 'Trend dole: cena < EMA 50 < EMA 200' : 'Bez jasného trendu (EMA 50 / 200)');
+    const h = m.hist[i], h1 = m.hist[i - 1], mv = h >= 0 ? (h >= h1 ? 1 : 0.3) : (h <= h1 ? -1 : -0.3);
+    sc += add(mv, 0.2, `MACD histogram ${h >= 0 ? 'nad' : 'pod'} nulou a ${Math.abs(h) >= Math.abs(h1) ? 'silnie' : 'slabne'}`);
+    const rv = r > 70 ? -0.5 : r < 30 ? 0.5 : (r - 50) / 40;
+    sc += add(rv, 0.1, `RSI ${r.toFixed(0)}${r > 70 ? ' – prekúpené' : r < 30 ? ' – prepredané' : ''}`);
+    let idea = null;
+    try { const R = TL.run(Dx, { k: TL.zigK(tf, TF_SEC[tf]) }); idea = TL.ideas(Dx, R, ideaOpts()).filter(x => x.i >= n - 4).sort((a, b) => (b.score || 0) - (a.score || 0))[0] || null; } catch (e) {}
+    if (idea) sc += add(idea.dir, 0.15, `Nápad: ${idea.name} ${'★'.repeat(idea.score || 0)}`);
+    const dir = sc >= 0.2 ? 1 : sc <= -0.2 ? -1 : 0, own = idea && idea.dir === dir;
+    return { dir, score: sc, entry: c, atr, why, idea: idea ? idea.name : null,
+      sl: own && idea.sl ? idea.sl : c - (dir || 1) * 1.5 * atr, tp: own && idea.tp ? idea.tp : c + (dir || 1) * 3 * atr };
+  }
+  async function runSig() {
+    if (sigBusy) return; sigBusy = true; paintSig();
+    const syms = (META.symbols || []).map(s => s.id), jobs = [];
+    for (const s of syms) for (const tf of SIG_TFS) jobs.push([s, tf]);
+    const worker = async () => { while (jobs.length) { const [s, tf] = jobs.shift();
+      try { const bars = (await fetchBars(s, tf, null, 600)).slice(0, -1); if (bars.length > 220) { const Dx = toD(bars); Dx.s = Dx.t.map(t => (SYM[s] && SYM[s].hours === 'gold' ? sessGold(t) : Math.floor(t / 86400))); sigRes[s + '|' + tf] = verdict(Dx, tf); } }
+      catch (e) { sigRes[s + '|' + tf] = { err: String(e.message || e) }; }
+      paintSig(); } };
+    await Promise.all([worker(), worker(), worker()]);
+    sigBusy = false; sigAt = Date.now(); paintSig();
+  }
+  const sigBadge = (v, big) => { if (!v) return '<span class="sg n">…</span>'; if (v.err) return '<span class="sg n" title="' + esc(v.err) + '">⚠</span>';
+    const p = Math.round(Math.abs(v.score) * 100); return `<span class="sg ${v.dir > 0 ? 'b' : v.dir < 0 ? 's' : 'n'}${big ? ' big' : ''}">${v.dir > 0 ? '🐂 BUY' : v.dir < 0 ? '🐻 SELL' : '— NEUTRÁL'} <small>${p} %</small></span>`; };
+  function sigAll(s) {
+    let w = 0, sc = 0; for (const tf of SIG_TFS) { const v = sigRes[s + '|' + tf]; if (v && !v.err) { sc += v.score * SIG_W[tf]; w += SIG_W[tf]; } }
+    if (!w) return null; sc /= w; return { score: sc, dir: sc >= 0.2 ? 1 : sc <= -0.2 ? -1 : 0 };
+  }
+  function paintSig() {
+    const d = $('.sig-dlg'); if (!d) return;
+    const syms = META.symbols || [], cur = sigAll(S.symbol);
+    $('.sig-now', d).innerHTML = `<b>${esc(sym().name)}</b> spolu (všetky timeframy): ${sigBadge(cur, true)} <span class="muted">${sigBusy ? 'skenujem…' : sigAt ? 'aktualizované ' + new Date(sigAt).toLocaleTimeString('sk-SK') : ''}</span>`;
+    $('.sig-t', d).innerHTML = `<tr><th>Trh</th>${SIG_TFS.map(tf => `<th>${tf}</th>`).join('')}<th>Spolu</th></tr>` + syms.map(s => `<tr class="${s.id === S.symbol ? 'cur' : ''}"><td>${esc(s.name)}</td>${SIG_TFS.map(tf => `<td data-sg="${s.id}|${tf}" class="${sigSel === s.id + '|' + tf ? 'sel' : ''}">${sigBadge(sigRes[s.id + '|' + tf])}</td>`).join('')}<td>${sigBadge(sigAll(s.id))}</td></tr>`).join('');
+    $$('[data-sg]', d).forEach(x => x.onclick = () => { sigSel = x.dataset.sg; paintSig(); });
+    const box = $('.sig-det', d), v = sigSel && sigRes[sigSel];
+    if (!v || v.err) { box.innerHTML = '<div class="muted">Klikni na políčko – uvidíš prečo, vstup, stop loss a cieľ.</div>'; return; }
+    const [s, tf] = sigSel.split('|'), dg = (SYM[s] || {}).digits ?? 2, f = x => (+x).toFixed(dg);
+    box.innerHTML = `<div class="sig-h">${esc((SYM[s] || {}).name || s)} ${tf} ${sigBadge(v, true)}</div>
+      <ul>${v.why.map(w => `<li class="${w.v > 0.1 ? 'up' : w.v < -0.1 ? 'dn' : ''}">${w.v > 0.1 ? '▲' : w.v < -0.1 ? '▼' : '•'} ${esc(w.txt)}</li>`).join('')}</ul>
+      ${v.dir ? `<div>Vstup ~ <b>${f(v.entry)}</b> · SL <b class="dn">${f(v.sl)}</b> · TP <b class="up">${f(v.tp)}</b> · R:R 1:${(Math.abs(v.tp - v.entry) / Math.abs(v.entry - v.sl)).toFixed(1)}${v.idea ? '' : ' (SL 1,5 ATR, TP 3 ATR)'}</div>` : '<div class="muted">Signály sa navzájom rušia – radšej počkaj.</div>'}
+      <div class="sig-b"><button class="btn sm" data-sgo>📈 Otvoriť graf</button>${v.dir ? `<button class="btn sm pri" data-sgt>${v.dir > 0 ? '🐂' : '🐻'} Pripraviť obchod v paneli</button>` : ''}</div>`;
+    $('[data-sgo]', box).onclick = () => { closeDialog(); if (s !== S.symbol || tf !== S.tf) setAndReload({ symbol: s, tf }); };
+    const t = $('[data-sgt]', box); if (t) t.onclick = () => { closeDialog(); if (s !== S.symbol || tf !== S.tf) setAndReload({ symbol: s, tf });
+      NEXUS.plan({ dir: v.dir, slD: Math.abs(v.entry - v.sl), tpD: Math.abs(v.tp - v.entry) }); toast(`${v.dir > 0 ? '🐂 BUY' : '🐻 SELL'} pripravený v obchodnom paneli – skontroluj SL / TP a potvrď ✔`); };
+  }
+  function sigDialog() {
+    openDialog(`<div class="dlg-h"><span>🎯 Buy / Sell skener</span><button class="ib" data-x>✕</button></div><div class="dlg-b">
+      <div class="sig-now"></div><div class="ar-tw"><table class="sig-t ar-t"></table></div><div class="sig-det"></div>
+      <div class="muted" style="font-size:11px;margin-top:8px">Hlasujú: Technicals 35 %, trend EMA 50/200 20 %, MACD 20 %, RSI 10 %, čerstvý nápad z čiar a úrovní 15 %. Nad +20 % = BUY, pod −20 % = SELL. „Spolu“ váži vyššie timeframy viac. Je to štatistika, nie istota – vždy použi stop loss.</div></div>
+      <div class="dlg-f"><button class="btn" data-sre>↻ Skenovať znova</button><span class="grow"></span><button class="btn pri" data-x>Hotovo</button></div>`, null, 'wide sig-dlg');
+    $$('.sig-dlg [data-x]').forEach(x => x.onclick = closeDialog);
+    $('.sig-dlg [data-sre]').onclick = () => runSig();
+    paintSig();
+    if (Date.now() - sigAt > 60000) runSig();
+  }
+  $('#bSig').onclick = () => sigDialog();
+
   // ---- ⊞ every function in one place, by category; choose which buttons stay on the toolbar -------------------
   const FUNCS = [
     ['Graf', [['bSymbol', '◆', 'Symbol', 'Vyber trh'], ['bType', '🕯', 'Typ grafu', 'Sviečky, Heikin Ashi, Renko…'], ['bTf', '⏱', 'Timeframe', '1 s až 1 mesiac'], ['bLayout', '▦', 'Rozloženie a plochy', '1–10 grafov, prepínanie plôch'], ['saves', '💾', 'Uloženia', 'Ulož rozloženie pod názvom (s dátumom a časom), načítaj neskôr · Ctrl+S']]],
-    ['Kreslenie a text', [['bTools', '🧰', 'Tools', 'Kreslenie + text + indikátory v jednom menu · Alt+T'], ['bDraw', '✎', 'Kreslenie', 'Čiary, Fibonacci, vzory, tvary'], ['bText', 'T', 'Text', 'Poznámky, pin, tabuľka, obrázok, nápad']]],
+    ['Kreslenie a text', [['bTools', '🧰', 'Tools', 'Kreslenie + text + indikátory v jednom menu · Alt+T'], ['bHideInd', '👁', 'Skryť indikátory', 'Skryje / zobrazí všetky indikátory vo všetkých grafoch · Alt+H'], ['bCandles', '🕯', 'Sviečky', 'Typ grafu, tvar a farby sviečok'], ['bDraw', '✎', 'Kreslenie', 'Čiary, Fibonacci, vzory, tvary'], ['bText', 'T', 'Text', 'Poznámky, pin, tabuľka, obrázok, nápad']]],
     ['Analýza', [['bInd', 'ƒx', 'Indikátory', 'RSI, MACD, kĺzavé priemery, vzory'], ['bFunc', '🧩', 'Funkcie', 'Čiary, objem, stratégie, pozadie podľa Technicals'], ['lines', '📐', 'Čiary', 'Auto trendové čiary a úrovne'], ['volume', '🫧', 'Objem', 'Bubliny, delta, tok obchodov'], ['strats', '⚡', 'Stratégie nápadov', 'Zapnúť / vypnúť, R:R, stop'], ['bAlgo', '🧠', 'Algo', 'Overené stratégie, test, živé signály'], ['area', '✂', 'Oblasť do učenia', 'Označ sviečky, ktoré už prebehli: štatistika + indikátory v číslach do Nexus Lab'],
-      ['tech', '📊', 'Technicals', 'Súhrn pre všetky timeframy (v Knižnici)'], ['bScan', '🔍', 'Skenovať', 'Hľadá vstupy na trhoch'], ['bReplay', '⏯', 'Replay', 'Tréning na histórii'],
+      ['tech', '📊', 'Technicals', 'Súhrn pre všetky timeframy (v Knižnici)'], ['bScan', '🔍', 'Skenovať', 'Hľadá vstupy na trhoch'], ['bSig', '🎯', 'Buy / Sell skener', 'Nákup alebo predaj? Verdikt pre každý trh a timeframe'], ['bReplay', '⏯', 'Replay', 'Tréning na histórii'],
       ['lab', '🧪', 'Nexus Lab', 'Druhý grafový systém: karty, skener objemových pohybov, učenie'], ['elec', '🔌', 'Electricals', 'Štatistiky: čo sa stalo pri akej hodnote indikátorov']]],
     ['Obchod', [['nexus', '◆', 'Nexus', 'Účet, pozície, robot, nástenka'], ['ticket', '🐂', 'Obchodný panel', 'Býk = kúpiť, medveď = predať · SL, TP, čiastočné výstupy'], ['bIdea', '💡', 'Nápad', 'Alerty skenera a labelovanie']]],
     ['Komunikácia', [['bChat', '💬', 'Chat', 'Tím, nápady, otázky pre Clauda'], ['news', '📰', 'Správy', 'Novinky, kalendár, odkazy (v okne chatu)']]],
@@ -3076,7 +3230,7 @@
     const paint = () => {
       const d = openDialog(`<div class="dlg-h"><span>🖼 Štýly a pozadia</span><button class="ib" data-x>✕</button></div><div class="dlg-b">
         <div class="tabs">${[['photos', '📷 Fotky'], ['drawn', '🏔 Kreslené'], ['anim', '✨ Animované'], ['video', '🎬 Videá'], ['candles', '🕯 Farby sviečok'], ['themes', '🎨 Témy']].map(([k, n]) => `<span class="tab ${stTab === k ? 'on' : ''}" data-tab="${k}">${n}</span>`).join('')}</div>
-        ${body()}</div><div class="dlg-f"><span class="grow"></span><button class="btn pri" data-x>Hotovo</button></div>`, null, 'wide styles-dlg');
+        ${body()}</div><div class="dlg-f"><button class="btn" data-allc title="Pozadie, farby a sviečky aj vo všetkých ostatných grafoch a plochách">🔁 Na všetky grafy</button><span class="grow"></span><button class="btn pri" data-x>Hotovo</button></div>`, null, 'wide styles-dlg');
       $$('[data-tab]', d).forEach(x => x.onclick = () => { stTab = x.dataset.tab; paint(); });
       $$('[data-vid]', d).forEach(x => x.onclick = () => { B.video = x.dataset.vid; save(); applyBg(); buildChart(); paint(); });
       const vs = $('[data-vs]', d); if (vs) vs.oninput = () => { B.videoSpeed = +vs.value; vs.nextElementSibling.textContent = vs.value + ' %'; save(); applyVideo(); };
@@ -3168,11 +3322,12 @@
     const def = KS.STUDIES[s.type];
     ctxMenu(ev, `<div class="sec">${esc(def.label(s))}</div>${item('cfg', '⚙', 'Nastavenia… (farby, dĺžka, štýl)')}${item('hide', '👁', 'Skryť')}${item('dup', '⧉', 'Duplikovať')}
       ${def.pane === true ? `<div class="sep"></div>${item('above', s.above ? '⬇' : '⬆', s.above ? 'Panel pod graf' : 'Panel nad graf')}${item('pup', '↑', 'Posunúť panel vyššie')}${item('pdn', '↓', 'Posunúť panel nižšie')}<div class="sep"></div>` : ''}
-      ${item('def', '⭐', 'Uložiť ako predvolené')}${item('del', '🗑', 'Odstrániť')}<div class="sep"></div>${item('add', 'ƒx', 'Pridať ďalší indikátor…')}`, m => bindItems(m, {
+      ${def.pane === true ? item('ov', '◩', s.overlay ? 'Vlastný panel (neprekrývať graf)' : 'Prekryť graf priehľadne') : ''}${item('sall', '🔁', 'Tieto nastavenia na všetky grafy')}${item('def', '⭐', 'Uložiť ako predvolené')}${item('del', '🗑', 'Odstrániť')}<div class="sep"></div>${item('add', 'ƒx', 'Pridať ďalší indikátor…')}`, m => bindItems(m, {
       cfg: () => studySettings(s), hide: () => { s.visible = false; studiesChanged(); },
       dup: () => { studies.push(KS.normalize({ ...JSON.parse(JSON.stringify(s)), uid: undefined })); studiesChanged(); },
       def: () => { S.toolDefaults['study:' + s.type] = { inputs: s.inputs, plots: s.plots, tfs: s.tfs, out: s.out }; save(); toast('Uložené ako predvolené'); },
       del: () => { studies = studies.filter(x => x !== s); studiesChanged(); }, add: () => $('#bInd').click(),
+      ov: () => { s.overlay = !s.overlay; studiesChanged(); }, sall: () => applyStudyAll(s),
       above: () => { s.above = !s.above; studiesChanged(); }, pup: () => movePanel(s, -1), pdn: () => movePanel(s, 1),
     }));
   }
@@ -3457,6 +3612,7 @@
     if ((e.ctrlKey || e.metaKey) && !e.altKey && !EMBED && e.code === 'KeyS') { e.preventDefault(); NEXUS.openApp('saves'); setTimeout(() => { const i = $('#svName'); if (i) i.focus(); }, 50); return; }
     if (e.ctrlKey && e.key === 'Enter' && S.idea.open && current) { e.preventDefault(); if (e.shiftKey) openAlert(qi + 1); else saveLabel(); return; }
     if (e.altKey && !typing && e.code === 'KeyR' && !e.shiftKey) { e.preventDefault(); if (view.replay) exitReplay(); else startReplay(true); return; }
+    if (e.altKey && !typing && e.code === 'KeyH' && !e.shiftKey && !EMBED) { e.preventDefault(); $('#bHideInd').click(); return; }
     if (e.altKey && !typing && e.code === 'KeyT' && !e.shiftKey && !EMBED) { e.preventDefault(); toolsMenu($('#bTools').style.display === 'none' ? $('#bAll') : $('#bTools')); return; }
     if (e.altKey && !typing && e.code === 'KeyA' && !e.shiftKey) { e.preventDefault(); toggleAuto(); return; }
     if (view.replay && !typing && !e.altKey && !e.ctrlKey) {
@@ -3480,7 +3636,7 @@
     if (!SYM[S.symbol]) S.symbol = 'XAUUSD';
     if (S.labeler) await pullPrefs(S.labeler);
     applyPanel(); applyBg(); applyBright(); applyToolbar(); applyView(); applyAnim();
-    applyLayout(); paintDock(); applyHiddenButtons();
+    applyLayout(); paintDock(); applyHiddenButtons(); paintHideBtn();
     { let lg = S.lang; if (EMBED) try { lg = JSON.parse(localStorage.getItem('nx2')).lang; } catch (e) {} if (lg === 'en') I18N.set('en'); }
     await load();
     if (EMBED) { hist = [snap()]; hpos = 0; paintHist(); return; }
