@@ -483,6 +483,16 @@ const LIB = (() => {
 
   // ---- tips and tricks -----------------------------------------------------------------------------------
   const TIPS = [
+    { id: 'orderflow', name: 'Objem, delta a tok príkazov', ic: '🫧',
+      text: ['Každý obchod má kupujúceho aj predávajúceho – objem je preto vždy rovnaký na oboch stranách. Rozhoduje, KTO bol agresívny.',
+        'Limitný príkaz (pasívny) čaká v knihe príkazov. Trhový príkaz (agresívny) ho okamžite „zje“. Agresívny kupujúci zaplatí cenu predávajúceho (ask), agresívny predávajúci predá za cenu kupujúceho (bid).',
+        'Delta = objem agresívnych nákupov − objem agresívnych predajov. Kladná delta: kupujúci tlačia cenu hore. Záporná: predávajúci tlačia dole.',
+        'CVD (kumulatívna delta) sčítava deltu sviečku po sviečke. Rastúca cena + klesajúca CVD = rast bez skutočných kupujúcich (divergencia, varovanie).',
+        'Absorpcia: veľká záporná delta, ale cena neklesá → niekto veľký limitnými príkazmi nakupuje všetko, čo predávajúci pošlú. Často pred obratom hore (a naopak).',
+        'Bubliny v grafe: veľkosť = objem v danom čase, zelený výsek = podiel kupujúcich, červený = predávajúcich, číslo = delta. Veľká bublina na maxime/minime = boj o úroveň.',
+        'Páska obchodov (🌊) ukazuje každý obchod naživo: čas, cenu a veľkosť v lotoch. Séria veľkých ▲ obchodov = niekto agresívne nakupuje (robot alebo inštitúcia).',
+        'Lot pri zlate = 100 uncí, pri striebre 5 000 uncí, pri BTC tu rátame 1 BTC.',
+        'Pozor: dáta sú z Binance (XAUUSDT, XAGUSDT, BTCUSDT). Pri zlate je to len časť svetového trhu, takže delta ukazuje náladu na Binance, nie na celom trhu (CME futures, spot u bánk).'] },
     { id: 'anatomy', name: 'Anatómia sviečky', ic: '🕯', pic: 'anatomy',
       text: ['Telo = rozdiel medzi otvorením a zatvorením. Zelené: zatvorenie vyššie ako otvorenie; červené: nižšie.', 'Horný knôt = maximum nad telom, dolný knôt = minimum pod telom.', 'Dlhý knôt = odmietnutie ceny na tej strane.', 'Veľké telo = sila, malé telo = nerozhodnosť.', 'Sviečka je hotová až po zatvorení – dovtedy sa môže úplne zmeniť.'] },
     { id: 'risk', name: 'Riskuj max. 1–2 % na obchod', ic: '🛡',
@@ -645,5 +655,6 @@ const LIB = (() => {
   function close() { if (!el) return; el.classList.remove('open'); $('#bLib').classList.remove('on'); if (hooks.onClose) hooks.onClose(); }
   const isOpen = () => !!el && el.classList.contains('open');
   document.addEventListener('keydown', keys, true);
-  return { CANDLES, CHARTS, STRATS, TIPS, init(h) { hooks = h || {}; }, open, close, isOpen, toggle() { isOpen() ? close() : open(); } };
+  function show(tab, id) { st.tab = tab; st.sel = id; st.dir = 'all'; st.q = ''; store(); if (isOpen()) paint(); else open(); }
+  return { CANDLES, CHARTS, STRATS, TIPS, init(h) { hooks = h || {}; }, open, close, isOpen, show, toggle() { isOpen() ? close() : open(); } };
 })();

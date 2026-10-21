@@ -458,3 +458,116 @@ body.tb-right #libPage { right: calc(var(--tb-h) + 15px); }
 @media (max-width: 760px) { .lib-main { flex-direction: column; } .lib-list { width: auto; max-height: 38vh; border-right: 0; border-bottom: 1px solid var(--border); } .lib-det { padding: 12px; } }
 @media (max-width: 1800px) { #statusText { display: none; } .status { padding: 0 4px 0 6px; } }
 #bSettings { width: calc(var(--tb-w) + 14px); flex-basis: calc(var(--tb-w) + 14px); }
+
+/* ---- chat: colour per category, Claude answers, folders ---- */
+.msg { border-left: 3px solid var(--kc, var(--border)); }
+.msg.ai { background: rgba(38,198,218,.07); }
+.msg.thinking .mt { color: var(--muted); animation: pulse 1.2s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: .45; } }
+.kchip { font-size: 10px; padding: 1px 6px; border-radius: 8px; color: var(--kc); background: color-mix(in srgb, var(--kc) 16%, transparent); white-space: nowrap; }
+.fchip { font-size: 10px; padding: 1px 6px; border-radius: 8px; color: var(--fc); border: 1px solid color-mix(in srgb, var(--fc) 50%, transparent); white-space: nowrap; }
+.mh { flex-wrap: wrap; }
+.dd.fold-menu { min-width: 240px; }
+
+/* ---- 🫧 volume menu ---- */
+.dd.flow-menu { width: 330px; }
+.dd.flow-menu label.it input { margin: 0 8px 0 2px; accent-color: var(--accent); }
+.dd.flow-menu .op b { font-weight: 500; font-size: 11px; color: var(--muted); }
+
+/* ---- 🌊 tape window ---- */
+#flowWin { position: fixed; z-index: 26; width: 380px; height: 560px; max-height: calc(100vh - 60px); right: 90px; top: 70px; background: var(--panel); border: 1px solid var(--border);
+           border-radius: 8px; box-shadow: 0 12px 40px rgba(0,0,0,.5); display: none; flex-direction: column; overflow: hidden; min-width: 260px; min-height: 100px; }
+#flowWin.open { display: flex; }
+#flowWin.min { height: auto !important; min-height: 0; }
+#flowWin.min #flowBody, #flowWin.min #flowFoot { display: none; }
+#flowWin.max { inset: 2vh 2vw !important; width: auto !important; height: auto !important; max-height: none !important; }
+#flowHead { display: flex; align-items: center; gap: 4px; padding: 7px 8px 7px 12px; border-bottom: 1px solid var(--border); cursor: move; font-weight: 600; user-select: none; }
+#flowHead select, #flowHead input { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 2px 4px; font-weight: 400; }
+#flowHead input { width: 66px; }
+#flowHead .dlg-tools { opacity: .45; } #flowHead:hover .dlg-tools { opacity: 1; }
+#flowBody { flex: 1; overflow-y: auto; padding: 6px 10px; font-variant-numeric: tabular-nums; }
+#flowFoot { font-size: 11px; padding: 6px 10px; border-top: 1px solid var(--border); line-height: 1.4; }
+.up { color: #4cd6b5; } .dn { color: #ff7b86; }
+.fl-sec { font-weight: 600; font-size: 12px; margin: 10px 0 4px; }
+.fl-row { display: grid; grid-template-columns: 44px 1fr 62px 62px 74px; align-items: center; gap: 6px; font-size: 12px; padding: 2px 0; }
+.fl-n { color: var(--muted); }
+.fl-bar { height: 8px; border-radius: 4px; background: rgba(242,54,69,.7); overflow: hidden; }
+.fl-bar i { display: block; height: 100%; background: rgba(8,153,129,.95); }
+.fl-d { text-align: right; }
+.fl-big { display: flex; flex-wrap: wrap; gap: 4px; }
+.fl-big span { font-size: 11px; padding: 2px 7px; border-radius: 10px; background: var(--bg); border: 1px solid var(--border); }
+.fl-tape { font-size: 12px; }
+.fl-tape div { display: grid; grid-template-columns: 90px 1fr 70px; gap: 6px; padding: 1px 4px; position: relative; border-radius: 3px; }
+.fl-tape div span:nth-child(3) { text-align: right; }
+.fl-tape div i { position: absolute; right: 0; top: 1px; bottom: 1px; opacity: .14; border-radius: 3px; background: currentColor; pointer-events: none; }
+.fl-tape div.big { font-weight: 700; background: rgba(255,255,255,.04); }
+
+/* ---- ◆ NEXUS button ---- */
+#nexusHud { position: fixed; z-index: 30; bottom: 14px; left: 50%; transform: translateX(-50%); display: inline-flex; align-items: center; gap: 8px; padding: 8px 18px;
+            border-radius: 22px; border: 1px solid rgba(91,156,246,.55); background: linear-gradient(135deg, rgba(41,98,255,.88), rgba(123,97,255,.88)); color: #fff;
+            font: 700 13px/1 system-ui; letter-spacing: .18em; cursor: grab; box-shadow: 0 6px 24px rgba(41,98,255,.45); user-select: none; touch-action: none; }
+#nexusHud:active { cursor: grabbing; }
+#nexusHud .nx-logo { font-size: 15px; letter-spacing: 0; }
+#nexusHud.on { background: linear-gradient(135deg, #7b61ff, #2962ff); box-shadow: 0 0 0 2px rgba(255,255,255,.35), 0 6px 24px rgba(41,98,255,.6); }
+
+/* ---- Nexus base page ---- */
+#nexusPage { position: fixed; inset: 0; z-index: 21; background: var(--bg); display: none; flex-direction: column; overflow-y: auto; }
+body.tb-top #nexusPage { top: calc(var(--tb-h) + 7px); }
+body.tb-bottom #nexusPage { bottom: calc(var(--tb-h) + 7px); }
+body.tb-left #nexusPage { left: calc(var(--tb-h) + 15px); }
+body.tb-right #nexusPage { right: calc(var(--tb-h) + 15px); }
+#nexusPage.open { display: flex; }
+.nx-head { display: flex; align-items: center; gap: 12px; padding: 14px 22px; border-bottom: 1px solid var(--border); flex-wrap: wrap;
+           background: linear-gradient(90deg, rgba(41,98,255,.14), rgba(123,97,255,.08) 50%, transparent); }
+.nx-name { font-size: 18px; font-weight: 700; }
+.nx-av { border-radius: 50%; object-fit: cover; display: inline-flex; align-items: center; justify-content: center; background: linear-gradient(135deg, #2962ff, #7b61ff); color: #fff; font-weight: 700; flex: 0 0 auto; }
+.nx-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(460px, 1fr)); gap: 14px; padding: 16px 22px 90px; align-items: start; }
+.nx-card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+#nxBot, #nxPos, #nxHist { grid-column: span 2; }
+@media (max-width: 1000px) { #nxBot, #nxPos, #nxHist { grid-column: auto; } .nx-grid { grid-template-columns: 1fr; } }
+.nx-card > header { display: flex; align-items: center; padding: 9px 14px; border-bottom: 1px solid var(--border); font-weight: 600; }
+.nx-cb { padding: 10px 14px 14px; overflow-x: auto; }
+.nx-prof { display: flex; gap: 16px; align-items: center; }
+.nx-avbox { display: flex; flex-direction: column; align-items: center; gap: 4px; cursor: pointer; color: var(--muted); font-size: 11px; }
+.nx-pf { flex: 1; display: grid; gap: 8px; }
+.nx-pf label, .nx-bot-cfg label { display: flex; flex-direction: column; gap: 3px; font-size: 11px; color: var(--muted); }
+.nx-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 12px; }
+.nx-stats div { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 7px 9px; }
+.nx-stats small { display: block; color: var(--muted); font-size: 11px; }
+.nx-stats b { font-size: 16px; font-variant-numeric: tabular-nums; }
+.nx-new { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-bottom: 8px; }
+.nx-new select, .nx-new input, .nx-bot-cfg input, .nx-bot-cfg select { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 5px 6px; font: inherit; }
+.nx-new input[type=number] { width: 84px; }
+.btn.buy { background: rgba(8,153,129,.85); color: #fff; border-color: transparent; } .btn.sell { background: rgba(242,54,69,.85); color: #fff; border-color: transparent; }
+.nx-bot-cfg { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: flex-end; margin-bottom: 10px; }
+.nx-bot-cfg label.ctl { flex-direction: row; align-items: center; color: var(--text); font-size: 12px; gap: 6px; }
+.nx-bot-cfg input[type=number] { width: 60px; display: inline-block; }
+.nx-chips { display: flex; flex-wrap: wrap; gap: 3px; }
+.nx-chips span { cursor: pointer; font-size: 12px; padding: 4px 9px; border-radius: 12px; border: 1px solid var(--border); color: var(--muted); }
+.nx-chips span.on { border-color: var(--accent); background: rgba(41,98,255,.2); color: var(--text); }
+table.nx-t td, table.nx-t th { text-align: left !important; white-space: nowrap; }
+.nx-sub { font-weight: 600; font-size: 12px; margin: 12px 0 6px; display: flex; align-items: center; gap: 8px; }
+.nx-log { max-height: 220px; overflow-y: auto; font-size: 12px; }
+.nx-log div { padding: 3px 0; border-bottom: 1px solid var(--border); }
+.nx-log .win, .nx-log .buy { color: #4cd6b5; } .nx-log .loss, .nx-log .sell { color: #ff7b86; }
+.nx-cats { display: flex; flex-wrap: wrap; gap: 5px; }
+.nx-cats span { cursor: pointer; font-size: 12px; padding: 4px 10px; border-radius: 12px; color: var(--kc); background: color-mix(in srgb, var(--kc) 14%, transparent); border: 1px solid color-mix(in srgb, var(--kc) 40%, transparent); }
+.nx-fold { border: 1px solid var(--border); border-left: 3px solid var(--fc); border-radius: 6px; margin: 6px 0; padding: 4px 8px; }
+.nx-fold summary { display: flex; align-items: center; gap: 6px; cursor: pointer; list-style: none; }
+.nx-fold summary .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--fc); }
+.nx-fi { border-left: 3px solid var(--kc); padding: 4px 8px; margin: 5px 0; background: var(--bg); border-radius: 4px; font-size: 12px; line-height: 1.4; }
+.nx-idea { font-size: 12px; padding: 5px 6px; border-bottom: 1px solid var(--border); cursor: pointer; }
+.nx-idea:hover { background: var(--panel2); }
+.nx-q { margin: 0; font-size: 17px; line-height: 1.45; font-style: italic; padding: 6px 4px 4px 14px; border-left: 3px solid var(--accent); }
+.nx-q cite { display: block; font-size: 12px; color: var(--muted); font-style: normal; margin-top: 6px; }
+.nx-tip { margin: 2px 0; padding-left: 18px; font-size: 12px; line-height: 1.5; }
+
+/* ---- toolbar auto-fit ---- */
+body.tb-fit1 #toolbar { font-size: calc(var(--tb-fs) - 1px); }
+body.tb-fit1 .tbtn { gap: 3px; padding: 0 3px; }
+body.tb-fit2 #tbRight .tbtn .tx, body.tb-fit3 .tbtn .tx { display: none; }
+body.tb-fit2 #tbRight .tbtn, body.tb-fit3 .tbtn { width: calc(var(--tb-h) + 6px); flex: 0 0 auto; justify-content: center; padding: 0; }
+.dd.flow-menu { overflow-x: hidden; }
+.dd.flow-menu .it { white-space: normal; }
+#flowTitle { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.nx-bot-cfg label.inl { flex-direction: row; align-items: center; gap: 6px; font-size: 12px; color: var(--text); }

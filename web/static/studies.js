@@ -512,6 +512,13 @@ const KS = (() => {
   osc('pvt', { name: 'PVT', title: 'Price Volume Trend', cat: 'vol', inputs: [], plots: [P('pvt', 'PVT', BLUE)], label: () => 'PVT', calc: D => ({ pvt: pvt(D) }) });
   osc('netvol', { name: 'Čistý objem', title: 'Objem so znamienkom podľa smeru sviečky', cat: 'vol', inputs: [], plots: [H('nv', 'Čistý objem', '#26a69a', '#ef5350')],
     label: () => 'Čistý objem', calc: D => ({ nv: D.c.map((c, i) => (c >= D.o[i] ? 1 : -1) * (D.v[i] || 0)) }) });
+  // Delta: aggressive buyers (market buys hitting the ask) minus aggressive sellers, per bar, from Binance taker volume.
+  const delta = D => D.v.map((v, i) => (Number.isFinite(D.bv[i]) ? 2 * D.bv[i] - v : NaN));
+  osc('delta', { name: 'Delta (kupujúci − predávajúci)', title: 'Objem agresívnych nákupov mínus predajov v každej sviečke', cat: 'vol', inputs: [],
+    plots: [H('d', 'Delta', '#26a69a', '#ef5350')], label: () => 'Delta', calc: D => ({ d: delta(D) }) });
+  osc('cvd', { name: 'Kumulatívna delta (CVD)', title: 'Súčet delty – kto má navrch dlhodobo; reset každú seanciu (voliteľne)', cat: 'vol',
+    inputs: [{ k: 'reset', label: 'Reset každú seanciu (1 = áno)', def: 1, min: 0, max: 1 }], plots: [P('cvd', 'CVD', '#00bcd4', { width: 2 }), LV()],
+    label: () => 'CVD', calc: (D, st) => { const d = delta(D); let c = 0; return { cvd: d.map((v, i) => { if (st.inputs.reset && i && D.s[i] !== D.s[i - 1]) c = 0; c += Number.isFinite(v) ? v : 0; return c; }) }; } });
   osc('volosc', { name: 'Objemový oscilátor', title: 'Rozdiel EMA objemu (%)', cat: 'vol', inputs: [{ k: 'fast', label: 'Rýchla', def: 5, min: 1, max: 200 }, { k: 'slow', label: 'Pomalá', def: 10, min: 1, max: 400 }],
     plots: [P('vo', 'Vol osc', BLUE), LV()], label: s => `VolOsc ${s.inputs.fast} ${s.inputs.slow}`, calc: (D, s) => ({ vo: zip(ema(D.v, s.inputs.fast), ema(D.v, s.inputs.slow), (a, b) => (b ? 100 * (a - b) / b : NaN)) }) });
   osc('efi', { name: 'Elder Force Index', title: 'Sila pohybu (zmena × objem)', cat: 'vol', inputs: [LEN(13)], plots: [P('efi', 'EFI', '#ef5350'), LV()],

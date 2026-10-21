@@ -82,8 +82,9 @@ def build_context(alert: dict, candles: pd.DataFrame, outcome: dict | None, labe
 
 
 class ClaudeAssistant:
-    def __init__(self, cfg: dict):
+    def __init__(self, cfg: dict, system_prompt: str = SYSTEM_PROMPT):
         a = cfg.get("assistant") or {}
+        self.system_prompt = system_prompt
         self.enabled = a.get("enabled", True)
         self.model = a.get("model", "sonnet")
         self.timeout = a.get("timeout_seconds", 180)
@@ -107,7 +108,7 @@ class ClaudeAssistant:
             "--strict-mcp-config", "--no-session-persistence",
             "--permission-prompts", "none", "--max-turns", "2",
             "--output-format", "json",
-            "--system-prompt", SYSTEM_PROMPT,
+            "--system-prompt", self.system_prompt,
             "Odpovedz na otázku na konci vstupu.",
         ]
 
