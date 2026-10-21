@@ -57,7 +57,7 @@ const NEXUS = (() => {
     const need = new Set([...A().positions.map(p => p.symbol), ...(page && page.classList.contains('open') ? ctx.symbols().map(s => s.id) : [])]);
     for (const id of need) {
       try {
-        const bars = await ctx.fetchBars(id, '1m', null, 3), b = bars[bars.length - 1];
+        const bars = await ctx.fetchBars(id, '1m', null, 10), b = bars[bars.length - 1];
         if (!b) continue;
         prices[id] = b.close;
         for (const p of [...A().positions].filter(x => x.symbol === id)) {

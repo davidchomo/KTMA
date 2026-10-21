@@ -595,7 +595,7 @@
   function connectLive() {
     closeLive();
     const sy = sym(), tf = S.tf, sec = SECONDS[tf], t = sy.ticker.toLowerCase();
-    const base = sy.market === 'spot' ? 'wss://stream.binance.com:9443/ws/' : 'wss://fstream.binance.com/ws/';
+    const base = sy.market === 'spot' ? 'wss://stream.binance.com:9443/ws/' : 'wss://fstream.binance.com/market/ws/';
     ws = new WebSocket(base + (sec ? `${t}@aggTrade` : `${t}@kline_${tf}`));
     ws.onopen = () => setStatus('live', 'live');
     ws.onclose = () => { setStatus('err', 'odpojené · skúšam znova'); wsTimer = setTimeout(connectLive, 3000); };
@@ -623,7 +623,7 @@
     const b = document.body;
     b.classList.remove('tb-fit1', 'tb-fit2', 'tb-fit3');
     if (!['top', 'bottom'].includes(S.toolbar)) return;
-    const over = () => $('#toolbar .tbtn .tx').some(t => t.offsetParent && t.scrollWidth > t.clientWidth + 1);
+    const over = () => $$('#toolbar .tbtn .tx').some(t => t.offsetParent && t.scrollWidth > t.clientWidth + 1);
     for (const c of ['tb-fit1', 'tb-fit2', 'tb-fit3']) { if (!over()) return; b.classList.add(c); }
   }
   window.addEventListener('resize', () => { clearTimeout(fitToolbar.t); fitToolbar.t = setTimeout(fitToolbar, 150); });
@@ -890,12 +890,12 @@
       $$('[data-tab]', d).forEach(x => x.onclick = () => { tab = x.dataset.tab; paint(); });
       const br = $('[data-bright]', d); if (br) br.oninput = () => { L.bright = +br.value; br.nextElementSibling.textContent = L.bright + ' %'; applyBright(); save(); };
       const CS = L.candle;
-      $('[data-cs]', d).forEach(x => x.oninput = () => { const k = x.dataset.cs; CS[k] = +x.value; CS.preset = ''; x.nextElementSibling.textContent = x.nextElementSibling.textContent.replace(/^S+/, CS[k]);
+      $$('[data-cs]', d).forEach(x => x.oninput = () => { const k = x.dataset.cs; CS[k] = +x.value; CS.preset = ''; x.nextElementSibling.textContent = x.nextElementSibling.textContent.replace(/^\S+/, () => CS[k]);
         if (k === 'spacing') chart && chart.timeScale().applyOptions({ barSpacing: CS.spacing }); else main && main.applyOptions({ [k]: CS[k] }); save(); });
-      $('[data-cp]', d).forEach(x => x.onclick = () => { Object.assign(CS, CANDLE_PRESETS[x.dataset.cp][1], { preset: x.dataset.cp }); save(); buildChart();
+      $$('[data-cp]', d).forEach(x => x.onclick = () => { Object.assign(CS, CANDLE_PRESETS[x.dataset.cp][1], { preset: x.dataset.cp }); save(); buildChart();
         chart.timeScale().applyOptions({ barSpacing: CS.spacing }); chart.timeScale().scrollToRealTime(); paint(); });
       const P = S.panel;
-      $('[data-pos]', d).forEach(x => x.onclick = () => { if (x.dataset.pos === 'hidden') S.lastToolbar = S.toolbar; S.toolbar = x.dataset.pos; save(); applyToolbar(); paint(); });
+      $$('[data-pos]', d).forEach(x => x.onclick = () => { if (x.dataset.pos === 'hidden') S.lastToolbar = S.toolbar; S.toolbar = x.dataset.pos; save(); applyToolbar(); paint(); });
       $$('[data-pl]', d).forEach(x => x[x.type === 'range' ? 'oninput' : 'onchange'] = () => { const k = x.dataset.pl; P[k] = x.type === 'range' ? +x.value : x.value;
         if (x.type === 'range') x.nextElementSibling.textContent = `${P[k]} px`; save(); applyPanel(); });
       [['pbg', 'bg', 'opacity', {}], ['ptext', 'text', '_ot', { noOpacity: true }], ['paccent', 'accent', '_oa', { noOpacity: true }]].forEach(([id, color, opacity, o]) => {
@@ -1430,7 +1430,7 @@
       <div class="mh"><b style="color:${m.author === 'Claude' ? K[2] : `hsl(${hue(m.author.toLowerCase())} 70% 65%)`}">${m.author === 'Claude' ? '🤖 ' : ''}${esc(m.author)}</b><span class="kchip">${K[0]} ${K[1]}</span>
       ${fs2.map(f => `<span class="fchip" style="--fc:${f.color}" title="V priečinku">📁 ${esc(f.name)}</span>`).join('')}<span class="grow"></span>
       <span class="muted">${esc(fmtChatTime(m.created_at))}</span><button class="ib" data-fold title="Uložiť do priečinka">📁</button>${fold ? '<button class="ib" data-unfold title="Odstrániť z tohto priečinka">✕</button>' : m.author.toLowerCase() === author().toLowerCase() ? '<button class="ib" data-del title="Zmazať">🗑</button>' : ''}</div>
-      <div class="mt">${esc(m.text).replace(/\n/g, '<br>')}</div>
+      <div class="mt">${esc(m.text).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/`([^`\n]+)`/g, '<code>$1</code>').replace(/\n/g, '<br>')}</div>
       ${m.symbol && m.author !== 'Claude' ? `<button class="att" data-att>📎 ${esc((SYM[m.symbol] || {}).name || m.symbol)} ${m.timeframe || ''}${m.bar_time ? ' · ' + esc(fmtTime(m.bar_time)) : ''}${m.price ? ' · ' + (+m.price).toFixed((SYM[m.symbol] || {}).digits ?? 2) : ''}</button>` : ''}</div>`; }).join('') + (askBusy ? '<div class="msg ai thinking" style="--kc:#26c6da"><div class="mt">🤖 Claude premýšľa…</div></div>' : '')
       : (fold ? '<div class="muted" style="padding:10px">Priečinok je prázdny. Správu doň pridáš tlačidlom 📁 pri správe.</div>' : '<div class="muted" style="padding:10px">Zatiaľ tu nič nie je. Napíš poznámku pre vývojárov, obchodný nápad alebo sa opýtaj Clauda (🤖).</div>');
   }
@@ -1465,7 +1465,7 @@
     });
   }
   function bindChatList() {
-    $('#chatList .msg').forEach(div => {
+    $$('#chatList .msg').forEach(div => {
       const F = S.chat.filter, fold = F.startsWith('f:') ? (S.folders || []).find(f => 'f:' + f.id === F) : null;
       const m = (fold ? fold.items : chatMsgs).find(x => x.id === +div.dataset.id); if (!m) return;
       const fb = $('[data-fold]', div); if (fb) fb.onclick = e => folderMenu(e.currentTarget, m);
@@ -1493,7 +1493,7 @@
     const paint = menu => {
       menu.innerHTML = `<div class="sec">Uložiť do priečinka</div>${(S.folders || []).map(f => `<div class="it" data-f="${f.id}"><span class="ic" style="color:${f.color}">${f.items.some(x => x.id === m.id) ? '☑' : '☐'}</span><span class="grow">📁 ${esc(f.name)}</span><small>${f.items.length}</small></div>`).join('')}
         <div class="sep"></div><div class="row" style="display:flex;gap:4px;padding:4px 10px"><input class="idea-in" placeholder="Nový priečinok…" data-nf style="flex:1"><button class="btn sm pri" data-nfa>➕</button></div>`;
-      $('[data-f]', menu).forEach(x => x.onclick = () => { toggleInFolder(S.folders.find(f => f.id === x.dataset.f), m); paint(menu); renderChatList(); renderChatFilter(); });
+      $$('[data-f]', menu).forEach(x => x.onclick = () => { toggleInFolder(S.folders.find(f => f.id === x.dataset.f), m); paint(menu); renderChatList(); renderChatFilter(); });
       const add = () => { const v = $('[data-nf]', menu).value.trim(); if (!v) return; toggleInFolder(newFolder(v), m); paint(menu); renderChatList(); renderChatFilter(); };
       $('[data-nfa]', menu).onclick = add; $('[data-nf]', menu).onkeydown = e => { if (e.key === 'Enter') add(); };
     };

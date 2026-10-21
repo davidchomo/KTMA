@@ -6,18 +6,18 @@ const FLOW = (() => {
   // contract size of one standard lot (what forex / CFD brokers call 1 lot)
   const LOT = { XAUUSD: [100, 'oz'], XAGUSD: [5000, 'oz'], BTCUSD: [1, 'BTC'] };
   const st = { unit: 'lots', big: 0, ...LS.get('nx-flow', {}) };
-  let sym = null, ws = null, retry = null, trades = [], paintT = null, el = null, open = false;
+  let sym = null, ws = null, retry = null, trades = [], seed = [], paintT = null, el = null, open = false;
   const lot = () => (LOT[sym && sym.id] || [1, ''])[0];
   const unitName = () => (st.unit === 'lots' ? 'lot' : (LOT[sym && sym.id] || [1, 'ks'])[1]);
   const size = q => (st.unit === 'lots' ? q / lot() : q);
-  const fmtQ = q => { const v = size(q); return v >= 1000 ? (v / 1000).toFixed(1) + 'k' : v >= 100 ? v.toFixed(0) : v >= 10 ? v.toFixed(1) : v >= 1 ? v.toFixed(2) : v.toFixed(3); };
+  const fmtQ = q => { const v = size(q); return v >= 1000 ? (v / 1000).toFixed(1) + 'k' : v >= 100 ? v.toFixed(0) : v >= 10 ? v.toFixed(1) : v >= 1 ? v.toFixed(2) : v >= 0.01 ? v.toFixed(3) : v > 0 ? +v.toPrecision(2) + '' : '0'; };
   const fmtP = p => (+p).toFixed(sym ? sym.digits ?? 2 : 2);
   const hms = t => { const d = new Date(t); return d.toLocaleTimeString('sk-SK', { hour12: false }) + '.' + String(d.getMilliseconds()).padStart(3, '0').slice(0, 2); };
 
   function connect() {
     disconnect();
     if (!sym || !open) return;
-    const base = sym.market === 'spot' ? 'wss://stream.binance.com:9443/ws/' : 'wss://fstream.binance.com/ws/';
+    const base = sym.market === 'spot' ? 'wss://stream.binance.com:9443/ws/' : 'wss://fstream.binance.com/market/ws/';
     ws = new WebSocket(base + sym.ticker.toLowerCase() + '@aggTrade');
     ws.onmessage = ev => {
       const m = JSON.parse(ev.data);
@@ -31,9 +31,19 @@ const FLOW = (() => {
   }
   function disconnect() { clearTimeout(retry); if (ws) { ws.onclose = null; ws.close(); ws = null; } }
 
+  // 1-minute candles (with buyer volume) fill the time before the window was opened
+  async function loadSeed() {
+    seed = [];
+    try {
+      const r = await (await fetch(`api/candles?symbol=${sym.id}&tf=1m&limit=16&hours=false`)).json();
+      seed = r.bars.filter(b => Number.isFinite(b[6])).map(b => ({ t: b[0] * 1000, v: b[5], bv: b[6] }));
+    } catch (e) {}
+    paint();
+  }
   function stats(ms) {
-    const from = Date.now() - ms; let b = 0, s = 0, n = 0;
+    const from = Date.now() - ms, first = trades.length ? trades[0].t : Date.now(); let b = 0, s = 0, n = 0;
     for (let i = trades.length - 1; i >= 0 && trades[i].t >= from; i--) { if (trades[i].buy) b += trades[i].q; else s += trades[i].q; n++; }
+    for (const x of seed) if (x.t >= from && x.t + 60000 <= first) { b += x.bv; s += x.v - x.bv; }
     return { b, s, n, d: b - s, pct: b + s ? (100 * b) / (b + s) : 50 };
   }
   function paint() {
@@ -72,9 +82,9 @@ const FLOW = (() => {
     $('#flowClose').onclick = () => api.close();
   }
   const api = {
-    open(s) { sym = s; open = true; trades = []; frame(); el.classList.add('open'); paint(); connect(); api.onToggle && api.onToggle(true); },
+    open(s) { sym = s; open = true; trades = []; frame(); el.classList.add('open'); paint(); connect(); loadSeed(); api.onToggle && api.onToggle(true); },
     close() { open = false; disconnect(); if (el) el.classList.remove('open'); api.onToggle && api.onToggle(false); },
-    setSymbol(s) { if (!open || (sym && s.id === sym.id)) { sym = s; return; } sym = s; trades = []; frame(); paint(); connect(); },
+    setSymbol(s) { if (!open || (sym && s.id === sym.id)) { sym = s; return; } sym = s; trades = []; frame(); paint(); connect(); loadSeed(); },
     isOpen: () => open,
     onToggle: null,
   };
