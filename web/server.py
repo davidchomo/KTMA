@@ -20,7 +20,7 @@ import pandas as pd
 import requests
 from fastapi import Body, FastAPI, HTTPException, Query
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.responses import FileResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from ktma.assistant import AssistantError, ClaudeAssistant
@@ -398,13 +398,6 @@ STORE.conn.commit()
 LAB_KINDS = ("case", "event", "tl", "range")
 
 
-def _lab_row(r) -> dict:
-    d = dict(r)
-    for k in ("features", "outcome"):
-        d[k] = json.loads(d[k] or "{}")
-    return d
-
-
 @app.get("/api/lab")
 def lab_list(kind: str = "", symbol: str = "", tf: str = "", limit: int = Query(20000, ge=1, le=50000)):
     q, a = "SELECT * FROM web_lab WHERE 1=1", []
@@ -413,7 +406,13 @@ def lab_list(kind: str = "", symbol: str = "", tf: str = "", limit: int = Query(
             q += f" AND {col}=?"
             a.append(v)
     rows = STORE.conn.execute(q + " ORDER BY id DESC LIMIT ?", (*a, limit)).fetchall()
-    return [_lab_row(r) for r in rows]
+    # features / outcome are stored as JSON already: splice them in instead of decoding and encoding ~10k rows
+    parts = []
+    for r in rows:
+        d = dict(r)
+        f, o = d.pop("features") or "{}", d.pop("outcome") or "{}"
+        parts.append(json.dumps(d)[:-1] + f', "features": {f}, "outcome": {o}}}')
+    return Response("[" + ",".join(parts) + "]", media_type="application/json")
 
 
 @app.get("/api/lab/counts")
