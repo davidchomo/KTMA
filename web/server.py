@@ -19,6 +19,7 @@ from pathlib import Path
 import pandas as pd
 import requests
 from fastapi import Body, FastAPI, HTTPException, Query
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -56,6 +57,7 @@ API = {"futures": ("https://fapi.binance.com/fapi/v1", 1500), "spot": ("https://
 MAX_REQUESTS = 15          # per candles call: keeps Binance far below its rate limits
 
 app = FastAPI(title="Nexus chart", docs_url=None, redoc_url=None)
+app.add_middleware(GZipMiddleware, minimum_size=4000)
 http = requests.Session()
 _cache: dict = {}
 _lock = threading.Lock()
@@ -412,6 +414,11 @@ def lab_list(kind: str = "", symbol: str = "", tf: str = "", limit: int = Query(
             a.append(v)
     rows = STORE.conn.execute(q + " ORDER BY id DESC LIMIT ?", (*a, limit)).fetchall()
     return [_lab_row(r) for r in rows]
+
+
+@app.get("/api/lab/counts")
+def lab_counts():
+    return {r[0]: r[1] for r in STORE.conn.execute("SELECT kind, COUNT(*) FROM web_lab GROUP BY kind")}
 
 
 @app.post("/api/lab")

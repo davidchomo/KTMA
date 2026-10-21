@@ -837,17 +837,12 @@ const NEXUS = (() => {
     }
   }
   // Electricals: the Lab statistics (lab-core.js), loaded from the server at most once a minute
-  let elecRecs = null, elecAt = 0;
   const elecSt = { kind: 'event' };
-  async function paintElec(force) {
+  function paintElec(force) {
     const box = $('#nxElec'); if (!box || typeof LAB === 'undefined') return;
-    if (!elecRecs || force || Date.now() - elecAt > 60000) {
-      box.innerHTML = '<p class="muted">Načítavam štatistiky…</p>';
-      try { elecRecs = await LAB.api.list(); elecAt = Date.now(); } catch (e) { box.innerHTML = '<p class="muted">Štatistiky sa nepodarilo načítať.</p>'; return; }
-    }
-    elecSt.del = async id => { await LAB.api.del(id, S().labeler); elecRecs = elecRecs.filter(r => r.id !== id); paintElec(); };
+    elecSt.del = async id => { await LAB.api.del(id, S().labeler); LAB.forget('case'); paintElec(); };
     elecSt.open = r => window.open(`lab?symbol=${r.symbol}&tf=${r.timeframe}&t=${r.t0}`, '_blank');
-    LAB.render(box, elecRecs, elecSt, () => paintElec());
+    LAB.show(box, elecSt, force);
   }
   const BIND = {
     elec: el => { $('[data-elab]', el).onclick = () => window.open('lab', '_blank'); $('[data-ere]', el).onclick = () => paintElec(true); paintElec(); },

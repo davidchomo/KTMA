@@ -220,23 +220,41 @@ const LAB = (() => {
   // ---- server ------------------------------------------------------------------------------------------
   const api = {
     list: async (q = {}) => (await fetch('api/lab?' + new URLSearchParams(q))).json(),
+    counts: async () => (await fetch('api/lab/counts')).json(),
     save: async recs => (await fetch('api/lab', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(recs.map(({ i, ...r }) => r)) })).json(),
     del: async (id, author) => fetch(`api/lab/${id}?author=${encodeURIComponent(author || '')}`, { method: 'DELETE' }),
     summary: async text => fetch('api/lab/summary', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text }) }),
   };
+
+  const cache = {};
+  async function kindData(kind, force) {
+    const c = cache[kind];
+    if (!force && c && Date.now() - c.at < 60000) return c.rs;
+    const rs = await api.list({ kind }); cache[kind] = { rs, at: Date.now() }; return rs;
+  }
+  // fills el with the Electricals view: loads the counts and the shown category, then render()
+  async function show(el, st, force) {
+    if (!el.innerHTML) el.innerHTML = '<p class="muted">Načítavam štatistiky…</p>';
+    try { st.counts = await api.counts(); const k = Object.keys(st.counts); if (!st.counts[st.kind]) st.kind = ['event', 'tl', 'range', 'case'].find(x => st.counts[x]) || 'event';
+      const rs = k.length ? await kindData(st.kind, force) : [];
+      render(el, rs, st, () => show(el, st));
+    } catch (e) { el.innerHTML = '<p class="muted">Štatistiky sa nepodarilo načítať.</p>'; }
+  }
+  const forget = kind => { if (kind) delete cache[kind]; else for (const k in cache) delete cache[k]; };
 
   // ---- the Electricals view (Lab side panel and the Nexus window share it) ---------------------------------
   const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const pc = v => (v === null || v === undefined ? '–' : Math.round(100 * v) + ' %');
   const heat = (c, B) => { if (c.win === null || c.n < 5) return ''; const e = c.edge, a = Math.min(0.75, Math.abs(e) * 3 * Math.min(1, c.n / 30)); return `background:${e >= 0 ? `rgba(38,166,154,${a})` : `rgba(239,83,80,${a})`}`; };
   function render(el, rs, st, onChange) {
-    const kinds = ['event', 'tl', 'range', 'case'].filter(k => rs.some(r => r.kind === k));
+    // st.counts (from the server) lists every category while rs may hold only the one shown
+    const cnt = st.counts || rs.reduce((a, r) => (a[r.kind] = (a[r.kind] || 0) + 1, a), {}), kinds = ['event', 'tl', 'range', 'case'].filter(k => cnt[k]);
     st.kind = kinds.includes(st.kind) ? st.kind : kinds[0] || 'event';
     const syms = [...new Set(rs.map(r => r.symbol))].sort(), tfs = [...new Set(rs.map(r => r.timeframe))];
     let sub = rs.filter(r => r.kind === st.kind && (!st.symbol || r.symbol === st.symbol) && (!st.tf || r.timeframe === st.tf) && (!st.dir || r.dir === +st.dir));
     const B = base(sub);
     const sel = (k, opts) => `<select data-el="${k}">${opts.map(([v, n]) => `<option value="${esc(v)}" ${String(st[k] || '') === String(v) ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select>`;
-    let html = `<div class="el-bar">${kinds.map(k => `<span class="el-tab ${st.kind === k ? 'on' : ''}" data-ek="${k}">${KINDS[k]} <small>${rs.filter(r => r.kind === k).length}</small></span>`).join('')}</div>
+    let html = `<div class="el-bar">${kinds.map(k => `<span class="el-tab ${st.kind === k ? 'on' : ''}" data-ek="${k}">${KINDS[k]} <small>${cnt[k]}</small></span>`).join('')}</div>
       <div class="el-bar">${sel('symbol', [['', 'Všetky trhy'], ...syms.map(s => [s, s])])}${sel('tf', [['', 'Všetky TF'], ...tfs.map(s => [s, s])])}${sel('dir', [['', 'Oba smery'], ['1', 'Len ▲ nahor'], ['-1', 'Len ▼ nadol']])}
       <input data-el="q" placeholder="Hľadať indikátor…" value="${esc(st.q || '')}"></div>`;
     if (!rs.length) return void (el.innerHTML = html + `<p class="muted el-empty">Zatiaľ žiadne dáta. Otvor <b>Nexus Lab</b> a daj <b>🔍 Skenovať</b> – nájdené pohyby sa uložia sem.</p>`, bind());
@@ -273,5 +291,5 @@ const LAB = (() => {
     }
   }
 
-  return { H, P, build, featuresAt, outcome, analyse, caseRecord, suggest, caseMatches, distance, simPct, table, base, groups, summary, render, api, setMeta, solid, KINDS, SIG };
+  return { show, forget, H, P, build, featuresAt, outcome, analyse, caseRecord, suggest, caseMatches, distance, simPct, table, base, groups, summary, render, api, setMeta, solid, KINDS, SIG };
 })();

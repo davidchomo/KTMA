@@ -14,7 +14,7 @@
   const tab = () => S.tabs.find(t => t.id === S.active) || S.tabs[0];
   const status = t => { $('#labStatus').textContent = t || ''; };
   let META = { symbols: [], timeframes: [] }, SYM = {};
-  let chart = null, main = null, markers = null, layer = null, cur = null, recs = [], allRecs = null, pick = null, matches = [], sugg = null;
+  let chart = null, main = null, markers = null, layer = null, cur = null, recs = [], pools = {}, pick = null, matches = [], sugg = null;
   const fmt = p => (Number.isFinite(p) ? p.toFixed(SYM[tab().symbol] ? SYM[tab().symbol].digits : 2) : '–');
   const when = t => new Date(t * 1000).toLocaleString('sk-SK', { dateStyle: 'short', timeStyle: 'short' });
 
@@ -46,7 +46,7 @@
   async function scan(loud = true) {
     if (!cur) return;
     const T = cur.T, rs = cur.A.recs.filter(r => r.outcome);
-    try { const r = await LAB.api.save(rs); S.scanned[`${T.symbol}|${T.tf}`] = Date.now(); save(); allRecs = null; if (loud) status(`Uložené do štatistík: ${r.saved} pohybov (${T.symbol} ${T.tf})`); pushSummary(); }
+    try { const r = await LAB.api.save(rs); S.scanned[`${T.symbol}|${T.tf}`] = Date.now(); save(); fresh(); if (loud) { status(`Uložené do štatistík: ${r.saved} pohybov (${T.symbol} ${T.tf})`); pushSummary(); } }
     catch (e) { if (loud) status('Uloženie zlyhalo: ' + e.message); }
   }
   async function scanAll() {
@@ -58,20 +58,26 @@
         const A = LAB.analyse(D, { symbol: sym, tf }, { closed: D.t.length - 1, tfSec: TFS(tf) });
         saved += (await LAB.api.save(A.recs)).saved; S.scanned[`${sym}|${tf}`] = Date.now(); } catch (e) {}
     }
-    save(); btn.disabled = false; allRecs = null; status(`Hotovo: ${saved} pohybov z ${jobs.length} grafov uložených do Electricals.`);
+    save(); btn.disabled = false; fresh(); status(`Hotovo: ${saved} pohybov z ${jobs.length} grafov uložených do Electricals.`);
     await pushSummary(); if (S.side === 'stats') side();
   }
-  async function all() { if (!allRecs) allRecs = await LAB.api.list(); return allRecs; }
-  async function pushSummary() { try { const rs = await all(); await LAB.api.summary(LAB.summary(rs)); } catch (e) {} }
+  const fresh = () => { pools = {}; LAB.forget(); };
+  // what the learning compares with: every stored move of this timeframe plus every saved move (✂)
+  async function pool(tf) {
+    if (!pools[tf]) pools[tf] = Promise.all([LAB.api.list({ tf }), LAB.api.list({ kind: 'case' })]).then(([a, b]) => { const m = new Map(); for (const r of [...a, ...b]) m.set(r.id, r); return [...m.values()]; });
+    return pools[tf];
+  }
+  // the Electricals text for Claude in the chat (everything stored; only after a scan or a saved move)
+  async function pushSummary() { try { await LAB.api.summary(LAB.summary(await LAB.api.list())); } catch (e) {} }
 
   // ---- learning: the latest closed bar against everything stored ----------------------------------------
   async function learn() {
     if (!cur) return;
     const { A, D, T } = cur, i = A.end - 1, f = LAB.featuresAt(A.F, i);
-    let pool = recs; try { pool = [...(await all()).filter(r => r.timeframe === T.tf || r.kind === 'case'), ...recs.filter(r => !r.id)]; } catch (e) {}
-    pool = pool.filter(r => r.t0 < D.t[i] - LAB.H * TFS(r.timeframe) || r.kind === 'case');     // only finished moves
-    sugg = { i, f, ...LAB.suggest(f, pool, A.F.meta), now: recs.filter(r => r.t0 === D.t[i]) };
-    const cases = pool.filter(r => r.kind === 'case');
+    let P = recs; try { P = [...(await pool(T.tf)), ...recs.filter(r => !r.id)]; } catch (e) {}
+    P = P.filter(r => r.t0 < D.t[i] - LAB.H * TFS(r.timeframe) || r.kind === 'case');     // only finished moves
+    sugg = { i, f, ...LAB.suggest(f, P, A.F.meta), now: recs.filter(r => r.t0 === D.t[i]) };
+    const cases = P.filter(r => r.kind === 'case');
     matches = cases.length ? LAB.caseMatches(A.F, cases, Math.max(60, A.end - 1500), 72) : [];
     draw(); if (S.side === 'learn') side();
   }
@@ -228,20 +234,18 @@
           <span class="res">${c.id && c.author === author ? `<button class="btn sm" data-del="${c.id}">🗑</button>` : ''}</span></div>`).join('') || '<p class="muted">Zatiaľ nič.</p>'}`;
       const sv = $('#labSaveCase'); if (sv) sv.onclick = saveCase;
       const cn = $('#labCancel'); if (cn) cn.onclick = () => { pick = null; layer && layer.update(); side(); };
-      $$('[data-del]', B).forEach(x => x.onclick = async e => { e.stopPropagation(); await LAB.api.del(+x.dataset.del, author); allRecs = null; loadTab(); });
+      $$('[data-del]', B).forEach(x => x.onclick = async e => { e.stopPropagation(); await LAB.api.del(+x.dataset.del, author); fresh(); loadTab(); pushSummary(); });
     } else {
-      B.innerHTML = '<p class="muted">Načítavam štatistiky…</p>';
-      let rs; try { rs = await all(); } catch (e) { B.innerHTML = '<p class="muted">Nepodarilo sa načítať.</p>'; return; }
-      S.el.del = async id => { await LAB.api.del(id, author); allRecs = null; side(); };
-      S.el.open = r => go(r.symbol, r.timeframe, r.t0);
-      LAB.render(B, rs, S.el, () => { save(); side(); });
+      B.innerHTML = '';
+      const st = S.el; st.del = async id => { await LAB.api.del(id, author); fresh(); side(); }; st.open = r => go(r.symbol, r.timeframe, r.t0);
+      await LAB.show(B, st); save();
     }
     $$('[data-go]', B).forEach(x => x.onclick = () => { const [s, tf, t] = x.dataset.go.split('|'); go(s, tf, +t); });
   }
   async function saveCase() {
     const T = cur.T, r = LAB.caseRecord(cur.A.F, { symbol: T.symbol, tf: T.tf }, pick.i0, pick.i1, author, $('#labNote').value.trim());
     if (!author) status('Tip: meno si nastav v Nexuse (Účet) – pohyb sa uloží bez mena.');
-    await LAB.api.save([r]); pick = null; allRecs = null; await loadTab(); pushSummary(); S.side = 'cases'; side();
+    await LAB.api.save([r]); pick = null; fresh(); await loadTab(); pushSummary(); S.side = 'cases'; side();
   }
   // open a move: the same chart scrolls there, another market or timeframe opens in a new tab
   async function go(symbol, tf, t) {
