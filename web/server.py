@@ -9,6 +9,7 @@ Run:  uvicorn web.server:app --host 0.0.0.0 --port 8000
 
 from __future__ import annotations
 
+import gzip
 import json
 import os
 import secrets
@@ -398,8 +399,20 @@ STORE.conn.commit()
 LAB_KINDS = ("case", "event", "tl", "range")
 
 
+_lab_cache: dict = {}      # query → gzipped JSON, dropped whenever a record is saved or deleted
+
+
 @app.get("/api/lab")
 def lab_list(kind: str = "", symbol: str = "", tf: str = "", limit: int = Query(20000, ge=1, le=50000)):
+    key = (kind, symbol, tf, limit)
+    if key not in _lab_cache:
+        if len(_lab_cache) > 60:
+            _lab_cache.clear()
+        _lab_cache[key] = gzip.compress(_lab_json(kind, symbol, tf, limit).encode(), 6)
+    return Response(_lab_cache[key], media_type="application/json", headers={"Content-Encoding": "gzip"})
+
+
+def _lab_json(kind: str, symbol: str, tf: str, limit: int) -> str:
     q, a = "SELECT * FROM web_lab WHERE 1=1", []
     for col, v in (("kind", kind), ("symbol", symbol), ("timeframe", tf)):
         if v:
@@ -412,7 +425,7 @@ def lab_list(kind: str = "", symbol: str = "", tf: str = "", limit: int = Query(
         d = dict(r)
         f, o = d.pop("features") or "{}", d.pop("outcome") or "{}"
         parts.append(json.dumps(d)[:-1] + f', "features": {f}, "outcome": {o}}}')
-    return Response("[" + ",".join(parts) + "]", media_type="application/json")
+    return "[" + ",".join(parts) + "]"
 
 
 @app.get("/api/lab/counts")
@@ -442,6 +455,7 @@ def lab_add(body: dict | list = Body(...)):
              str(it.get("note") or "")[:1000], now))
         n += 1
     STORE.conn.commit()
+    _lab_cache.clear()
     return {"ok": True, "saved": n}
 
 
@@ -451,6 +465,7 @@ def lab_delete(rec_id: int, author: str = ""):
     n = STORE.conn.execute("DELETE FROM web_lab WHERE id=? AND (kind != 'case' OR lower(author)=lower(?))",
                            (rec_id, author.strip())).rowcount
     STORE.conn.commit()
+    _lab_cache.clear()
     if not n:
         raise HTTPException(403, "zmazať môžeš iba vlastný uložený pohyb")
     return {"ok": True}
