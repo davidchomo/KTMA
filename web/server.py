@@ -9,7 +9,9 @@ Run:  uvicorn web.server:app --host 0.0.0.0 --port 8000
 
 from __future__ import annotations
 
+import json
 import os
+import secrets
 import threading
 import time
 from pathlib import Path
@@ -39,24 +41,12 @@ SYMBOLS = {
                "ticker": "XAGUSDT", "hours": "gold", "digits": 3},
     "BTCUSD": {"name": "BTC/USD", "desc": "Bitcoin (Binance BTCUSDT)", "market": "spot",
                "ticker": "BTCUSDT", "hours": None, "digits": 2},
-    "XPTUSD": {"name": "XPT/USD", "desc": "Platina (Binance XPTUSDT)", "market": "futures",
-               "ticker": "XPTUSDT", "hours": "gold", "digits": 2},
-    "XPDUSD": {"name": "XPD/USD", "desc": "Paládium (Binance XPDUSDT)", "market": "futures",
-               "ticker": "XPDUSDT", "hours": "gold", "digits": 2},
     "EURUSD": {"name": "EUR/USD", "desc": "Euro / dolár (Binance EURUSDT)", "market": "spot",
                "ticker": "EURUSDT", "hours": None, "digits": 5},
-    "ETHUSD": {"name": "ETH/USD", "desc": "Ethereum (Binance ETHUSDT)", "market": "spot",
-               "ticker": "ETHUSDT", "hours": None, "digits": 2},
-    "SOLUSD": {"name": "SOL/USD", "desc": "Solana (Binance SOLUSDT)", "market": "spot",
-               "ticker": "SOLUSDT", "hours": None, "digits": 2},
-    "BNBUSD": {"name": "BNB/USD", "desc": "BNB (Binance BNBUSDT)", "market": "spot",
-               "ticker": "BNBUSDT", "hours": None, "digits": 2},
-    "XRPUSD": {"name": "XRP/USD", "desc": "XRP (Binance XRPUSDT)", "market": "spot",
-               "ticker": "XRPUSDT", "hours": None, "digits": 4},
-    "ADAUSD": {"name": "ADA/USD", "desc": "Cardano (Binance ADAUSDT)", "market": "spot",
-               "ticker": "ADAUSDT", "hours": None, "digits": 4},
-    "DOGEUSD": {"name": "DOGE/USD", "desc": "Dogecoin (Binance DOGEUSDT)", "market": "spot",
-                "ticker": "DOGEUSDT", "hours": None, "digits": 5},
+    "GBPUSD": {"name": "GBP/USD", "desc": "Libra / dolár (Binance GBPUSDT)", "market": "spot",
+               "ticker": "GBPUSDT", "hours": None, "digits": 5},
+    "AUDUSD": {"name": "AUD/USD", "desc": "Austrálsky dolár / dolár (Binance AUDUSDT)", "market": "spot",
+               "ticker": "AUDUSDT", "hours": None, "digits": 5},
 }
 SECONDS = {"1s": 1, "5s": 5, "15s": 15, "30s": 30}
 NATIVE = {"1m": 60, "3m": 180, "5m": 300, "15m": 900, "30m": 1800, "1h": 3600, "2h": 7200, "4h": 14400,
@@ -282,7 +272,7 @@ STORE.conn.execute("""CREATE TABLE IF NOT EXISTS web_chat (
     id INTEGER PRIMARY KEY AUTOINCREMENT, author TEXT, kind TEXT, text TEXT,
     symbol TEXT, timeframe TEXT, bar_time INTEGER, price REAL, created_at TEXT)""")
 STORE.conn.commit()
-CHAT_KINDS = ("msg", "dev", "idea", "bug", "ai")
+CHAT_KINDS = ("msg", "dev", "idea", "bug", "ai", "signal")
 
 
 @app.get("/api/chat")
@@ -388,6 +378,121 @@ def ask(q: dict = Body(...)):
     except AssistantError as e:
         answer = f"⚠ Nepodarilo sa odpovedať: {e}"
     return {"question": asked, "answer": _chat_insert("Claude", "ai", answer or "(prázdna odpoveď)")}
+
+
+# ---- shared paper accounts: the owner invites friends with a code (view only, or view and trade) ------------------
+STORE.conn.execute("""CREATE TABLE IF NOT EXISTS web_accounts (
+    id TEXT PRIMARY KEY, name TEXT, owner TEXT, data TEXT, rev INTEGER, members TEXT,
+    code_view TEXT, code_trade TEXT, updated_at TEXT)""")
+STORE.conn.commit()
+
+
+def _code() -> str:
+    return secrets.token_hex(4).upper()
+
+
+def _account(acc_id: str) -> dict:
+    r = STORE.conn.execute("SELECT * FROM web_accounts WHERE id=?", (acc_id,)).fetchone()
+    if r is None:
+        raise HTTPException(404, "účet neexistuje")
+    a = dict(r)
+    a["data"], a["members"] = json.loads(a["data"] or "{}"), json.loads(a["members"] or "[]")
+    return a
+
+
+def _role(a: dict, name: str) -> str | None:
+    name = name.strip().lower()
+    if name and a["owner"].lower() == name:
+        return "owner"
+    return next((m["role"] for m in a["members"] if m["name"].lower() == name), None)
+
+
+def _public(a: dict, name: str) -> dict:
+    role = _role(a, name)
+    out = {k: a[k] for k in ("id", "name", "owner", "data", "rev", "members", "updated_at")}
+    out["role"] = role
+    if role == "owner":
+        out["code_view"], out["code_trade"] = a["code_view"], a["code_trade"]
+    return out
+
+
+@app.post("/api/accounts")
+def account_create(body: dict = Body(...)):
+    """Turn a paper account into a shared one; returns the two invite codes."""
+    owner, name = str(body.get("owner") or "").strip()[:40], str(body.get("name") or "Zdieľaný účet").strip()[:40]
+    if not owner:
+        raise HTTPException(400, "chýba meno vlastníka")
+    acc_id = "s" + secrets.token_hex(6)
+    STORE.conn.execute("INSERT INTO web_accounts VALUES (?,?,?,?,?,?,?,?,?)",
+                       (acc_id, name, owner, json.dumps(body.get("data") or {}), 1, "[]", _code(), _code(),
+                        pd.Timestamp.now(tz="UTC").isoformat(timespec="seconds")))
+    STORE.conn.commit()
+    return _public(_account(acc_id), owner)
+
+
+@app.post("/api/accounts/join")
+def account_join(body: dict = Body(...)):
+    name, code = str(body.get("name") or "").strip()[:40], str(body.get("code") or "").strip().upper()
+    if not name or not code:
+        raise HTTPException(400, "chýba meno alebo kód")
+    r = STORE.conn.execute("SELECT id, code_view, code_trade FROM web_accounts WHERE code_view=? OR code_trade=?", (code, code)).fetchone()
+    if r is None:
+        raise HTTPException(404, "neplatný kód")
+    a = _account(r["id"])
+    role = "trade" if code == r["code_trade"] else "view"
+    if _role(a, name) != "owner":
+        a["members"] = [m for m in a["members"] if m["name"].lower() != name.lower()] + [{"name": name, "role": role}]
+        STORE.conn.execute("UPDATE web_accounts SET members=? WHERE id=?", (json.dumps(a["members"]), a["id"]))
+        STORE.conn.commit()
+    return _public(_account(a["id"]), name)
+
+
+@app.get("/api/accounts/{acc_id}")
+def account_get(acc_id: str, name: str = ""):
+    a = _account(acc_id)
+    if not _role(a, name):
+        raise HTTPException(403, "k tomuto účtu nemáš prístup")
+    return _public(a, name)
+
+
+@app.put("/api/accounts/{acc_id}")
+def account_put(acc_id: str, body: dict = Body(...)):
+    """Save the account if `rev` is the current one (otherwise 409 with the newer version to merge)."""
+    a, name = _account(acc_id), str(body.get("name") or "")
+    role = _role(a, name)
+    if role not in ("owner", "trade"):
+        raise HTTPException(403, "tento účet môžeš iba sledovať")
+    if int(body.get("rev") or 0) != a["rev"]:
+        raise HTTPException(409, detail=_public(a, name))
+    fields = {"data": json.dumps(body.get("data") or {}), "rev": a["rev"] + 1, "updated_at": pd.Timestamp.now(tz="UTC").isoformat(timespec="seconds")}
+    if role == "owner" and body.get("title"):
+        fields["name"] = str(body["title"])[:40]
+    if role == "owner" and isinstance(body.get("members"), list):
+        fields["members"] = json.dumps([{"name": str(m.get("name"))[:40], "role": "trade" if m.get("role") == "trade" else "view"}
+                                         for m in body["members"] if m.get("name")])
+    STORE.conn.execute(f"UPDATE web_accounts SET {', '.join(k + '=?' for k in fields)} WHERE id=?", (*fields.values(), acc_id))
+    STORE.conn.commit()
+    return _public(_account(acc_id), name)
+
+
+# ---- signals from the Algo window: a chat message for everyone, optionally Telegram ----------------------------------
+@app.post("/api/signal")
+def signal(body: dict = Body(...)):
+    author, text = str(body.get("author") or "").strip()[:40], str(body.get("text") or "").strip()[:1500]
+    if not author or not text:
+        raise HTTPException(400, "chýba meno alebo text")
+    symbol = body.get("symbol") if body.get("symbol") in SYMBOLS else None
+    tf = body.get("timeframe") if body.get("timeframe") in TIMEFRAMES else None
+    msg = _chat_insert(author, "signal", text, symbol, tf)
+    sent = False
+    token, chat = os.environ.get("TELEGRAM_BOT_TOKEN"), os.environ.get("TELEGRAM_CHAT_ID")
+    if body.get("telegram") and token and chat:
+        try:
+            r = http.post(f"https://api.telegram.org/bot{token}/sendMessage", json={"chat_id": chat, "text": f"📡 {text}\n— {author} (Nexus)"}, timeout=10)
+            sent = r.status_code == 200
+        except requests.RequestException:
+            sent = False
+    return {"message": msg, "telegram": sent, "telegram_ready": bool(token and chat)}
 
 
 # ---- news (Google News RSS) and the economic calendar (Forex Factory weekly feed) ---------------------

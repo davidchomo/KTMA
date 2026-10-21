@@ -600,6 +600,7 @@
         else m.push({ time, position: x.dir > 0 ? 'aboveBar' : 'belowBar', color: x.win ? '#00c853' : '#ff1744', shape: 'square', text: x.text, size: 1 });
       }
     }
+    m.push(...algoMarks());
     if (alertMark) {
       const i = disp.findIndex(b => b.time >= alertMark.time);
       if (i >= 0) m.push({ time: disp[i].time, position: alertMark.bull ? 'belowBar' : 'aboveBar', color: alertMark.bull ? S.look.up : S.look.down, shape: alertMark.bull ? 'arrowUp' : 'arrowDown', text: alertMark.text, size: 2 });
@@ -755,7 +756,7 @@
     fitToolbar();
   }
   // ---- undo / redo: drawings, indicators, symbol, timeframe, chart type, look… (not window positions) ----
-  const HIST_SKIP = ['board', 'accounts', 'accountId', 'workspaces', 'wsId', 'layout', 'savedAt', 'chat', 'news', 'idea', 'labeler', 'legendOpen', 'lastToolbar', 'flow', 'folders', 'nexus', 'account', 'robot'];
+  const HIST_SKIP = ['algo', 'board', 'accounts', 'accountId', 'workspaces', 'wsId', 'layout', 'savedAt', 'chat', 'news', 'idea', 'labeler', 'legendOpen', 'lastToolbar', 'flow', 'folders', 'nexus', 'account', 'robot'];
   function snap() { const o = { ...S }; HIST_SKIP.forEach(k => delete o[k]); return JSON.stringify(o, (k, v) => (k[0] === '_' ? undefined : v)); }
   function pushHist() {
     clearTimeout(histT); histT = null;
@@ -1012,9 +1013,9 @@
     const set = (path, v) => { const ks = path.split('.'); let o = S; while (ks.length > 1) o = o[ks.shift()]; o[ks[0]] = v; };
     const paint = () => {
       const d = openDialog(`<div class="dlg-h"><span>Nastavenia grafu</span><button class="ib" data-x>✕</button></div><div class="dlg-b">
-        <div class="tabs">${[['bars', 'Sviečky'], ['canvas', 'Plátno'], ['legend', 'Legenda'], ['scale', 'Mierka'], ['cross', 'Kurzor'], ['time', 'Čas'], ['renko', 'Renko'], ['panel', 'Panel'], ['data', 'Dáta']].map(([k, n]) => `<span class="tab ${tab === k ? 'on' : ''}" data-tab="${k}">${n}</span>`).join('')}</div>${body()}</div>
+        <div class="tabs">${[['bars', 'Sviečky'], ['canvas', 'Plátno'], ['legend', 'Legenda'], ['scale', 'Mierka'], ['cross', 'Kurzor'], ['time', 'Čas'], ['renko', 'Renko'], ['panel', 'Panel'], ['styles', '🖼 Štýly a pozadia'], ['data', 'Dáta']].map(([k, n]) => `<span class="tab ${tab === k ? 'on' : ''}" data-tab="${k}">${n}</span>`).join('')}</div>${body()}</div>
         <div class="dlg-f"><button class="btn" data-reset>Predvolené</button><span class="grow"></span><button class="btn pri" data-x>Hotovo</button></div>`, null, 'wide');
-      $$('[data-tab]', d).forEach(x => x.onclick = () => { tab = x.dataset.tab; paint(); });
+      $$('[data-tab]', d).forEach(x => x.onclick = () => { if (x.dataset.tab === 'styles') { closeDialog(); stylesDialog(); return; } tab = x.dataset.tab; paint(); });
       const br = $('[data-bright]', d); if (br) br.oninput = () => { L.bright = +br.value; br.nextElementSibling.textContent = L.bright + ' %'; applyBright(); save(); };
       const CS = L.candle;
       $$('[data-cs]', d).forEach(x => x.oninput = () => { const k = x.dataset.cs; CS[k] = +x.value; CS.preset = ''; x.nextElementSibling.textContent = x.nextElementSibling.textContent.replace(/^\S+/, () => CS[k]);
@@ -1540,7 +1541,7 @@
   // ---- chat: notes for the developers and trading ideas -------------------------------------------
   const chatEl = $('#chatWin');
   const KINDS = { msg: ['💬', 'Správa', '#5b9cf6'], dev: ['🛠', 'Pre vývojárov', '#b388ff'], idea: ['💡', 'Obchodný nápad', '#ffca28'],
-                  bug: ['🐞', 'Chyba', '#ff5252'], ai: ['🤖', 'Opýtať sa Clauda', '#26c6da'] };
+                  bug: ['🐞', 'Chyba', '#ff5252'], ai: ['🤖', 'Opýtať sa Clauda', '#26c6da'], signal: ['📡', 'Signál (algoritmy)', '#ff9100'] };
   const EMOJI = {
     '😀': '😀😃😄😁😆😅😂🤣😊🙂😉😍🥰😎🤓🤔🤨😐😶🙄😏😴😬😮😲😱🤯😤😡🤬😭😢🥲😇🥳🤩🤗🫡🤝',
     '👍': '👍👎👌✌️🤞🤟👏🙌👐💪🙏👀👋✋☝️👆👇👉👈🫵✍️',
@@ -1759,6 +1760,143 @@
   }
   $('#bFlow').onclick = e => flowMenu(e.currentTarget);
 
+  // ---- 🧠 algorithmic trading: rank published systems on our data, show them on the chart, broadcast live signals ----
+  const algoEl = $('#algoWin');
+  const ALGO_DEF = { tab: 'rank', markets: ['XAUUSD', 'XAGUSD', 'BTCUSD', 'EURUSD'], tfs: ['15m', '1h', '4h'], bars: 2000, live: [], chat: true, telegram: false,
+                     paper: false, lots: 0.1, show: null, log: [], seen: {}, sel: 'rsi2', x: null, y: null };
+  const AG = () => { const a = S.algo = S.algo || {}; for (const k in ALGO_DEF) if (a[k] === undefined) a[k] = JSON.parse(JSON.stringify(ALGO_DEF[k])); return a; };
+  let algoRes = [], algoBusy = false, algoTimer = null;
+  const pct = v => (Number.isFinite(v) ? (v >= 0 ? '+' : '') + (100 * v).toFixed(1) + ' %' : '–');
+  const dToD = bars => ({ t: bars.map(b => b.time), o: bars.map(b => b.open), h: bars.map(b => b.high), l: bars.map(b => b.low), c: bars.map(b => b.close), v: bars.map(b => b.volume || 0),
+                          s: bars.map(b => (SYM[b.sym] && SYM[b.sym].hours === 'gold' ? sessGold(b.time) : Math.floor(b.time / 86400))) });
+  async function algoRank() {
+    const G = AG(); if (algoBusy) return;
+    algoBusy = true; algoRes = []; paintAlgo();
+    const jobs = G.markets.filter(s => SYM[s]).flatMap(s => G.tfs.map(tf => [s, tf]));
+    let k = 0;
+    for (const [s, tf] of jobs) {
+      k++; const pr = $('#algoProg'); if (pr) pr.textContent = `Testujem ${SYM[s].name} ${tf} (${k}/${jobs.length})…`;
+      try {
+        const bars = (await fetchBars(s, tf, null, G.bars)).map(b => ({ ...b, sym: s })), D = dToD(bars);
+        for (const id of Object.keys(ALGO.SYS)) {
+          if (ALGO.SYS[id].intraday && TF_SEC[tf] > 3600) continue;
+          const r = ALGO.run(id, D, { symbol: s });
+          algoRes.push({ id, symbol: s, tf, stats: r.stats, half: r.half, open: r.open, from: D.t[0], to: D.t[D.t.length - 1], score: ALGO.score(r.stats) });
+        }
+      } catch (e) {}
+      if (algoEl.classList.contains('open') && AG().tab === 'rank') paintAlgo();
+    }
+    algoBusy = false; paintAlgo();
+  }
+  const isLive = (id, s, tf) => AG().live.some(x => x.id === id && x.symbol === s && x.tf === tf);
+  function curveSvg(c, w = 520, h = 90) {
+    if (!c || c.length < 2) return '';
+    const lo = Math.min(...c), hi = Math.max(...c), X = i => (i / (c.length - 1)) * w, Y = v => h - 4 - ((v - lo) / (hi - lo || 1)) * (h - 8), up = c[c.length - 1] >= 1;
+    return `<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" class="al-curve"><line x1="0" x2="${w}" y1="${Y(1)}" y2="${Y(1)}" stroke="rgba(255,255,255,.2)" stroke-dasharray="4 4"/>
+      <polyline points="${c.map((v, i) => `${X(i).toFixed(1)},${Y(v).toFixed(1)}`).join(' ')}" fill="none" stroke="${up ? '#10b981' : '#ef4444'}" stroke-width="2" vector-effect="non-scaling-stroke"/></svg>`;
+  }
+  function paintAlgo() {
+    const G = AG(), body = $('#algoBody');
+    $$('#algoTabs [data-at]').forEach(x => x.classList.toggle('on', x.dataset.at === G.tab));
+    if (G.tab === 'rank') {
+      const rows = [...algoRes].sort((a, b) => b.score - a.score);
+      body.innerHTML = `<div class="al-cfg"><span class="nx-chips">${(META.symbols || []).map(s => `<span data-am="${s.id}" class="${G.markets.includes(s.id) ? 'on' : ''}">${esc(s.name)}</span>`).join('')}</span>
+          <span class="nx-chips">${['5m', '15m', '1h', '4h', '1d'].map(tf => `<span data-atf="${tf}" class="${G.tfs.includes(tf) ? 'on' : ''}">${tf}</span>`).join('')}</span>
+          <select data-abars>${[1000, 2000, 5000].map(v => `<option value="${v}" ${G.bars === v ? 'selected' : ''}>${v} sviečok</option>`).join('')}</select>
+          ${G.show ? `<button class="btn sm" data-ahide>🙈 Skryť ${esc(ALGO.SYS[G.show.id].name)} z grafu</button>` : ''}<button class="btn sm pri" data-arun>${algoBusy ? '⏳ Testujem…' : '▶ Otestovať všetky algoritmy'}</button><span class="muted" id="algoProg"></span></div>
+        <div class="muted al-note">Každý algoritmus sa otestuje na reálnych sviečkach s cenou spreadu: rozhoduje uzavretá sviečka, vstup na otvorení ďalšej, ak sviečka zasiahne stop aj cieľ, ráta sa stop.
+          <b>Overenie</b> = posledných 30 % dát. Rebríček = profit faktor, priemerné R, menší prepad, aspoň 15 obchodov. Minulé výsledky nezaručujú budúce.</div>
+        ${rows.length ? `<table class="tt al-t"><tr><th>#</th><th>Algoritmus</th><th>Trh</th><th>Obch.</th><th>Úspešnosť</th><th>PF</th><th>Výnos</th><th>Max DD</th><th>Priem. R</th><th>Overenie</th><th>Teraz</th><th></th></tr>
+          ${rows.map((r, k) => { const A = ALGO.SYS[r.id], s = r.stats, h = r.half, good = s.pf > 1.2 && s.n >= 15;
+            return `<tr class="${good ? 'good' : s.pf !== null && s.pf < 1 ? 'bad' : ''}"><td>${k + 1}</td><td><b>${A.icon} ${esc(A.name)}</b><small class="muted"> ${esc(A.family)}</small></td><td>${esc(SYM[r.symbol].name)} ${r.tf}</td>
+              <td>${s.n}</td><td>${s.win === null ? '–' : (100 * s.win).toFixed(0) + ' %'}</td><td><b>${s.pf === null ? '–' : s.pf === Infinity ? '∞' : s.pf.toFixed(2)}</b></td><td class="${s.ret >= 0 ? 'up' : 'dn'}">${pct(s.ret)}</td><td>${(100 * s.dd).toFixed(1)} %</td>
+              <td>${s.avgR === null ? '–' : s.avgR.toFixed(2)}</td><td class="muted">${h.n ? `${(100 * h.win).toFixed(0)} % · PF ${h.pf === null ? '–' : h.pf === Infinity ? '∞' : h.pf.toFixed(2)}` : '–'}</td>
+              <td>${r.open ? `<span class="pill ${r.open.dir > 0 ? 'win' : 'loss'}">${r.open.dir > 0 ? 'LONG' : 'SHORT'}</span>` : '<span class="muted">–</span>'}</td>
+              <td class="al-btns"><button class="btn sm" data-adet="${r.id}" title="Detail a zdroje">ⓘ</button><button class="btn sm" data-agraph="${r.id}|${r.symbol}|${r.tf}" title="Zobraziť obchody v grafe">📈</button>
+                <label class="al-live" title="Živé signály pre tento trh a timeframe"><input type="checkbox" data-alive="${r.id}|${r.symbol}|${r.tf}" ${isLive(r.id, r.symbol, r.tf) ? 'checked' : ''}> 📡</label></td></tr>`; }).join('')}</table>
+          <div style="margin-top:8px"><button class="btn sm" data-atop>📡 Zapnúť živé signály pre 5 najlepších</button></div>` : `<div class="muted" style="padding:16px">${algoBusy ? 'Počítam…' : 'Vyber trhy a timeframy a stlač ▶. Test 4 trhov × 3 timeframov trvá pár sekúnd.'}</div>`}`;
+    } else if (G.tab === 'detail') {
+      const A = ALGO.SYS[G.sel] || ALGO.SYS.rsi2, mine = algoRes.filter(r => r.id === G.sel).sort((a, b) => b.score - a.score);
+      body.innerHTML = `<div class="al-pick">${Object.entries(ALGO.SYS).map(([k, x]) => `<span data-asel="${k}" class="${k === G.sel ? 'on' : ''}">${x.icon} ${esc(x.name)}</span>`).join('')}</div>
+        <h3 class="al-h">${A.icon} ${esc(A.name)} <small class="muted">${esc(A.family)}</small></h3><p>${esc(A.desc)}</p>
+        <div class="lib-sec"><h3>Pravidlá</h3><ul>${A.rules.map(r => `<li>${esc(r)}</li>`).join('')}</ul></div>
+        <div class="lib-sec"><h3>Čo hovorí výskum</h3><p>${esc(A.evidence)}</p><ul>${A.src.map(([n, u]) => `<li><a href="${esc(u)}" target="_blank" rel="noopener">${esc(n)}</a></li>`).join('')}</ul></div>
+        <div class="lib-sec"><h3>Výsledky na našich dátach</h3>${mine.length ? mine.map(r => `<div class="al-res"><b>${esc(SYM[r.symbol].name)} ${r.tf}</b> · ${r.stats.n} obchodov · úspešnosť ${r.stats.win === null ? '–' : (100 * r.stats.win).toFixed(0) + ' %'} · PF ${r.stats.pf === null ? '–' : r.stats.pf === Infinity ? '∞' : r.stats.pf.toFixed(2)} · ${pct(r.stats.ret)}${curveSvg(r.stats.curve)}</div>`).join('') : '<div class="muted">Spusti test v záložke Rebríček.</div>'}</div>`;
+    } else {
+      body.innerHTML = `<div class="al-cfg"><label><input type="checkbox" data-aopt="chat" ${G.chat ? 'checked' : ''}> Vysielať do chatu (📡 Signál – vidia ho všetci)</label>
+          <label><input type="checkbox" data-aopt="telegram" ${G.telegram ? 'checked' : ''}> Poslať aj na Telegram</label>
+          <label><input type="checkbox" data-aopt="paper" ${G.paper ? 'checked' : ''}> Automaticky obchodovať na papierovom účte</label> <label>Loty <input type="number" step="0.01" min="0.01" value="${G.lots}" data-alots style="width:70px"></label></div>
+        <div class="nx-sub">Sledované kombinácie (${G.live.length}) <span class="muted">· kontrola každých 30 s, signál = uzavretá sviečka s novým vstupom</span></div>
+        ${G.live.length ? `<div class="al-live-list">${G.live.map((x, k) => `<span>${ALGO.SYS[x.id].icon} ${esc(ALGO.SYS[x.id].name)} · ${esc(SYM[x.symbol] ? SYM[x.symbol].name : x.symbol)} ${x.tf} <button class="ib" data-aoff="${k}">✕</button></span>`).join('')}</div>` : '<div class="muted">Zatiaľ nič – zapni 📡 pri riadkoch v Rebríčku.</div>'}
+        <div class="nx-sub">Posledné signály <button class="btn sm" data-aclr>vymazať</button></div>
+        <div class="nx-log">${G.log.slice(0, 60).map(l => `<div class="${l.dir > 0 ? 'buy' : 'sell'}"><span class="muted">${esc(new Date(l.t).toLocaleString('sk-SK'))}</span> <b>${esc(l.text)}</b></div>`).join('') || '<div class="muted">Zatiaľ žiadne signály.</div>'}</div>`;
+    }
+    bindAlgo(body);
+  }
+  function bindAlgo(b) {
+    const G = AG(), tog = (arr, v) => (arr.includes(v) ? arr.filter(x => x !== v) : [...arr, v]);
+    $$('[data-am]', b).forEach(x => x.onclick = () => { G.markets = tog(G.markets, x.dataset.am); save(); paintAlgo(); });
+    $$('[data-atf]', b).forEach(x => x.onclick = () => { G.tfs = tog(G.tfs, x.dataset.atf); save(); paintAlgo(); });
+    const ab = $('[data-abars]', b); if (ab) ab.onchange = () => { G.bars = +ab.value; save(); };
+    const ar = $('[data-arun]', b); if (ar) ar.onclick = algoRank;
+    const ah = $('[data-ahide]', b); if (ah) ah.onclick = () => { G.show = null; save(); updateMarkers(); paintAlgo(); };
+    $$('[data-adet]', b).forEach(x => x.onclick = () => { G.sel = x.dataset.adet; G.tab = 'detail'; save(); paintAlgo(); });
+    $$('[data-asel]', b).forEach(x => x.onclick = () => { G.sel = x.dataset.asel; save(); paintAlgo(); });
+    $$('[data-agraph]', b).forEach(x => x.onclick = () => { const [id, s, tf] = x.dataset.agraph.split('|'); G.show = { id, symbol: s, tf }; save(); setAndReload({ symbol: s, tf }); toast(`🧠 ${ALGO.SYS[id].name}: obchody v grafe (▲▼ a ✕)`); });
+    $$('[data-alive]', b).forEach(x => x.onchange = () => { const [id, symbol, tf] = x.dataset.alive.split('|'); G.live = x.checked ? [...G.live, { id, symbol, tf }] : G.live.filter(y => !(y.id === id && y.symbol === symbol && y.tf === tf)); save(); scheduleAlgo(); });
+    const top = $('[data-atop]', b); if (top) top.onclick = () => { [...algoRes].sort((p, q) => q.score - p.score).slice(0, 5).forEach(r => { if (!isLive(r.id, r.symbol, r.tf)) G.live.push({ id: r.id, symbol: r.symbol, tf: r.tf }); }); save(); scheduleAlgo(); paintAlgo(); toast('📡 Živé signály zapnuté pre 5 najlepších'); };
+    $$('[data-aopt]', b).forEach(x => x.onchange = () => { G[x.dataset.aopt] = x.checked; save(); });
+    const al = $('[data-alots]', b); if (al) al.onchange = () => { G.lots = Math.max(0.01, +al.value || 0.1); save(); };
+    $$('[data-aoff]', b).forEach(x => x.onclick = () => { G.live.splice(+x.dataset.aoff, 1); save(); paintAlgo(); });
+    const cl = $('[data-aclr]', b); if (cl) cl.onclick = () => { G.log = []; save(); paintAlgo(); };
+  }
+  // live: every 30 s check the watched combinations; a new entry on the last closed candle = a signal
+  async function algoTick() {
+    const G = AG();
+    for (const x of G.live) {
+      if (!SYM[x.symbol] || !ALGO.SYS[x.id]) continue;
+      try {
+        const bars = (await fetchBars(x.symbol, x.tf, null, 600)).map(b => ({ ...b, sym: x.symbol })), D = dToD(bars), r = ALGO.run(x.id, D, { symbol: x.symbol });
+        const o = r.open; if (!o || o.i0 !== D.t.length - 1) continue;
+        const key = `${x.id}|${x.symbol}|${x.tf}|${o.sigT}`; if (G.seen[key]) continue;
+        G.seen[key] = Date.now();
+        const sy = SYM[x.symbol], f = v => (Number.isFinite(v) ? (+v).toFixed(sy.digits ?? 2) : '–'), A = ALGO.SYS[x.id];
+        const text = `${o.dir > 0 ? '▲ BUY' : '▼ SELL'} ${sy.name} ${x.tf} · ${A.name} · vstup ~${f(D.c[D.c.length - 1])} · SL ${f(o.sl)}${o.tp ? ' · TP ' + f(o.tp) : ''}`;
+        G.log.unshift({ t: Date.now(), dir: o.dir, text }); G.log.length = Math.min(G.log.length, 200);
+        toast('📡 ' + text, 6000);
+        if (G.chat && author()) fetch('api/signal', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ author: author(), text, symbol: x.symbol, timeframe: x.tf, telegram: G.telegram }) }).then(() => pollChat()).catch(() => {});
+        if (G.paper) NEXUS.algoTrade({ symbol: x.symbol, dir: o.dir, lots: G.lots, sl: o.sl, tp: o.tp, note: `${A.name} ${x.tf}` });
+      } catch (e) {}
+    }
+    // forget old keys
+    for (const k in G.seen) if (Date.now() - G.seen[k] > 7 * 86400e3) delete G.seen[k];
+    save();
+    if (algoEl.classList.contains('open') && G.tab === 'live') paintAlgo();
+  }
+  function scheduleAlgo() { clearInterval(algoTimer); algoTimer = AG().live.length && !EMBED ? setInterval(algoTick, 30000) : null; $('#bAlgo').classList.toggle('badge-on', AG().live.length > 0); }
+  function toggleAlgo(open) {
+    const G = AG(); G.open = open ?? !algoEl.classList.contains('open'); save();
+    algoEl.classList.toggle('open', G.open); $('#bAlgo').classList.toggle('on', G.open);
+    if (G.open) { placeWin(algoEl, G); paintAlgo(); if (!algoRes.length && G.tab === 'rank') algoRank(); }
+  }
+  $('#bAlgo').onclick = () => toggleAlgo();
+  $('#algoClose').onclick = () => toggleAlgo(false);
+  $('#algoMin').onclick = () => algoEl.classList.toggle('min');
+  $$('#algoTabs [data-at]').forEach(x => x.onclick = () => { AG().tab = x.dataset.at; save(); paintAlgo(); });
+  dragWin(algoEl, $('#algoHead'), AG());
+  // the trades of the chosen algorithm as markers on the chart
+  function algoMarks() {
+    const G = AG(), sh = G.show;
+    if (!sh || sh.symbol !== S.symbol || sh.tf !== S.tf || !ALGO.SYS[sh.id] || !D || D.t.length < 50) return [];
+    const r = ALGO.run(sh.id, { ...D }, { symbol: S.symbol }), A = ALGO.SYS[sh.id], out = [];
+    for (const t of r.trades.slice(-150)) {
+      out.push({ time: t.t0, position: t.dir > 0 ? 'belowBar' : 'aboveBar', color: '#7c4dff', shape: t.dir > 0 ? 'arrowUp' : 'arrowDown', text: `🧠${t.dir > 0 ? '▲' : '▼'}`, size: 1.2 });
+      out.push({ time: t.t1, position: t.dir > 0 ? 'aboveBar' : 'belowBar', color: t.ret > 0 ? '#00c853' : '#ff1744', shape: 'circle', text: `${t.ret > 0 ? '✓' : '✗'} ${(100 * t.ret).toFixed(2)}%`, size: 0.8 });
+    }
+    if (r.open) out.push({ time: r.open.t0, position: r.open.dir > 0 ? 'belowBar' : 'aboveBar', color: '#ffab00', shape: r.open.dir > 0 ? 'arrowUp' : 'arrowDown', text: `🧠 ${A.name} – otvorené`, size: 1.6 });
+    return out;
+  }
+
   // ---- workspaces with 1–10 charts each: the extra charts are small copies of this page (?embed=…) -----------
   // grid per chart count: columns, rows, and whether the main chart spans both rows on the left
   const GRIDS = { 1: ['1fr', '1fr'], '2h': ['1fr 1fr', '1fr'], '2v': ['1fr', '1fr 1fr'], 3: ['1.6fr 1fr', '1fr 1fr', 1], 4: ['1fr 1fr', '1fr 1fr'], 5: ['1.4fr 1fr 1fr', '1fr 1fr', 1],
@@ -1875,11 +2013,11 @@
   const FUNCS = [
     ['Graf', [['bSymbol', '◆', 'Symbol', 'Vyber trh'], ['bType', '🕯', 'Typ grafu', 'Sviečky, Heikin Ashi, Renko…'], ['bTf', '⏱', 'Timeframe', '1 s až 1 mesiac'], ['bLayout', '▦', 'Rozloženie a plochy', '1–10 grafov, prepínanie plôch']]],
     ['Kreslenie a text', [['bDraw', '✎', 'Kreslenie', 'Čiary, Fibonacci, vzory, tvary'], ['bText', 'T', 'Text', 'Poznámky, pin, tabuľka, obrázok, nápad']]],
-    ['Analýza', [['bInd', 'ƒx', 'Indikátory', 'RSI, MACD, kĺzavé priemery, vzory'], ['bAuto', '📐', 'Auto čiary', 'Trendové čiary a živé nápady'], ['bFlow', '🫧', 'Objem', 'Bubliny, delta, tok obchodov'],
+    ['Analýza', [['bInd', 'ƒx', 'Indikátory', 'RSI, MACD, kĺzavé priemery, vzory'], ['bAuto', '📐', 'Auto čiary', 'Trendové čiary a živé nápady'], ['bFlow', '🫧', 'Objem', 'Bubliny, delta, tok obchodov'], ['bAlgo', '🧠', 'Algo', 'Overené stratégie, test, živé signály'],
       ['bTech', '📊', 'Technicals', 'Súhrn pre všetky timeframy'], ['bScan', '🔍', 'Skenovať', 'Hľadá vstupy na trhoch'], ['bReplay', '⏯', 'Replay', 'Tréning na histórii']]],
     ['Obchod', [['nexus', '◆', 'Nexus', 'Účet, pozície, robot, nástenka'], ['ticket', '💹', 'Obchodný panel', 'Kúpiť / predať s SL a TP'], ['bIdea', '💡', 'Nápad', 'Alerty skenera a labelovanie']]],
-    ['Komunikácia', [['bChat', '💬', 'Chat', 'Tím, nápady, otázky pre Clauda'], ['bNews', '📰', 'Správy', 'Novinky, kalendár, odkazy']]],
-    ['Vzhľad', [['bSettings', '⚙', 'Nastavenia', 'Graf, panel, jas'], ['bStyle', '🖼', 'Štýly', 'Fotky, videá, animácie, témy'], ['bFull', '⛶', 'Celá obrazovka', 'F11'], ['bUndo', '↶', 'Späť', 'Ctrl+Z'], ['bRedo', '↷', 'Znova', 'Ctrl+Y']]],
+    ['Komunikácia', [['bChat', '💬', 'Chat', 'Tím, nápady, otázky pre Clauda'], ['news', '📰', 'Správy', 'Novinky, kalendár, odkazy (v okne chatu)']]],
+    ['Vzhľad', [['bSettings', '⚙', 'Nastavenia', 'Graf, panel, jas'], ['styles', '🖼', 'Štýly', 'Fotky, videá, animácie, témy (aj v Nastaveniach)'], ['bFull', '⛶', 'Celá obrazovka', 'F11'], ['bUndo', '↶', 'Späť', 'Ctrl+Z'], ['bRedo', '↷', 'Znova', 'Ctrl+Y']]],
     ['Vzdelávanie', [['bLib', '📚', 'Knižnica', 'Formácie, stratégie, tipy']]],
   ];
   function applyHiddenButtons() { const H = S.panel.hide || []; $$('#toolbar .tbtn').forEach(b => { if (b.id !== 'bAll') b.style.display = H.includes(b.id) ? 'none' : ''; }); fitToolbar(); }
@@ -1893,6 +2031,8 @@
         const id = x.dataset.fn; closeMenu();
         if (id === 'nexus') return NEXUS.open();
         if (id === 'ticket') return NEXUS.toggleTicket();
+        if (id === 'styles') return stylesDialog();
+        if (id === 'news') return toggleNews(true);
         const b = $('#' + id); if (!b) return;
         // a hidden button still opens its menu: anchor it to ⊞
         if (b.style.display === 'none') { b.style.display = ''; b.click(); setTimeout(() => applyHiddenButtons(), 0); } else b.click();
@@ -2115,7 +2255,6 @@
     img.onerror = () => toast('Obrázok sa nepodarilo načítať');
     img.src = u;
   }
-  $('#bStyle').onclick = () => stylesDialog();
 
   // ---- toolbar look: size, font, colours -----------------------------------------------------------
   function applyPanel() {
@@ -2427,14 +2566,22 @@
         : '<div class="muted">Žiadne správy.</div>') + '<div class="muted" style="font-size:11px;margin-top:8px">Zdroj: Google News (posledné 3 dni) · obnovuje sa každých 10 min</div>';
     } catch (e) { body.innerHTML = '<div class="muted" style="padding:10px">Zdroj správ teraz neodpovedá.</div>'; }
   }
-  function toggleNews(open) {
-    S.news.open = open ?? !S.news.open; save();
-    newsEl.classList.toggle('open', S.news.open); $('#bNews').classList.toggle('on', S.news.open);
-    if (S.news.open) { placeWin(newsEl, S.news); renderNews(); }
+  // news live in the chat window as a second tab (one window for chat and news)
+  chatEl.append($('#newsTabs'), $('#newsBody'));
+  function setCommTab(t) {
+    S.chat.tab = t; save();
+    chatEl.classList.toggle('news-tab', t === 'news');
+    $$('#chatHead [data-cw]').forEach(x => x.classList.toggle('on', x.dataset.cw === t));
+    if (t === 'news') renderNews();
   }
-  $('#bNews').onclick = () => toggleNews();
-  $('#newsClose').onclick = () => toggleNews(false);
-  $('#newsMin').onclick = () => newsEl.classList.toggle('min');
+  $$('#chatHead [data-cw]').forEach(x => x.onclick = () => setCommTab(x.dataset.cw));
+  setCommTab(S.chat.tab || 'chat');
+  function toggleNews(open) {
+    S.news.open = false;
+    if (open === false) { if (S.chat.tab === 'news') toggleChat(false); return; }
+    if (!S.chat.open) toggleChat(true);
+    setCommTab('news');
+  }
   $('#newsReload').onclick = () => { for (const k in newsCache) delete newsCache[k]; renderNews(); };
   dragWin(newsEl, $('#newsHead'), S.news);
 
@@ -2585,6 +2732,7 @@
     if (S.chat.open) toggleChat(true); else pollChat(true);
     if (S.news.open) toggleNews(true);
     if (S.flow.open) FLOW.open({ id: S.symbol, ...sym() });
+    scheduleAlgo(); if ((S.algo || {}).open) toggleAlgo(true);
     $('#bFlow').classList.toggle('on', S.bubbles.on || FLOW.isOpen());
     scheduleScan();
     hist = [snap()]; hpos = 0; paintHist();

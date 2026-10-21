@@ -39,8 +39,75 @@ const NEXUS = (() => {
     if (!Array.isArray(s.accounts) || !s.accounts.length) { s.accounts = [{ id: 'main', name: 'Hlavný účet', start: s.account.start, positions: s.account.positions, history: s.account.history }]; s.accountId = 'main'; }
     return s.accounts.find(x => x.id === s.accountId) || s.accounts[0];
   }
+  // ---- shared accounts: kept on the server; a friend joins with a code (view only or trade) ------------------------
+  // The account is saved whenever it differs from the last synced copy; if the friend saved first (409),
+  // both versions are merged: histories are united, open positions taken from both, closed ones dropped.
+  const me = () => (S().labeler || '').trim();
+  const dataOf = a => ({ start: a.start, positions: a.positions, history: a.history });
+  const sigOf = a => JSON.stringify(dataOf(a));
+  const canTrade = (a = A()) => !a.shared || a.shared.role === 'owner' || a.shared.role === 'trade';
+  function guard() { if (canTrade()) return true; ctx.toast(`👀 Účet „${A().name}“ môžeš iba sledovať`); return false; }
+  function mergeAcc(local, server) {
+    const key = h => h.id + '|' + h.exitTime, hist = [...(server.history || [])], seen = new Set(hist.map(key));
+    for (const h of local.history) if (!seen.has(key(h))) hist.push(h);
+    hist.sort((p, q) => q.exitTime - p.exitTime);
+    const closed = new Set(hist.filter(h => !/\(časť\)/.test(h.reason || '')).map(h => h.id)), pos = new Map();
+    for (const p of server.positions || []) pos.set(p.id, p);
+    for (const p of local.positions) pos.set(p.id, p);
+    return { start: local.start, positions: [...pos.values()].filter(p => !closed.has(p.id)), history: hist.slice(0, 500) };
+  }
+  const applyServer = (a, r) => { Object.assign(a, r.data ? { start: r.data.start ?? a.start, positions: r.data.positions || [], history: r.data.history || [] } : {});
+    a.shared = { ...a.shared, id: r.id, rev: r.rev, role: r.role, owner: r.owner, members: r.members, code_view: r.code_view || a.shared.code_view, code_trade: r.code_trade || a.shared.code_trade };
+    a.shared.sig = sigOf(a); a.name = r.name || a.name; };
+  let pushing = false;
+  async function syncShared() {
+    for (const a of S().accounts.filter(x => x.shared)) {
+      try {
+        if (canTrade(a) && sigOf(a) !== a.shared.sig && !pushing) {
+          pushing = true;
+          let r = await fetch(`api/accounts/${a.shared.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: me(), rev: a.shared.rev, data: dataOf(a) }) });
+          if (r.status === 409) {
+            const srv = (await r.json()).detail, merged = mergeAcc(a, srv.data);
+            r = await fetch(`api/accounts/${a.shared.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: me(), rev: srv.rev, data: merged }) });
+          }
+          if (r.ok) applyServer(a, await r.json());
+          pushing = false;
+        } else if (sigOf(a) === a.shared.sig) {
+          const r = await fetch(`api/accounts/${a.shared.id}?name=${encodeURIComponent(me())}`);
+          if (r.ok) { const d = await r.json(); if (d.rev !== a.shared.rev) { applyServer(a, d); if (a === A()) { paintCards(); ctx.onTrades(true); paintLive(); } } }
+        }
+      } catch (e) { pushing = false; }
+    }
+    ctx.save();
+  }
+  async function shareAccount(a) {
+    if (!me()) { ctx.toast('Najprv zadaj svoje meno (Účet → Meno)'); return; }
+    const r = await fetch('api/accounts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ owner: me(), name: a.name, data: dataOf(a) }) });
+    if (!r.ok) { ctx.toast('Zdieľanie zlyhalo'); return; }
+    a.shared = {}; applyServer(a, await r.json()); ctx.save(); ctx.toast('🔗 Účet je zdieľaný – pošli kamarátovi kód');
+  }
+  async function joinAccount(code) {
+    if (!me()) { ctx.toast('Najprv zadaj svoje meno (Účet → Meno)'); return; }
+    const r = await fetch('api/accounts/join', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: me(), code }) });
+    if (!r.ok) { ctx.toast((await r.json().catch(() => ({}))).detail || 'Neplatný kód'); return; }
+    const d = await r.json(), ex = S().accounts.find(x => x.shared && x.shared.id === d.id);
+    const a = ex || { id: 'sh' + d.id, name: d.name, start: 10000, positions: [], history: [], shared: {} };
+    applyServer(a, d);
+    if (!ex) S().accounts.push(a);
+    S().accountId = a.id; ctx.save();
+    ctx.toast(`🔗 Pripojený k účtu „${a.name}“ (${a.shared.role === 'trade' ? 'môžeš obchodovať' : 'iba sledovanie'})`);
+  }
+  // a trade from the Algo window (paper account)
+  function algoTrade(o) {
+    if (!canTrade()) return;
+    const price = priceOf(o.symbol) ?? prices[o.symbol];
+    const go = px => { openPos({ symbol: o.symbol, dir: o.dir, lots: o.lots, lots0: o.lots, entry: px, sl: o.sl, tp: o.tp, src: 'algo', note: o.note }); ctx.onTrades(true); };
+    if (Number.isFinite(price)) go(price);
+    else ctx.fetchBars(o.symbol, '1m', null, 10).then(b => b.length && go(b[b.length - 1].close)).catch(() => {});
+  }
   function openPos(o) {
-    const p = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 5), time: Date.now(), ...o };
+    if (!guard()) return null;
+    const p = { id: Date.now().toString(36) + Math.random().toString(36).slice(2, 5), time: Date.now(), by: me(), ...o };
     p.lots0 = p.lots0 || p.lots;
     A().positions.push(p); ctx.save(); if (layer) paintCards(); return p;
   }
@@ -205,6 +272,7 @@ const NEXUS = (() => {
   const UIP = id => { const m = S().nexus.cards = S().nexus.cards || {}; return (m[id] = m[id] || {}); };
   let layer = null, lineSig = '';
   function closePart(p, lots, price, reason) {
+    if (!guard()) return;
     lots = Math.round(Math.min(lots, p.lots) * 100) / 100;
     if (lots >= p.lots - 1e-9) return closePos(p, price, reason);
     A().history.unshift({ ...p, lots, exit: price, exitTime: Date.now(), pnl: pnlOf({ ...p, lots }, price), reason: reason + ' (časť)' });
@@ -227,7 +295,7 @@ const NEXUS = (() => {
         <div class="pc-ptps"></div><div class="pc-exp"></div>
         <div class="pc-btns"><button data-a="be" title="Posunúť stop loss na vstupnú cenu (break-even)">SL → BE</button><button data-a="part" title="Zavrieť časť pozície">Časť ▾</button><button data-a="close" class="pc-x">Zavrieť</button></div>
         <div class="pc-part"><button data-p="25">25 %</button><button data-p="50">50 %</button><button data-p="75">75 %</button><input data-pl type="number" step="0.01" min="0.01" placeholder="lotov"><button data-p="lots">OK</button></div>
-        ${p.src === 'robot' ? `<div class="pc-note">🤖 ${esc(p.note || 'robot')}</div>` : ''}</div>`;
+        ${p.src === 'robot' || p.src === 'algo' ? `<div class="pc-note">${p.src === 'algo' ? '🧠' : '🤖'} ${esc(p.note || 'robot')}</div>` : ''}${p.by && p.by !== me() ? `<div class="pc-note">👤 otvoril ${esc(p.by)}</div>` : ''}</div>`;
   }
   function paintCards() {
     if (!layer) return;
@@ -351,6 +419,7 @@ const NEXUS = (() => {
   }
   // hi / lo = the highest and lowest price since the last check
   function checkHits(id, hi, lo) {
+    if (!canTrade()) return;                     // the account owner's / trader's app closes the trades
     for (const p of [...A().positions].filter(x => x.symbol === id)) {
       track(p, hi); track(p, lo);
       if (p.sl && (p.dir > 0 ? lo <= p.sl : hi >= p.sl)) { closePos(p, p.sl, 'stop loss'); ctx.toast(`🛑 ${sym(id).name}: stop loss ${f2(p.sl, id)}`); continue; }
@@ -398,6 +467,7 @@ const NEXUS = (() => {
     return out;
   }
   function moveLine(pid, kind, idx, price, final) {
+    if (pid !== 'plan' && !canTrade()) return;
     const sy = pid === 'plan' ? ctx.chartSymbol() : (A().positions.find(x => x.id === pid) || {}).symbol;
     if (!sy) return;
     const tk = tickOf(sy); price = rnd(sy, price);
@@ -414,6 +484,7 @@ const NEXUS = (() => {
     paintCards();
   }
   function removeLine(pid, kind, idx) {
+    if (pid !== 'plan' && !guard()) return;
     if (pid === 'plan') { PL()[kind + 'On'] = false; ctx.save(); paintTicket(); return; }
     const p = A().positions.find(x => x.id === pid); if (!p) return;
     if (kind === 'ptp') p.tps.splice(idx, 1); else p[kind] = null;
@@ -421,6 +492,7 @@ const NEXUS = (() => {
   }
   // default distance for a new stop / target: 0.3 % / 0.6 % of the price, or the last one you dragged
   function addLevel(p, kind) {
+    if (!guard()) return;
     const now = priceOf(p.symbol); if (!Number.isFinite(now)) return;
     const d = now * (kind === 'sl' ? 0.003 : 0.006);
     if (kind === 'sl') p.sl = now - p.dir * d;
@@ -522,6 +594,7 @@ const NEXUS = (() => {
     placeTicket();
   }
   function placeOrder(dir) {
+    if (!guard()) return;
     const P = PL(), sy = ctx.chartSymbol(), now = priceOf(sy);
     if (!Number.isFinite(now)) { ctx.toast('Cena sa ešte načítava…'); return; }
     let sl = null, tp = null;
@@ -601,9 +674,12 @@ const NEXUS = (() => {
         <label>Počiatočný zostatok účtu „${esc(a.name)}“ ($)<input class="idea-in" id="nxStart" type="number" min="0" step="100" value="${a.start}"></label></div></div>
         <div class="nx-stats" id="nxStats"></div>
         <div class="nx-sub">Účty <span class="grow"></span><button class="btn sm" id="acNew">＋ Nový účet</button></div>
-        <div class="nx-accs">${S().accounts.map(x => { const r = x.history.reduce((s2, h) => s2 + (Number.isFinite(h.pnl) ? h.pnl : 0), 0);
-          return `<div class="nx-acc ${x === a ? 'on' : ''}" data-ac="${x.id}"><b>${esc(x.name)}</b><span class="priv">${usd(x.start + r)}</span><small>${x.positions.length} otvorené · ${x.history.length} obchodov</small>
-            <span class="nx-acc-b"><button class="ib" data-acr="${x.id}" title="Premenovať">✎</button>${S().accounts.length > 1 ? `<button class="ib" data-acd="${x.id}" title="Zmazať účet">🗑</button>` : ''}</span></div>`; }).join('')}</div>
+        <div class="nx-accs">${S().accounts.map(x => { const r = x.history.reduce((s2, h) => s2 + (Number.isFinite(h.pnl) ? h.pnl : 0), 0), sh = x.shared;
+          return `<div class="nx-acc ${x === a ? 'on' : ''}" data-ac="${x.id}"><b>${esc(x.name)} ${sh ? `<span class="nx-shb">🔗 ${sh.role === 'owner' ? 'zdieľaný' : sh.role === 'trade' ? 'obchodujem' : 'sledujem'}</span>` : ''}</b><span class="priv">${usd(x.start + r)}</span>
+            <small>${x.positions.length} otvorené · ${x.history.length} obchodov${sh ? ` · vlastník ${esc(sh.owner)}${(sh.members || []).length ? ' · ' + sh.members.map(m => `${esc(m.name)} (${m.role === 'trade' ? 'obchoduje' : 'sleduje'})`).join(', ') : ''}` : ''}</small>
+            ${sh && sh.role === 'owner' ? `<div class="nx-codes">Kód na sledovanie <code data-copy="${sh.code_view}">${sh.code_view}</code> · na obchodovanie <code data-copy="${sh.code_trade}">${sh.code_trade}</code></div>` : ''}
+            <span class="nx-acc-b">${sh ? '' : `<button class="ib" data-acs="${x.id}" title="Zdieľať s kamarátom">🔗</button>`}<button class="ib" data-acr="${x.id}" title="Premenovať">✎</button>${S().accounts.length > 1 ? `<button class="ib" data-acd="${x.id}" title="Odstrániť účet">🗑</button>` : ''}</span></div>`; }).join('')}</div>
+        <div class="nx-sub">Pripojiť sa k účtu kamaráta</div><div class="nx-new"><input class="idea-in" id="acCode" placeholder="Kód od kamaráta (napr. 3F9A1C2B)" style="flex:1"><button class="btn sm pri" id="acJoin">🔗 Pripojiť</button></div>
         <div class="muted" style="font-size:11px;margin-top:8px">Papierové (demo) účty – žiadne skutočné peniaze ani broker. Nové obchody idú na zvýraznený účet.</div>
         <div style="margin-top:6px"><button class="btn sm" id="nxReset">♻ Vynulovať tento účet</button></div>`; },
     pos: () => `<div class="nx-new"><select id="npSym">${ctx.symbols().map(s => `<option value="${s.id}">${esc(s.name)}</option>`).join('')}</select>
@@ -767,6 +843,9 @@ const NEXUS = (() => {
         img.src = u;
       };
       const after = () => { ctx.save(); paint(); paintCards(); ctx.onTrades(true); };
+      $$('[data-acs]', el).forEach(x => x.onclick = () => shareAccount(S().accounts.find(y => y.id === x.dataset.acs)).then(() => paint()));
+      $$('[data-copy]', el).forEach(x => x.onclick = e => { e.stopPropagation(); navigator.clipboard && navigator.clipboard.writeText(x.dataset.copy); ctx.toast('📋 Kód skopírovaný: ' + x.dataset.copy); });
+      $('#acJoin', el).onclick = () => { const c = $('#acCode', el).value.trim(); if (c) joinAccount(c).then(() => { paint(); paintCards(); ctx.onTrades(true); }); };
       $('#acNew', el).onclick = () => { const n = prompt('Názov nového účtu', `Účet ${S().accounts.length + 1}`); if (!n) return; const id = Date.now().toString(36);
         S().accounts.push({ id, name: n.trim().slice(0, 40), start: 10000, positions: [], history: [] }); S().accountId = id; ctx.toast(`Nový účet „${n}“ je aktívny`); after(); };
       $$('[data-ac]', el).forEach(x => x.onclick = e => { if (e.target.closest('button')) return; S().accountId = x.dataset.ac; ctx.toast(`Aktívny účet: ${A().name}`); after(); });
@@ -884,7 +963,7 @@ const NEXUS = (() => {
         }
       }
       hl.innerHTML = list.length ? `<table class="tt nx-t nx-ht"><tr><th>Zavreté</th><th>Symbol</th><th>Smer</th><th>Loty</th><th>Vstup → výstup</th><th>P/L</th><th>Max ▲ / ▼</th><th>Trvanie</th><th>Dôvod</th></tr>
-        ${list.slice(0, 150).map(h => `<tr class="${h.pnl > 0 ? 'w' : 'l'}"><td>${when(h.exitTime)}</td><td><b>${esc(sym(h.symbol).name)}</b>${h.src === 'robot' ? ' 🤖' : ''}</td><td><span class="pill ${h.dir > 0 ? 'win' : 'loss'}">${h.dir > 0 ? 'BUY' : 'SELL'}</span></td>
+        ${list.slice(0, 150).map(h => `<tr class="${h.pnl > 0 ? 'w' : 'l'}"><td>${when(h.exitTime)}</td><td><b>${esc(sym(h.symbol).name)}</b>${h.src === 'robot' ? ' 🤖' : h.src === 'algo' ? ' 🧠' : ''}${h.by && h.by !== me() ? ` <small class="muted">👤 ${esc(h.by)}</small>` : ''}</td><td><span class="pill ${h.dir > 0 ? 'win' : 'loss'}">${h.dir > 0 ? 'BUY' : 'SELL'}</span></td>
           <td>${h.lots}</td><td>${f2(h.entry, h.symbol)} → ${f2(h.exit, h.symbol)}</td><td class="${h.pnl >= 0 ? 'up' : 'dn'}"><b class="priv">${money(h.pnl)}</b></td><td class="priv"><span class="up">${money(h.best)}</span> / <span class="dn">${money(h.worst)}</span></td><td>${dur(h.exitTime - h.time)}</td><td class="muted">${esc(h.reason || '')}</td></tr>`).join('')}</table>`
         : `<div class="muted" style="padding:10px">${a.history.length ? 'Nič podľa filtra.' : 'Zatiaľ žiadne uzavreté obchody.'}</div>`;
     }
@@ -944,6 +1023,7 @@ const NEXUS = (() => {
       ctx = c; S = c.S; page = $('#nexusPage');
       layer = document.createElement('div'); layer.id = 'posLayer'; document.body.appendChild(layer);
       hud(); pollPrices(); paintCards(); paintTicket();
+      setInterval(syncShared, 4000);
       if (S().robot.on) robotTick();
       document.addEventListener('keydown', e => { if (e.key === 'Escape' && page.classList.contains('open') && !UI.dialogOpen() && !/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) { e.stopImmediatePropagation(); close(); } }, true);
     },
@@ -961,6 +1041,7 @@ const NEXUS = (() => {
     },
     chartLines: s => (ctx ? chartLines(s) : []), chartTrades: s => (ctx ? chartTrades(s) : []), chartMarkers: s => (ctx ? chartMarkers(s) : []),
     moveLine, removeLine,
+    algoTrade,
     toggleTicket() { const P = PL(); P.open = !P.open; ctx.save(); paintTicket(); ctx.onTrades(); },
     chartChanged() { if (!ctx) return; lineSig = ''; paintCards(); },
   };

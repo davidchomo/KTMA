@@ -923,3 +923,45 @@ body.tb-float .tbtn:hover { background: rgba(127,127,127,.25); }
 body.tb-left #toolbar .tbtn, body.tb-right #toolbar .tbtn { width: var(--tb-sw, 30px) !important; flex: 0 0 auto !important; }
 body.tb-float.tb-left #legend { left: calc(var(--tb-sw, 30px) + 14px); }
 body.tb-float.tb-left #showToolbar, body.tb-float.tb-right #showToolbar { display: none; }
+
+/* ---- 🧠 Algo window ---- */
+#algoWin { position: fixed; z-index: 26; width: 980px; height: 620px; max-height: calc(100vh - 60px); left: 120px; top: 60px; background: var(--panel); border: 1px solid var(--border);
+           border-radius: 10px; box-shadow: 0 16px 48px rgba(0,0,0,.55); display: none; flex-direction: column; overflow: hidden; min-width: 300px; min-height: 100px; }
+#algoWin.open { display: flex; }
+#algoWin.min { height: auto !important; min-height: 0; } #algoWin.min #algoBody { display: none; }
+#algoWin.max { inset: 2vh 2vw !important; width: auto !important; height: auto !important; max-height: none !important; }
+#algoHead { display: flex; align-items: center; gap: 6px; padding: 7px 8px 7px 12px; border-bottom: 1px solid var(--border); cursor: move; font-weight: 600; user-select: none; }
+#algoHead .dlg-tools { opacity: .45; } #algoHead:hover .dlg-tools { opacity: 1; }
+#algoTabs { display: flex; gap: 2px; font-weight: 400; }
+#algoTabs span, .cw-tabs span { cursor: pointer; padding: 4px 10px; border-radius: 6px; color: var(--muted); font-size: 12px; }
+#algoTabs span.on, .cw-tabs span.on { background: var(--panel2); color: var(--text); }
+#algoBody { flex: 1; overflow: auto; padding: 10px 14px 16px; }
+.al-cfg { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; margin-bottom: 8px; }
+.al-cfg select, .al-cfg input[type=number] { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 4px; }
+.al-cfg label { display: flex; align-items: center; gap: 5px; font-size: 12px; }
+.al-note { font-size: 11px; margin-bottom: 8px; line-height: 1.45; }
+table.al-t td, table.al-t th { text-align: left !important; white-space: nowrap; }
+table.al-t tr.good { background: rgba(16,185,129,.07); } table.al-t tr.good td:first-child { box-shadow: inset 3px 0 0 #10b981; }
+table.al-t tr.bad { opacity: .62; }
+.al-btns { display: flex; gap: 3px; align-items: center; }
+.al-live { display: inline-flex; align-items: center; gap: 2px; cursor: pointer; font-size: 12px; }
+.al-pick { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 10px; }
+.al-pick span { cursor: pointer; font-size: 12px; padding: 4px 10px; border-radius: 12px; border: 1px solid var(--border); color: var(--muted); }
+.al-pick span.on { border-color: var(--accent); color: var(--text); background: rgba(41,98,255,.18); }
+.al-h { margin: 4px 0; font-size: 17px; }
+.al-res { padding: 6px 0; border-bottom: 1px solid var(--border); font-size: 12px; }
+.al-curve { width: 100%; height: 70px; display: block; margin-top: 4px; }
+.al-live-list { display: flex; flex-wrap: wrap; gap: 5px; }
+.al-live-list span { font-size: 12px; padding: 3px 4px 3px 10px; border-radius: 12px; background: var(--bg); border: 1px solid var(--border); display: inline-flex; align-items: center; gap: 4px; }
+#bAlgo.badge-on::after { content: "•"; position: absolute; top: -6px; right: 4px; color: #ff9100; font-size: 22px; text-shadow: 0 0 6px #ff9100; }
+
+/* ---- chat + news in one window ---- */
+.cw-tabs { display: inline-flex; gap: 2px; font-weight: 600; }
+#chatWin.news-tab #chatBody, #chatWin.news-tab #chatFoot, #chatWin.news-tab #chatFilter { display: none; }
+#chatWin:not(.news-tab) #newsTabs, #chatWin:not(.news-tab) #newsBody { display: none; }
+#chatWin #newsBody { flex: 1; overflow-y: auto; }
+
+/* ---- shared accounts ---- */
+.nx-shb { font-size: 10px; font-weight: 600; padding: 1px 7px; border-radius: 8px; background: rgba(38,198,218,.18); color: #26c6da; margin-left: 4px; }
+.nx-codes { grid-column: 1 / 3; font-size: 11px; color: var(--muted); margin-top: 3px; }
+.nx-codes code { cursor: pointer; padding: 1px 6px; border-radius: 4px; background: var(--panel2); color: var(--text); font: 600 12px Consolas, monospace; }
