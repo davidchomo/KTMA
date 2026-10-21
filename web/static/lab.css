@@ -1,0 +1,55 @@
+/* Nexus Lab page and the Electricals tables (also used in the Nexus window) */
+#labApp { position: fixed; inset: 0; display: flex; flex-direction: column; }
+#labTop { display: flex; align-items: center; gap: 10px; padding: 4px 10px; background: var(--panel); border-bottom: 1px solid var(--border); min-height: 38px; }
+.lab-logo { color: var(--text); text-decoration: none; font-weight: 600; white-space: nowrap; }
+.lab-logo b { color: #34d399; }
+#labTabs { display: flex; gap: 4px; overflow-x: auto; min-width: 0; }
+.lab-tab { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 6px 6px 0 0; background: var(--panel2); border: 1px solid var(--border); border-bottom: 0; cursor: pointer; white-space: nowrap; }
+.lab-tab.on { background: var(--bg); border-color: #34d399; color: #fff; }
+.lab-tab .x { opacity: .55; padding: 0 2px; } .lab-tab .x:hover { opacity: 1; color: var(--down); }
+.lab-tab.add { background: transparent; border-style: dashed; }
+#labBar { display: flex; align-items: center; gap: 6px; padding: 5px 10px; background: var(--panel); border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+#labBar select, .el-bar select, .el-bar input { background: var(--panel2); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 3px 6px; font: inherit; }
+.lab-sep { width: 1px; height: 20px; background: var(--border); }
+.lab-chip { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 12px; background: var(--panel2); border: 1px solid var(--border); font-size: 12px; cursor: pointer; user-select: none; }
+.lab-chip.on { border-color: #34d399; color: #fff; }
+.lab-chip .x { opacity: .6; } .lab-chip .x:hover { color: var(--down); opacity: 1; }
+#labMain { flex: 1; display: flex; min-height: 0; }
+#labChartWrap { flex: 1; position: relative; min-width: 0; }
+#labChart { position: absolute; inset: 0; }
+#labChart.picking { cursor: crosshair; }
+#labHint { position: absolute; top: 8px; left: 50%; transform: translateX(-50%); z-index: 5; background: #34d399; color: #062; font-weight: 600; padding: 6px 14px; border-radius: 16px; display: none; }
+#labLegend { position: absolute; left: 8px; top: 6px; z-index: 4; font-size: 12px; pointer-events: none; line-height: 1.6; }
+#labSide { width: 440px; flex: 0 0 auto; border-left: 1px solid var(--border); background: var(--panel); display: flex; flex-direction: column; min-height: 0; }
+#labSideTabs { display: flex; border-bottom: 1px solid var(--border); }
+#labSideTabs span { flex: 1; text-align: center; padding: 8px 4px; cursor: pointer; font-size: 12px; border-bottom: 2px solid transparent; }
+#labSideTabs span.on { border-color: #34d399; color: #fff; }
+#labSideBody { flex: 1; overflow: auto; padding: 10px; }
+body.lab-wide #labSide { width: min(1100px, 75vw); }
+.lab-card { background: var(--panel2); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; margin-bottom: 10px; }
+.lab-card h4 { margin: 0 0 6px; font-size: 13px; }
+.lab-big { font-size: 20px; font-weight: 700; }
+#labApp .up, .nx-elec .up { color: var(--up); } #labApp .dn, .nx-elec .dn { color: var(--down); }
+.lab-row { display: flex; gap: 8px; align-items: center; padding: 5px 6px; border-bottom: 1px solid var(--border); cursor: pointer; font-size: 12px; }
+.lab-row:hover { background: var(--panel2); }
+.lab-row .k { width: 18px; text-align: center; }
+.lab-row .res { margin-left: auto; white-space: nowrap; }
+.lab-form { display: flex; flex-direction: column; gap: 6px; }
+.lab-form input, .lab-form textarea { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 6px; font: inherit; }
+.lab-prog { height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; margin: 6px 0; } .lab-prog i { display: block; height: 100%; background: #34d399; }
+
+/* Electricals */
+.el-bar { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-bottom: 8px; }
+.el-tab { padding: 4px 10px; border-radius: 14px; background: var(--panel2); border: 1px solid var(--border); cursor: pointer; font-size: 12px; white-space: nowrap; }
+.el-tab.on { border-color: #facc15; color: #fff; }
+.el-tab small { opacity: .6; }
+.el-base { background: var(--panel2); border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; margin-bottom: 8px; font-size: 12px; line-height: 1.6; }
+.el-t { border-collapse: collapse; width: 100%; font-size: 12px; margin-bottom: 10px; }
+.el-t th { text-align: left; color: var(--muted); font-weight: 500; padding: 4px 6px; border-bottom: 1px solid var(--border); position: sticky; top: 0; background: var(--panel); }
+.el-t td { padding: 4px 6px; border-bottom: 1px solid var(--border); }
+.el-grid td { text-align: center; white-space: nowrap; } .el-grid td:first-child { text-align: left; white-space: normal; min-width: 150px; }
+.el-grid small { opacity: .7; font-size: 10px; }
+.el-two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.el-empty { padding: 20px; text-align: center; }
+.nx-elec .sec, #labSideBody .sec { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; margin: 10px 0 4px; }
+@media (max-width: 900px) { #labSide { width: 100%; position: absolute; inset: auto 0 0 0; height: 45vh; } .el-two { grid-template-columns: 1fr; } }

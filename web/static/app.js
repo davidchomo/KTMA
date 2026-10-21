@@ -2386,7 +2386,8 @@
     ['Graf', [['bSymbol', '◆', 'Symbol', 'Vyber trh'], ['bType', '🕯', 'Typ grafu', 'Sviečky, Heikin Ashi, Renko…'], ['bTf', '⏱', 'Timeframe', '1 s až 1 mesiac'], ['bLayout', '▦', 'Rozloženie a plochy', '1–10 grafov, prepínanie plôch']]],
     ['Kreslenie a text', [['bDraw', '✎', 'Kreslenie', 'Čiary, Fibonacci, vzory, tvary'], ['bText', 'T', 'Text', 'Poznámky, pin, tabuľka, obrázok, nápad']]],
     ['Analýza', [['bInd', 'ƒx', 'Indikátory', 'RSI, MACD, kĺzavé priemery, vzory'], ['bFunc', '🧩', 'Funkcie', 'Čiary, objem, stratégie, pozadie podľa Technicals'], ['lines', '📐', 'Čiary', 'Auto trendové čiary a úrovne'], ['volume', '🫧', 'Objem', 'Bubliny, delta, tok obchodov'], ['strats', '⚡', 'Stratégie nápadov', 'Zapnúť / vypnúť, R:R, stop'], ['bAlgo', '🧠', 'Algo', 'Overené stratégie, test, živé signály'],
-      ['tech', '📊', 'Technicals', 'Súhrn pre všetky timeframy (v Knižnici)'], ['bScan', '🔍', 'Skenovať', 'Hľadá vstupy na trhoch'], ['bReplay', '⏯', 'Replay', 'Tréning na histórii']]],
+      ['tech', '📊', 'Technicals', 'Súhrn pre všetky timeframy (v Knižnici)'], ['bScan', '🔍', 'Skenovať', 'Hľadá vstupy na trhoch'], ['bReplay', '⏯', 'Replay', 'Tréning na histórii'],
+      ['lab', '🧪', 'Nexus Lab', 'Druhý grafový systém: karty, skener objemových pohybov, učenie'], ['elec', '🔌', 'Electricals', 'Štatistiky: čo sa stalo pri akej hodnote indikátorov']]],
     ['Obchod', [['nexus', '◆', 'Nexus', 'Účet, pozície, robot, nástenka'], ['ticket', '💹', 'Obchodný panel', 'Kúpiť / predať s SL a TP'], ['bIdea', '💡', 'Nápad', 'Alerty skenera a labelovanie']]],
     ['Komunikácia', [['bChat', '💬', 'Chat', 'Tím, nápady, otázky pre Clauda'], ['news', '📰', 'Správy', 'Novinky, kalendár, odkazy (v okne chatu)']]],
     ['Vzhľad', [['bSettings', '⚙', 'Nastavenia', 'Graf, panel, jas'], ['styles', '🖼', 'Štýly', 'Fotky, videá, animácie, témy (aj v Nastaveniach)'], ['bFull', '⛶', 'Celá obrazovka', 'F11'], ['bUndo', '↶', 'Späť', 'Ctrl+Z'], ['bRedo', '↷', 'Znova', 'Ctrl+Y']]],
@@ -2402,6 +2403,8 @@
       $$('[data-fn]', m).forEach(x => x.onclick = () => {
         const id = x.dataset.fn; closeMenu();
         if (id === 'nexus') return NEXUS.open();
+        if (id === 'lab') return window.open('lab', '_blank');
+        if (id === 'elec') return NEXUS.openApp('elec');
         if (id === 'ticket') return NEXUS.toggleTicket();
         if (id === 'styles') return stylesDialog();
         if (id === 'lines') return autoMenu($('#bFunc'));

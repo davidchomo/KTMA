@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="sk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nexus Lab</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M8 1l7 7-7 7-7-7z' fill='%2334d399'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="static/app.css?v=19">
+<link rel="stylesheet" href="static/lab.css?v=19">
+</head>
+<body class="lab">
+<div id="labApp">
+  <header id="labTop">
+    <a class="lab-logo" href="./" title="Späť na hlavný graf (Nexus)">◆ Nexus <b>Lab</b></a>
+    <div id="labTabs"></div>
+    <span class="grow"></span>
+    <span id="labStatus" class="muted"></span>
+  </header>
+  <div id="labBar">
+    <select id="labSym" title="Trh"></select>
+    <select id="labTf" title="Timeframe"></select>
+    <select id="labBars" title="Koľko sviečok histórie">
+      <option value="1000">1 000 sviečok</option><option value="3000">3 000 sviečok</option><option value="5000">5 000 sviečok</option>
+    </select>
+    <span class="lab-sep"></span>
+    <span id="labPanels"></span>
+    <select id="labAddPanel" title="Pridať panel s indikátorom pod graf"></select>
+    <span class="lab-sep"></span>
+    <span id="labShow"></span>
+    <span class="grow"></span>
+    <button class="btn sm" id="labCase" title="Označ na grafe začiatok a koniec pohybu – Lab si zapamätá všetky indikátory na jeho začiatku a bude hľadať podobné situácie">✂ Uložiť pohyb</button>
+    <button class="btn sm" id="labScan" title="Nájde pohyby na tomto grafe a uloží ich do štatistík (Electricals)">🔍 Skenovať graf</button>
+    <button class="btn sm pri" id="labScanAll" title="Prejde všetky trhy na 15m, 1h a 4h a uloží nájdené pohyby">🌐 Skenovať všetko</button>
+  </div>
+  <main id="labMain">
+    <div id="labChartWrap"><div id="labChart"></div><div id="labHint"></div><div id="labLegend"></div></div>
+    <aside id="labSide">
+      <div id="labSideTabs"></div>
+      <div id="labSideBody"></div>
+    </aside>
+  </main>
+</div>
+<script src="lib/lightweight-charts-5.2.1.js"></script>
+<script src="static/studies.js?v=19"></script>
+<script src="static/autotl.js?v=19"></script>
+<script src="static/struct.js?v=19"></script>
+<script src="static/lab-core.js?v=19"></script>
+<script src="static/lab.js?v=19"></script>
+</body>
+</html>

@@ -629,6 +629,8 @@ const NEXUS = (() => {
     chat: '<path d="M4 5h16v11H9l-5 4z"/>',
     lib: '<path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M4 21V5M8 7h7"/>',
     ticket: '<path d="M4 18V9M10 18V5M16 18v-7M22 18H2"/>',
+    elec: '<path d="M13 2L4 14h7l-1 8 9-12h-7z"/>',
+    lab: '<path d="M9 3h6M10 3v6l-5 9a2 2 0 0 0 2 3h10a2 2 0 0 0 2-3l-5-9V3"/><path d="M7 15h10"/>',
   };
   const APPS = {
     acc: ['Účet', 'linear-gradient(135deg,#3b82f6,#6d28d9)', 'Profil, zostatok a prepínanie účtov'],
@@ -641,8 +643,10 @@ const NEXUS = (() => {
     chat: ['Chat', 'linear-gradient(135deg,#22d3ee,#0e7490)', 'Otvorí okno chatu'],
     lib: ['Knižnica', 'linear-gradient(135deg,#a78bfa,#5b21b6)', 'Formácie, stratégie, tipy'],
     ticket: ['Obchod', 'linear-gradient(135deg,#ef4444,#16a34a)', 'Zobrazí / skryje obchodný panel v grafe'],
+    elec: ['Electricals', 'linear-gradient(135deg,#fde047,#ea580c)', 'Štatistiky z Nexus Lab: čo sa stalo pri akej hodnote RSI, MACD a všetkých indikátorov'],
+    lab: ['Nexus Lab', 'linear-gradient(135deg,#34d399,#0f766e)', 'Druhý grafový systém: karty grafov, skener pohybov, učenie (otvorí sa v novej karte)'],
   };
-  const ACTIONS = { chat: () => ctx.openChat(), lib: () => { close(); LIB.open(); }, ticket: () => { const P = PL(); P.open = !P.open; ctx.save(); paintTicket(); ctx.onTrades(); ctx.toast(P.open ? '💹 Obchodný panel zobrazený v grafe' : 'Obchodný panel skrytý'); } };
+  const ACTIONS = { lab: () => window.open('lab', '_blank'), chat: () => ctx.openChat(), lib: () => { close(); LIB.open(); }, ticket: () => { const P = PL(); P.open = !P.open; ctx.save(); paintTicket(); ctx.onTrades(); ctx.toast(P.open ? '💹 Obchodný panel zobrazený v grafe' : 'Obchodný panel skrytý'); } };
   const DK = () => {
     const N = S().nexus, d = N.desk = N.desk || {};
     d.icons = d.icons || {}; d.wins = d.wins || {}; d.z = d.z || 10;
@@ -701,9 +705,10 @@ const NEXUS = (() => {
         <div class="muted" style="font-size:11px;margin-top:6px">Robot kontroluje trh každých 30 s a koná raz za každú uzavretú sviečku daného timeframu. Beží, kým je stránka otvorená.</div>`; },
     ideas: () => '<div id="nxIdeaBox"></div>',
     fold: () => '<div id="nxFolders"></div>',
+    elec: () => '<div class="bd-bar"><button class="btn sm pri" data-elab>🧪 Otvoriť Nexus Lab</button><button class="btn sm" data-ere>↻ Obnoviť</button><span class="grow"></span><span class="muted">Dáta pribúdajú skenovaním v Labe · vidí ich aj Claude v chate</span></div><div id="nxElec" class="nx-elec"></div>',
     board: () => '<div class="bd-bar"><button class="btn sm" data-bd="note">＋ Poznámka</button><button class="btn sm" data-bd="list">＋ Zoznam úloh</button><span class="grow"></span><span class="muted bd-count"></span></div><div class="bd-area" id="bdArea"></div>',
   };
-  const WIN_SIZE = { acc: [430, 560], pos: [760, 380], hist: [820, 560], bot: [820, 560], ideas: [480, 460], fold: [480, 520], board: [880, 600] };
+  const WIN_SIZE = { acc: [430, 560], pos: [760, 380], hist: [820, 560], bot: [820, 560], ideas: [480, 460], fold: [480, 520], board: [880, 600], elec: [1040, 660] };
   let histFilter = 'all';
   function winHtml(id) {
     const w = DK().wins[id], [name, bg] = APPS[id], [dw, dh] = WIN_SIZE[id] || [500, 420];
@@ -745,6 +750,7 @@ const NEXUS = (() => {
     if (id === 'fold') paintFolders();
     else if (id === 'ideas') paintIdeas();
     else if (id === 'board') paintBoard();
+    else if (id === 'elec') return;
     else paintLive();
   }
   function paint() {
@@ -830,7 +836,21 @@ const NEXUS = (() => {
       if (bindDesk.cloudAgain) { cl.classList.add('open'); bindDesk.cloudAgain = false; cl.addEventListener('mouseleave', () => cl.classList.remove('open'), { once: true }); }
     }
   }
+  // Electricals: the Lab statistics (lab-core.js), loaded from the server at most once a minute
+  let elecRecs = null, elecAt = 0;
+  const elecSt = { kind: 'event' };
+  async function paintElec(force) {
+    const box = $('#nxElec'); if (!box || typeof LAB === 'undefined') return;
+    if (!elecRecs || force || Date.now() - elecAt > 60000) {
+      box.innerHTML = '<p class="muted">Načítavam štatistiky…</p>';
+      try { elecRecs = await LAB.api.list(); elecAt = Date.now(); } catch (e) { box.innerHTML = '<p class="muted">Štatistiky sa nepodarilo načítať.</p>'; return; }
+    }
+    elecSt.del = async id => { await LAB.api.del(id, S().labeler); elecRecs = elecRecs.filter(r => r.id !== id); paintElec(); };
+    elecSt.open = r => window.open(`lab?symbol=${r.symbol}&tf=${r.timeframe}&t=${r.t0}`, '_blank');
+    LAB.render(box, elecRecs, elecSt, () => paintElec());
+  }
   const BIND = {
+    elec: el => { $('[data-elab]', el).onclick = () => window.open('lab', '_blank'); $('[data-ere]', el).onclick = () => paintElec(true); paintElec(); },
     acc: el => {
       $('#nxName', el).onchange = e => { ctx.setName(e.target.value.trim()); paint(); };
       $('#nxStart', el).onchange = e => { A().start = Math.max(0, +e.target.value || 0); ctx.save(); paintLive(); };
@@ -1031,6 +1051,7 @@ const NEXUS = (() => {
       document.addEventListener('keydown', e => { if (e.key === 'Escape' && page.classList.contains('open') && !UI.dialogOpen() && !/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) { e.stopImmediatePropagation(); close(); } }, true);
     },
     open, close, toggle, isOpen: () => page && page.classList.contains('open'),
+    openApp(id) { open(); openApp(id); },
     refresh() { if (page && page.classList.contains('open')) { paintFolders(); paintIdeas(); } },
     // live price of the open chart: update the cards and check stop loss / take profit at once
     tick() {
