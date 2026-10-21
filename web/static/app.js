@@ -482,6 +482,169 @@
     if (key !== tradeLines.hover) { tradeLines.hover = key; el.style.cursor = h ? 'ns-resize' : ''; tradeLines.update(); }
   });
 
+  // ---- pick a price / a bar with the mouse (trade panel levels 🎯, learning areas ✂) ------------------------------
+  // The click is caught before the drawing tools and the chart's own panning; Esc cancels. A price snaps to the bar's
+  // high / low / open / close when the mouse is within 8 px of it.
+  let pickReq = null;
+  function pickChart(text, o = {}) {
+    if (pickReq) pickReq.done(null);
+    return new Promise(res => {
+      const h = $('#hint'); h.textContent = text + ' · Esc = zrušiť'; h.style.display = '';
+      el.classList.add('picking');
+      pickReq = { o, done: v => { pickReq = null; h.style.display = 'none'; el.classList.remove('picking'); pickBand(); res(v); } };
+    });
+  }
+  function pickAt(e) {
+    if (!chart || !disp.length) return null;
+    const r = el.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top - mainTop(), ps = chart.paneSize(mainIdx);
+    if (x < 0 || x > ps.width || y < 0 || y > ps.height) return null;
+    const lg = chart.timeScale().coordinateToLogical(x), i = lg === null ? null : Math.max(0, Math.min(disp.length - 1, Math.round(lg)));
+    let price = main.coordinateToPrice(y);
+    if (i !== null && price !== null) { const b = disp[i]; let best = 8; for (const v of [b.high, b.low, b.open, b.close]) { const yy = main.priceToCoordinate(v); if (yy !== null && Math.abs(yy - y) < best) { best = Math.abs(yy - y); price = v; } } }
+    return { x, i, price, time: i === null ? null : disp[i].time };
+  }
+  function pickBand(x0, x1) {
+    let b = $('#pickBand');
+    if (x0 === undefined) { if (b) b.remove(); return; }
+    if (!b) { b = document.createElement('div'); b.id = 'pickBand'; $('#chartWrap').appendChild(b); }
+    const wr = $('#chartWrap').getBoundingClientRect(), r = el.getBoundingClientRect();
+    Object.assign(b.style, { left: r.left - wr.left + x0 + 'px', width: Math.max(2, x1 - x0) + 'px', top: r.top - wr.top + mainTop() + 'px', height: chart.paneSize(mainIdx).height + 'px' });
+  }
+  window.addEventListener('pointerdown', e => {
+    if (!pickReq || e.button !== 0 || !e.target.closest('#chartWrap') || e.target.closest('.no-chart')) return;
+    const p = pickAt(e); if (!p) return;
+    e.stopImmediatePropagation(); e.preventDefault();
+    pickReq.done(p);
+  }, true);
+  window.addEventListener('pointermove', e => {
+    if (!pickReq || pickReq.o.from == null) return;
+    const p = pickAt(e); if (!p) return;
+    const ts = chart.timeScale(), x0 = ts.logicalToCoordinate(pickReq.o.from), hb = ts.options().barSpacing / 2; if (x0 === null) return;
+    pickBand(Math.min(x0, p.x) - hb, Math.max(x0, p.x) + hb);
+  });
+
+  // ---- ✂ learning areas: mark bars that already happened (e.g. 20 × 5 min) – statistics and every indicator in numbers ------
+  // are stored in Nexus Lab as a saved move (kind 'case'): the Lab learns from them and Claude sees them in the summary.
+  const AREA_TYPES = [['brk_vol', '⚡ Prudký prieraz s veľkým objemom'], ['brk_low', '💨 Prudký prieraz bez veľkého objemu'], ['tl_wait', '📐 Čakanie na prieraz trendovej čiary'],
+    ['after_vol', '🌊 Po pohybe s veľkým objemom (retracement)'], ['retest', '🎯 Pomalý retracement s malým objemom k presnej úrovni'], ['range', '▭ Konsolidácia / range'], ['other', '✎ Iné']];
+  const AREA_KEYS = [['rsi.rsi', 'RSI'], ['rsi.slope', 'RSI zmena za 3 sv.'], ['macd.state', 'MACD histogram (stav −2…2)'], ['macd.cross', 'MACD nad / pod signálom'], ['stoch.k', 'Stochastic %K'],
+    ['adx.adx', 'ADX'], ['cci.cci', 'CCI'], ['mfi.mfi', 'MFI'], ['bbpct.pb', 'Bollinger %B'], ['vol.x', 'Objem × priemer 20'], ['vol.buy', 'Nákupy % z objemu'], ['bar.body', 'Telo sviečky (ATR)'],
+    ['ret.20', 'Pohyb za 20 sv. (ATR)'], ['atr.pct', 'Volatilita ATR (percentil)']];
+  const avg = a => (a.length ? a.reduce((s, x) => s + x, 0) / a.length : NaN), r2 = x => (Number.isFinite(x) ? Math.round(x * 100) / 100 : null);
+  function areaStats(X, i0, i1) {
+    const F = LAB.build(X), A = F.atr, { o, h, l, c, v, bv } = X, a = A[i0] > 0 ? A[i0] : A[i1], n = i1 - i0 + 1, seg = arr => arr.slice(i0, i1 + 1);
+    const dir = Math.sign(c[i1] - o[i0]) || 1, hi = Math.max(...seg(h)), lo = Math.min(...seg(l));
+    const prevVol = avg(v.slice(Math.max(0, i0 - 20), i0).filter(x => x > 0)) || avg(seg(v)) || 1;
+    let jv = i0, jb = i0, jx = i0;
+    for (let j = i0; j <= i1; j++) { if (v[j] > v[jv]) jv = j; if (Math.abs(c[j] - o[j]) > Math.abs(c[jb] - o[jb])) jb = j; if (dir > 0 ? h[j] > h[jx] : l[j] < l[jx]) jx = j; }
+    // impulse up to the extreme in the direction of the move, retracement after it
+    const ext = dir > 0 ? h[jx] : l[jx], imp = (ext - o[i0]) * dir;
+    let jr = jx; for (let j = jx + 1; j <= i1; j++) if (dir > 0 ? l[j] < l[jr] : h[j] > h[jr]) jr = j;
+    const pr = jr > jx ? (dir > 0 ? l[jr] : h[jr]) : ext, back = (ext - pr) * dir;
+    const volImp = avg(v.slice(i0, jx + 1)), volBack = jx < i1 ? avg(v.slice(jx + 1, i1 + 1)) : NaN;
+    let sharp = 0, js = i0; for (let j = i0; j + 2 <= i1; j++) { const m = Math.abs(c[j + 2] - o[j]) / (A[j] || a); if (m > sharp) { sharp = m; js = j; } }
+    let bs = 0, bt = 0; for (let j = i0; j <= i1; j++) if (Number.isFinite(bv[j]) && v[j] > 0) { bs += bv[j]; bt += v[j]; }
+    // auto trendlines and levels known up to the end of the area: what happened at them inside it
+    let evs = [], lines = 0, near = null;
+    try {
+      const R = TL.run(sliceD(X, i1 + 1), { k: S.auto.k || TL.zigK(S.tf, TF_SEC[S.tf]) });
+      evs = R.events.filter(e => e.i >= i0 && e.i <= i1).map(e => ({ i: e.i, sig: e.signal, dir: e.dir, what: e.what }));
+      const live = x => x.created <= i1 && (x.ended == null || x.ended >= i0);
+      lines = R.lines.filter(x => live(x) && x.touches >= 3).length;
+      if (back > 0) {        // where the retracement stopped: the nearest level or line, in ATR
+        for (const lv of R.levels.filter(x => live(x) && x.touches >= 2 && x.created <= jr)) { const d = Math.abs(lv.price - pr) / a; if (!near || d < near.dist) near = { what: `úroveň (${lv.touches}× dotyk)`, dist: r2(d), price: lv.price }; }
+        for (const ln of R.lines.filter(x => live(x) && x.created <= jr)) { const lp = R.value(ln, jr), d = Math.abs(lp - pr) / a; if (Number.isFinite(d) && (!near || d < near.dist)) near = { what: `trendová čiara (${ln.touches}× dotyk)`, dist: r2(d), price: lp }; }
+      }
+    } catch (e) {}
+    const st = { n, dir, move: r2((c[i1] - o[i0]) / a), pct: r2(100 * (c[i1] - o[i0]) / o[i0]), range: r2((hi - lo) / a), hi, lo, atr: a,
+      volX: r2(avg(seg(v)) / prevVol), maxVolX: r2(v[jv] / prevVol), jv: jv - i0, buy: bt ? Math.round(100 * bs / bt) : null,
+      body: r2(Math.abs(c[jb] - o[jb]) / (A[jb] || a)), bodyVolX: r2(v[jb] / prevVol), jb: jb - i0, sharp: r2(sharp), js: js - i0,
+      imp: r2(imp / a), impBars: jx - i0 + 1, impVolX: r2(volImp / prevVol), back: imp > 0 ? Math.round(100 * back / imp) : 0, backVol: Number.isFinite(volBack) && volImp > 0 ? r2(volBack / volImp) : null,
+      lines, brk: evs.filter(e => /BREAK/.test(e.sig)).length, touch: evs.filter(e => /TOUCH|BOUNCE/.test(e.sig)).length, near };
+    st.type = st.back >= 30 && st.impVolX >= 1.5 && st.backVol !== null && st.backVol < 0.8 ? (near && near.dist <= 0.25 ? 'retest' : 'after_vol')
+      : st.sharp >= 2 || st.body >= 1.2 ? (st.maxVolX >= 2 ? 'brk_vol' : 'brk_low') : st.range <= 2.5 ? (lines ? 'tl_wait' : 'range') : 'other';
+    return { F, st, evs };
+  }
+  // your entry inside the area: which came first after it, the stop or the target (on the bars we have)
+  function entryResult(X, j, dir, price, sl, tp) {
+    for (let k = j + 1; k < X.c.length; k++) {
+      if (sl && (dir > 0 ? X.l[k] <= sl : X.h[k] >= sl)) return { hit: -1, bars: k - j, pnl: r2((sl - price) * dir) };
+      if (tp && (dir > 0 ? X.h[k] >= tp : X.l[k] <= tp)) return { hit: 1, bars: k - j, pnl: r2((tp - price) * dir) };
+    }
+    const k = X.c.length - 1; return { hit: 0, bars: k - j, pnl: r2((X.c[k] - price) * dir) };
+  }
+  async function areaLearn() {
+    if (EMBED || !chart) return;
+    const a = await pickChart('✂ Oblasť na učenie: klikni na PRVÚ sviečku'); if (!a || a.i == null) return;
+    const b = await pickChart('✂ Teraz klikni na POSLEDNÚ sviečku oblasti', { from: a.i }); if (!b || b.i == null) return;
+    // Heikin Ashi / Renko change the bars: the statistics use the real candles of that time
+    const R = src(), t0 = disp[Math.min(a.i, b.i)].time, t1 = disp[Math.max(a.i, b.i)].time;
+    const i0 = Math.max(0, R.findIndex(x => x.time >= t0)), ix = R.findIndex(x => x.time > t1), i1 = (ix < 0 ? R.length : ix) - 1;
+    if (i1 - i0 < 2) { toast('Oblasť musí mať aspoň 3 sviečky'); return; }
+    if (i1 - i0 > 400) { toast('Oblasť je príliš dlhá (najviac 400 sviečok)'); return; }
+    if (i0 < 30) toast('Pozor: pred oblasťou je málo sviečok – niektoré indikátory ešte nemajú hodnotu');
+    areaDialog(toD(R), i0, i1);
+  }
+  function areaDialog(X, i0, i1) {
+    const { F, st, evs } = areaStats(X, i0, i1), m = KS.macd(X.c, 12, 26, 9), rs = KS.rsi(X.c, 14), dg = sym().digits ?? 2;
+    const when = t => tzf({ day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }).format(new Date(t * 1000));
+    const num = x => (Number.isFinite(x) ? (Math.abs(x) >= 1000 ? fmt(x) : x.toFixed(Math.abs(x) >= 100 ? 1 : 2)) : '–');
+    const sgn = x => (x > 0 ? '+' : '') + num(x), fA = LAB.featuresAt(F, i0), fC = LAB.featuresAt(F, i1);
+    const E = { j: i0 + st.jb, dir: st.dir };
+    const setE = () => { E.price = X.c[E.j]; E.sl = E.dir > 0 ? Math.min(...X.l.slice(i0, E.j + 1)) : Math.max(...X.h.slice(i0, E.j + 1)); E.tp = E.price + 2 * (E.price - E.sl); };
+    setE();
+    const card = (k, v, s) => `<div><small>${k}</small><b>${v}</b>${s ? `<span>${s}</span>` : ''}</div>`;
+    const d = openDialog(`<div class="dlg-h"><span>✂ Oblasť na učenie · ${esc(sym().name)} ${S.tf} · ${st.n} sviečok · ${when(X.t[i0])} – ${when(X.t[i1])}</span><button class="ib" data-x>✕</button></div>
+      <div class="dlg-b ar-dlg">
+        <div class="ar-sum">
+          ${card('Pohyb', `<span class="${st.dir > 0 ? 'up' : 'dn'}">${sgn(st.move)} ATR</span>`, `${sgn(st.pct)} % · rozsah ${num(st.range)} ATR`)}
+          ${card('Objem v oblasti', `${num(st.volX)}×`, `oproti 20 sviečkam pred ňou${st.buy !== null ? ` · nákupy ${st.buy} %` : ''}`)}
+          ${card('Najväčší objem', `${num(st.maxVolX)}×`, `sviečka ${st.jv + 1}`)}
+          ${card('Najprudší pohyb', `${num(st.sharp)} ATR`, `za 3 sviečky od ${st.js + 1}. · najväčšie telo ${num(st.body)} ATR pri objeme ${num(st.bodyVolX)}×`)}
+          ${card('Impulz', `${num(st.imp)} ATR`, `${st.impBars} sviečok · objem ${num(st.impVolX)}×`)}
+          ${card('Retracement', `${st.back} %`, st.backVol !== null ? `objem ${num(st.backVol)}× impulzu${st.backVol < 0.8 ? ' (pomalý, slabý)' : ''}` : 'žiadny')}
+          ${card('Čiary a úrovne', `${st.lines} čiar 3+`, `${st.touch} dotykov · ${st.brk} prierazov`)}
+          ${card('Retracement skončil pri', st.near ? `${num(st.near.dist)} ATR` : '–', st.near ? `${esc(st.near.what)} ${st.near.price.toFixed(dg)}` : 'žiadna blízka úroveň')}
+        </div>
+        <div class="fld"><span>Typ situácie</span><select data-ty>${AREA_TYPES.map(([k, n]) => `<option value="${k}" ${k === st.type ? 'selected' : ''}>${n}</option>`).join('')}</select><small class="muted">predvolený = odhad z čísel</small></div>
+        <div class="sec2">Tvoj vstup</div>
+        <div class="fld ar-e"><span>Sviečka a smer</span><select data-ej>${Array.from({ length: st.n }, (_, k) => `<option value="${i0 + k}" ${i0 + k === E.j ? 'selected' : ''}>${k + 1}. · ${when(X.t[i0 + k])} · ${X.c[i0 + k].toFixed(dg)}</option>`).join('')}</select>
+          <select data-ed><option value="1" ${E.dir > 0 ? 'selected' : ''}>▲ Long</option><option value="-1" ${E.dir < 0 ? 'selected' : ''}>▼ Short</option></select></div>
+        <div class="fld ar-e"><span>Vstup · SL · TP</span><input data-ev="price" type="number" step="any"><input data-ev="sl" type="number" step="any" placeholder="SL"><input data-ev="tp" type="number" step="any" placeholder="TP"></div>
+        <div class="ar-res"></div>
+        <div class="sec2">Indikátory v číslach</div>
+        <div class="ar-tw"><table class="ar-t"></table></div>
+        ${evs.length ? `<div class="sec2">Udalosti v oblasti</div><div class="ar-ev">${evs.map(e => `<span class="${e.dir > 0 ? 'up' : 'dn'}">${e.i - i0 + 1}. ${esc((TL.NAMES || {})[e.sig] || e.sig)}</span>`).join('')}</div>` : ''}
+        <div class="fld"><span>Poznámka</span><textarea data-note rows="2" placeholder="Čo si tu videl, prečo vstup, čo by si nabudúce urobil inak…"></textarea></div>
+      </div>
+      <div class="dlg-f"><button class="btn" data-lab title="Uložené oblasti nájdeš v Nexus Lab → ✂ Uložené">🧪 Nexus Lab</button><span class="grow"></span><button class="btn" data-x>Zrušiť</button><button class="btn pri" data-save>💾 Uložiť do učenia</button></div>`, null, 'ar-wide');
+    const paint = () => {
+      const fB = LAB.featuresAt(F, E.j), rows = [['MACD', m.macd], ['MACD signál', m.signal], ['MACD histogram', m.hist]].map(([n, arr]) => [n, arr[i0], arr[E.j], arr[i1]])
+        .concat(AREA_KEYS.map(([k, n]) => [n, fA[k], fB[k], fC[k]]));
+      $('.ar-t', d).innerHTML = `<tr><th></th><th>Začiatok<small>${when(X.t[i0])}</small></th><th>Tvoj vstup<small>${when(X.t[E.j])}</small></th><th>Koniec<small>${when(X.t[i1])}</small></th></tr>` +
+        rows.map(([n, a, b, c]) => `<tr><td>${n}</td><td>${num(a)}</td><td><b>${num(b)}</b></td><td>${num(c)}</td></tr>`).join('');
+      for (const k of ['price', 'sl', 'tp']) { const x = $(`[data-ev="${k}"]`, d); if (document.activeElement !== x) x.value = Number.isFinite(E[k]) ? E[k].toFixed(dg) : ''; }
+      const r = entryResult(X, E.j, E.dir, E.price, E.sl, E.tp), risk = Math.abs(E.price - E.sl);
+      E.res = { ...r, rr: risk && E.tp ? r2(Math.abs(E.tp - E.price) / risk) : null, r: risk ? r2(r.pnl / risk) : null };
+      $('.ar-res', d).innerHTML = `${r.hit > 0 ? '<b class="up">✓ TP prišiel prvý</b>' : r.hit < 0 ? '<b class="dn">✗ SL prišiel prvý</b>' : '<b>… ešte ani SL, ani TP</b>'} za ${r.bars} sviečok · ${sgn(r.pnl)} b${E.res.r !== null ? ` · ${sgn(E.res.r)} R` : ''}${E.res.rr ? ` · plán R:R 1:${E.res.rr}` : ''}`;
+    };
+    paint();
+    $('[data-ej]', d).onchange = e => { E.j = +e.target.value; setE(); paint(); };
+    $('[data-ed]', d).onchange = e => { E.dir = +e.target.value; setE(); paint(); };
+    $$('[data-ev]', d).forEach(x => x.onchange = () => { E[x.dataset.ev] = x.value === '' ? null : +x.value; paint(); });
+    $$('[data-x]', d).forEach(x => x.onclick = closeDialog);
+    $('[data-lab]', d).onclick = () => window.open('lab', '_blank');
+    $('[data-save]', d).onclick = async () => {
+      const ty = $('[data-ty]', d).value, note = $('[data-note]', d).value.trim(), pick = f => Object.fromEntries(AREA_KEYS.map(([k]) => [k, f[k]]).filter(([, x]) => Number.isFinite(x)));
+      const rec = LAB.caseRecord(F, { symbol: S.symbol, tf: S.tf }, i0, i1, S.labeler || '', `[${AREA_TYPES.find(t => t[0] === ty)[1]}] ${note}`.trim());
+      rec.outcome = { ...rec.outcome, setup: ty, area: st, fEnd: pick(fC),
+        entry: { t: X.t[E.j], bar: E.j - i0 + 1, dir: E.dir, price: E.price, sl: E.sl, tp: E.tp, res: E.res, rsi: r2(rs[E.j]), macd: r2(m.macd[E.j]), signal: r2(m.signal[E.j]), hist: r2(m.hist[E.j]), f: pick(LAB.featuresAt(F, E.j)) } };
+      try { await LAB.api.save([rec]); } catch (e) { toast('⚠ Uloženie zlyhalo: ' + e.message); return; }
+      if (LAB.forget) LAB.forget('case');
+      closeDialog(); toast(`✂ Uložené do učenia: ${AREA_TYPES.find(t => t[0] === ty)[1]} · ${st.n} sviečok${S.labeler ? '' : ' (bez mena – nastav ho v Nexus → Účet)'}`);
+    };
+  }
+
   // pane index of the price chart (indicator panels can sit above it) and its top edge inside #chart
   let mainIdx = 0;
   const mainTop = () => { if (!chart || !mainIdx) return 0; const P = chart.panes(); let t = 0; for (let i = 0; i < mainIdx; i++) t += P[i].getHeight() + 1; return t; };
@@ -2491,14 +2654,38 @@
       m => $$('[data-tool]', m).forEach(x => x.onclick = () => { closeMenu(); draw.start(x.dataset.tool); }), { side: side(), cls: 'text-menu' });
   };
 
+  // ---- 🧰 Tools: drawing, text and indicators in one menu, plus the learning area ✂ -------------------------------
+  function toolsMenu(anchor) {
+    const tile = (attr, ic, n, on, cls) => `<div class="tl-t ${on ? 'on' : ''} ${cls || ''}" ${attr} title="${esc(n)}"><span class="tl-ic">${ic}</span><small>${esc(n)}</small></div>`;
+    const html = () => {
+      const T = Object.values(DR.TOOLS), has = k => studies.some(s => s.type === k), fav = (S.favorites || []).filter(k => KS.STUDIES[k]);
+      const extra = studies.map(s => s.type).filter((k, i, a) => a.indexOf(k) === i && !fav.includes(k) && KS.STUDIES[k]);
+      return `<div class="tl-head"><b>🧰 Tools</b><span class="muted">kreslenie · text · indikátory</span></div>
+        <div class="sec">✎ Kreslenie</div><div class="tl-grid">${T.filter(t => t.group !== 'text' && t.group !== 'content').map(t => tile(`data-tool="${t.id}"`, t.icon, t.name, draw.mode === t.id)).join('')}</div>
+        <div class="sec">T Text a obsah</div><div class="tl-grid">${T.filter(t => t.group === 'text' || t.group === 'content').map(t => tile(`data-tool="${t.id}"`, t.icon, t.name, draw.mode === t.id, 'tx-ic')).join('')}</div>
+        <div class="sec">ƒx Indikátory <small class="muted">klik = pridať / odobrať</small></div><div class="tl-grid">${[...fav, ...extra].map(k => tile(`data-st="${k}"`, has(k) ? '✓' : '＋', KS.STUDIES[k].name, has(k))).join('')}${tile('data-allind', 'ƒx', 'Všetky indikátory…')}</div>
+        <div class="sec">🧠 Učenie a obchod</div><div class="tl-grid">${tile('data-area', '✂', 'Uložiť oblasť do učenia')}${tile('data-ticket', '🐂', 'Obchodný panel 🐂 / 🐻')}${tile('data-lab', '🧪', 'Nexus Lab')}</div>`;
+    };
+    const bind = m => {
+      $$('[data-tool]', m).forEach(x => x.onclick = () => { closeMenu(); draw.start(x.dataset.tool); });
+      $$('[data-st]', m).forEach(x => x.onclick = () => { const k = x.dataset.st; if (studies.some(s => s.type === k)) { studies = studies.filter(s => s.type !== k); studiesChanged(); toast(`Odobrané: ${KS.STUDIES[k].name}`); } else addStudy(k); m.innerHTML = html(); bind(m); });
+      $('[data-allind]', m).onclick = () => { closeMenu(); indMenu($('#bInd').style.display === 'none' ? anchor : $('#bInd')); };
+      $('[data-area]', m).onclick = () => { closeMenu(); areaLearn(); };
+      $('[data-ticket]', m).onclick = () => { closeMenu(); NEXUS.toggleTicket(); };
+      $('[data-lab]', m).onclick = () => { closeMenu(); window.open('lab', '_blank'); };
+    };
+    openMenu(anchor, html(), bind, { side: side(), cls: 'tools-menu' });
+  }
+  $('#bTools').onclick = e => toolsMenu(e.currentTarget);
+
   // ---- ⊞ every function in one place, by category; choose which buttons stay on the toolbar -------------------
   const FUNCS = [
     ['Graf', [['bSymbol', '◆', 'Symbol', 'Vyber trh'], ['bType', '🕯', 'Typ grafu', 'Sviečky, Heikin Ashi, Renko…'], ['bTf', '⏱', 'Timeframe', '1 s až 1 mesiac'], ['bLayout', '▦', 'Rozloženie a plochy', '1–10 grafov, prepínanie plôch'], ['saves', '💾', 'Uloženia', 'Ulož rozloženie pod názvom (s dátumom a časom), načítaj neskôr · Ctrl+S']]],
-    ['Kreslenie a text', [['bDraw', '✎', 'Kreslenie', 'Čiary, Fibonacci, vzory, tvary'], ['bText', 'T', 'Text', 'Poznámky, pin, tabuľka, obrázok, nápad']]],
-    ['Analýza', [['bInd', 'ƒx', 'Indikátory', 'RSI, MACD, kĺzavé priemery, vzory'], ['bFunc', '🧩', 'Funkcie', 'Čiary, objem, stratégie, pozadie podľa Technicals'], ['lines', '📐', 'Čiary', 'Auto trendové čiary a úrovne'], ['volume', '🫧', 'Objem', 'Bubliny, delta, tok obchodov'], ['strats', '⚡', 'Stratégie nápadov', 'Zapnúť / vypnúť, R:R, stop'], ['bAlgo', '🧠', 'Algo', 'Overené stratégie, test, živé signály'],
+    ['Kreslenie a text', [['bTools', '🧰', 'Tools', 'Kreslenie + text + indikátory v jednom menu · Alt+T'], ['bDraw', '✎', 'Kreslenie', 'Čiary, Fibonacci, vzory, tvary'], ['bText', 'T', 'Text', 'Poznámky, pin, tabuľka, obrázok, nápad']]],
+    ['Analýza', [['bInd', 'ƒx', 'Indikátory', 'RSI, MACD, kĺzavé priemery, vzory'], ['bFunc', '🧩', 'Funkcie', 'Čiary, objem, stratégie, pozadie podľa Technicals'], ['lines', '📐', 'Čiary', 'Auto trendové čiary a úrovne'], ['volume', '🫧', 'Objem', 'Bubliny, delta, tok obchodov'], ['strats', '⚡', 'Stratégie nápadov', 'Zapnúť / vypnúť, R:R, stop'], ['bAlgo', '🧠', 'Algo', 'Overené stratégie, test, živé signály'], ['area', '✂', 'Oblasť do učenia', 'Označ sviečky, ktoré už prebehli: štatistika + indikátory v číslach do Nexus Lab'],
       ['tech', '📊', 'Technicals', 'Súhrn pre všetky timeframy (v Knižnici)'], ['bScan', '🔍', 'Skenovať', 'Hľadá vstupy na trhoch'], ['bReplay', '⏯', 'Replay', 'Tréning na histórii'],
       ['lab', '🧪', 'Nexus Lab', 'Druhý grafový systém: karty, skener objemových pohybov, učenie'], ['elec', '🔌', 'Electricals', 'Štatistiky: čo sa stalo pri akej hodnote indikátorov']]],
-    ['Obchod', [['nexus', '◆', 'Nexus', 'Účet, pozície, robot, nástenka'], ['ticket', '💹', 'Obchodný panel', 'Kúpiť / predať s SL a TP'], ['bIdea', '💡', 'Nápad', 'Alerty skenera a labelovanie']]],
+    ['Obchod', [['nexus', '◆', 'Nexus', 'Účet, pozície, robot, nástenka'], ['ticket', '🐂', 'Obchodný panel', 'Býk = kúpiť, medveď = predať · SL, TP, čiastočné výstupy'], ['bIdea', '💡', 'Nápad', 'Alerty skenera a labelovanie']]],
     ['Komunikácia', [['bChat', '💬', 'Chat', 'Tím, nápady, otázky pre Clauda'], ['news', '📰', 'Správy', 'Novinky, kalendár, odkazy (v okne chatu)']]],
     ['Vzhľad', [['bSettings', '⚙', 'Nastavenia', 'Graf, panel, jas'], ['styles', '🖼', 'Štýly', 'Fotky, videá, animácie, témy (aj v Nastaveniach)'], ['bFull', '⛶', 'Celá obrazovka', 'F11'], ['bUndo', '↶', 'Späť', 'Ctrl+Z'], ['bRedo', '↷', 'Znova', 'Ctrl+Y']]],
     ['Vzdelávanie', [['bLib', '📚', 'Knižnica', 'Formácie, stratégie, tipy']]],
@@ -2516,6 +2703,7 @@
         if (id === 'lab') return window.open('lab', '_blank');
         if (id === 'elec') return NEXUS.openApp('elec');
         if (id === 'saves') return NEXUS.openApp('saves');
+        if (id === 'area') return areaLearn();
         if (id === 'ticket') return NEXUS.toggleTicket();
         if (id === 'styles') return stylesDialog();
         if (id === 'lines') return autoMenu($('#bFunc'));
@@ -3262,12 +3450,14 @@
   // ---- keyboard ---------------------------------------------------------------------------------
   document.addEventListener('keydown', e => {
     const typing = e.target && /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName);
+    if (e.key === 'Escape' && pickReq) { pickReq.done(null); return; }
     if (e.key === 'Escape') { if ($('#pop').classList.contains('open')) { closePop(); return; } if (dialogOpen()) { cancelDialog(); return; } if ($('.dd')) { closeMenu(); return; } if (techEl.classList.contains('open')) { closeTech(); return; } closeMenu(); if (replayPick) { stopPick(); return; } }
     if (dialogOpen()) return;
     if ((e.ctrlKey || e.metaKey) && !typing && !e.altKey && (e.code === 'KeyZ' || e.code === 'KeyY')) { e.preventDefault(); stepHist(e.code === 'KeyY' || e.shiftKey ? 1 : -1); return; }
     if ((e.ctrlKey || e.metaKey) && !e.altKey && !EMBED && e.code === 'KeyS') { e.preventDefault(); NEXUS.openApp('saves'); setTimeout(() => { const i = $('#svName'); if (i) i.focus(); }, 50); return; }
     if (e.ctrlKey && e.key === 'Enter' && S.idea.open && current) { e.preventDefault(); if (e.shiftKey) openAlert(qi + 1); else saveLabel(); return; }
     if (e.altKey && !typing && e.code === 'KeyR' && !e.shiftKey) { e.preventDefault(); if (view.replay) exitReplay(); else startReplay(true); return; }
+    if (e.altKey && !typing && e.code === 'KeyT' && !e.shiftKey && !EMBED) { e.preventDefault(); toolsMenu($('#bTools').style.display === 'none' ? $('#bAll') : $('#bTools')); return; }
     if (e.altKey && !typing && e.code === 'KeyA' && !e.shiftKey) { e.preventDefault(); toggleAuto(); return; }
     if (view.replay && !typing && !e.altKey && !e.ctrlKey) {
       if (e.key === 'ArrowRight') { e.preventDefault(); playReplay(false); stepReplay(e.shiftKey ? 10 : 1); return; }
@@ -3306,6 +3496,7 @@
       mirror: owner => setMirror(owner), mirroring: () => mirror && mirror.owner,
       S: () => S, save, toast, fetchBars, symbols: () => META.symbols || [], chatMsgs: () => chatMsgs, kinds: () => KINDS,
       newFolder, folderColors: () => FOLDER_COLORS, saves,
+      pickPrice: text => pickChart(text).then(p => (p && p.price != null ? p.price : null)),
       openChat: filter => { if (filter) S.chat.filter = filter; toggleChat(true); renderChatFilter(); renderChatList(); },
       setName: name => { S.labeler = name; save(); if (S.chat.open) renderChat(); },
       liveIdeas: () => (scanRes || []).map((x, i) => ({ ...x, i })).filter(x => x.kind === 'idea'),

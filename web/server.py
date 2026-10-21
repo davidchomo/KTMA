@@ -551,7 +551,7 @@ def lab_add(body: dict | list = Body(...)):
                note=CASE WHEN excluded.note != '' THEN excluded.note ELSE web_lab.note END""",
             (kind, str(it.get("author") or "")[:40], it["symbol"], it["timeframe"], int(it["t0"]),
              int(it["t1"]) if isinstance(it.get("t1"), (int, float)) else None, int(it.get("dir") or 0),
-             json.dumps(it.get("features") or {})[:20000], json.dumps(it.get("outcome") or {})[:4000],
+             json.dumps(it.get("features") or {})[:20000], json.dumps(it.get("outcome") or {})[:20000],
              str(it.get("note") or "")[:1000], now))
         n += 1
     STORE.conn.commit()
