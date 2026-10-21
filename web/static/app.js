@@ -1151,9 +1151,9 @@
     if (scanBusy) return; scanBusy = true;
     const C = S.scan, jobs = [];
     for (const s of C.symbols) for (const tf of C.tfs) jobs.push([s, tf]);
-    const out = [];
+    const out = [], total = jobs.length;
     let done = 0;
-    const prog = () => { const p = $('#scanProg'); if (p) p.textContent = `skenujem ${done}/${jobs.length}…`; };
+    const prog = () => { const p = $('#scanProg'); if (p) p.textContent = done < total ? `skenujem ${done}/${total}…` : `hotovo · ${total} grafov`; };
     prog();
     const worker = async () => {
       while (jobs.length) {
@@ -1355,8 +1355,8 @@
       const cust = LS.get('nx-bg-custom', '') || B.url;
       const d = openDialog(`<div class="dlg-h"><span>🖼 Štýly a pozadia</span><button class="ib" data-x>✕</button></div><div class="dlg-b">
         <div class="sec2">Pozadie grafu</div>
-        <div class="tiles">${tile('none', 'Bez obrázka', `background:${S.look.bg}`)}${Object.entries(BG.SCENES).map(([k, x]) => tile(k, x.name, `background-image:url("${BG.url(k)}")`, `<small>${esc(x.season)}</small>`)).join('')}
-          ${tile('custom', 'Vlastný obrázok', cust ? `background-image:url("${String(cust).replace(/"/g, '%22')}")` : 'background:repeating-linear-gradient(45deg,#2a2e39 0 8px,#1e222d 8px 16px)')}</div>
+        <div class="tiles">${tile('none', 'Bez obrázka', `background:${S.look.bg}`)}${Object.entries(BG.SCENES).map(([k, x]) => tile(k, x.name, `background-image:url('${BG.url(k)}')`, `<small>${esc(x.season)}</small>`)).join('')}
+          ${tile('custom', 'Vlastný obrázok', cust ? `background-image:url('${String(cust).replace(/"/g, '%22').replace(/'/g, '%27')}')` : 'background:repeating-linear-gradient(45deg,#2a2e39 0 8px,#1e222d 8px 16px)')}</div>
         <div class="fld"><label class="ctl"><input type="checkbox" data-b="auto" ${B.auto ? 'checked' : ''}> Podľa ročného obdobia (teraz: ${esc(BG.SCENES[BG.bySeason()].name)})</label></div>
         <div class="fld"><span>Stmavenie (aby bol graf čitateľný)</span><span class="op" style="width:240px"><input type="range" min="0" max="95" data-b="dim" value="${B.dim}"><b>${B.dim} %</b></span></div>
         <div class="fld"><span>Rozmazanie</span><span class="op" style="width:240px"><input type="range" min="0" max="20" data-b="blur" value="${B.blur}"><b>${B.blur} px</b></span></div>

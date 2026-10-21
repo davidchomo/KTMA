@@ -154,7 +154,7 @@ const BG = (() => {
   const SEASON_BY_MONTH = ['winter', 'winter', 'spring', 'spring', 'spring', 'summer', 'summer', 'summer', 'autumn', 'autumn', 'autumn', 'winter'];
   const cache = {};
   function svg(id) { return cache[id] || (cache[id] = SCENES[id] ? SCENES[id].svg() : ''); }
-  const url = id => (SCENES[id] ? `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg(id))}` : '');
+  const url = id => (SCENES[id] ? `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg(id)).replace(/'/g, '%27')}` : '');
   const bySeason = (d = new Date()) => SEASON_BY_MONTH[d.getMonth()];
 
   // Colour themes for the chart and the panel (look + panel colours).
