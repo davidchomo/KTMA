@@ -28,7 +28,7 @@
             scale: 0, invert: false, lastLine: true, rightOffset: 8,
             bgType: 'solid', bg2: '#0f121a', gridV: { on: true, color: '#1f2433', opacity: 100, style: 0 }, gridH: { on: true, color: '#1f2433', opacity: 100, style: 0 },
             sepColor: '#2a2e39', scaleLine: '#2a2e39', fontSize: 11, font: 'system', marginTop: 8, marginBottom: 8 },
-    panel: { w: 112, h: 30, fs: 13, font: 'system', bg: '#1e222d', text: '#d1d4dc', accent: '#2962ff', show: 'both', opacity: 100 },
+    panel: { w: 118, h: 30, fs: 13, font: 'system', bg: '#1e222d', text: '#d1d4dc', accent: '#2962ff', show: 'both', opacity: 100 },
     bgImg: { id: 'none', auto: false, dim: 55, blur: 0, url: '' },
     auto: { on: false, lines: true, channels: false, levels: true, pivots: false, ended: false, touches: true, labels: true, k: 0, ext: 30,
             sup: { color: '#26a69a', opacity: 90, width: 2, style: 0 }, res: { color: '#ef5350', opacity: 90, width: 2, style: 0 },
@@ -546,7 +546,7 @@
   $('#bPanel').onclick = e => openMenu(e.currentTarget, [['top', '⬆', 'Hore'], ['bottom', '⬇', 'Dole'], ['left', '⬅', 'Vľavo (zboku)'], ['right', '➡', 'Vpravo (zboku)'], ['hidden', '🙈', 'Skryť (☰ alebo Alt+P ho vráti)']]
     .map(([k, ic, n]) => `<div class="it ${S.toolbar === k ? 'on' : ''}" data-p="${k}"><span class="ic">${ic}</span><span class="grow">${n}</span></div>`).join('') +
     '<div class="sep"></div><div class="it" data-look><span class="ic">🎨</span><span class="grow">Vzhľad panelu… (veľkosť, písmo, farby)</span></div>',
-    m => { $('[data-p]', m).forEach(x => x.onclick = () => { closeMenu(); if (x.dataset.p === 'hidden') S.lastToolbar = S.toolbar; S.toolbar = x.dataset.p; save(); applyToolbar(); });
+    m => { $$('[data-p]', m).forEach(x => x.onclick = () => { closeMenu(); if (x.dataset.p === 'hidden') S.lastToolbar = S.toolbar; S.toolbar = x.dataset.p; save(); applyToolbar(); });
            $('[data-look]', m).onclick = () => { closeMenu(); panelDialog(); }; }, { side: side() });
   $('#showToolbar').onclick = () => { S.toolbar = S.lastToolbar && S.lastToolbar !== 'hidden' ? S.lastToolbar : 'top'; save(); applyToolbar(); };
   $('#bFull').onclick = () => (document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen().catch(() => {}));
@@ -942,7 +942,7 @@
     const R = view.replay; if (!R) return;
     const hidden = raw.length - R.cut, b = raw[R.cut - 1];
     $('#rpInfo').textContent = `${b ? fmtTime(b.time) : ''} · skrytých ${hidden} ${hidden === 1 ? 'sviečka' : hidden < 5 && hidden ? 'sviečky' : 'sviečok'}`;
-    $('[data-h]', rpBar).forEach(x => x.classList.toggle('off', !!hideL[x.dataset.h]));
+    $$('[data-h]', rpBar).forEach(x => x.classList.toggle('off', !!hideL[x.dataset.h]));
   }
   rpBar.innerHTML = `<button data-r="pick" title="Vybrať začiatok – klikni na sviečku">✂</button><button data-r="back" title="O sviečku späť (←)">⏮</button>
     <button data-r="play" title="Prehrať / pauza (medzerník)">▶</button><button data-r="fwd" title="O sviečku dopredu (→)">⏭</button>
@@ -973,7 +973,7 @@
     <div class="it" data-rp="now"><span class="ic">⏸</span><span class="grow">Zastaviť trh teraz<br><small>nové sviečky čakajú, pustíš ich ⏭ alebo ▶</small></span></div>
     ${view.replay ? '<div class="it" data-rp="exit"><span class="ic">✕</span><span class="grow">Ukončiť replay</span><span class="key">Alt+R</span></div>' : ''}
     <div class="sec">Klávesy v replay</div><div class="it muted" style="cursor:default">← → sviečka · medzerník prehrať / pauza</div>`,
-    m => $('[data-rp]', m).forEach(x => x.onclick = () => { closeMenu(); const a = x.dataset.rp; if (a === 'exit') exitReplay(); else startReplay(a === 'pick'); }), { side: side() });
+    m => $$('[data-rp]', m).forEach(x => x.onclick = () => { closeMenu(); const a = x.dataset.rp; if (a === 'exit') exitReplay(); else startReplay(a === 'pick'); }), { side: side() });
 
   // ---- auto trendlines and levels (only drawn when switched on) + live trade ideas ----------------
   let tlR = null, tlKey = '', tlIdeas = [], tlSnap = null, autoLayer = null, ideaCtx = '', ideaSeenT = 0, ideaPos = null;
@@ -1076,7 +1076,7 @@
       $('[data-a-toggle]', m).onclick = () => { toggleAuto(); closeMenu(); };
       $('[data-a-style]', m).onclick = () => { closeMenu(); autoStyle(); };
       $('[data-a-feed]', m).onclick = () => { closeMenu(); S.idea.tab = 'live'; toggleIdea(true); };
-      $('[data-a]', m).forEach(x => x.onchange = () => {
+      $$('[data-a]', m).forEach(x => x.onchange = () => {
         const [o, k] = x.dataset.a.split('.'); S[o][k] = x.type === 'checkbox' ? x.checked : +x.value; save();
         tlKey = ''; computeTL(); ideaSeenT = tlIdeas.length ? tlIdeas[tlIdeas.length - 1].time : 0; autoLayer && autoLayer.update(); updateMarkers();
         if (S.idea.open && S.idea.tab === 'live') renderIdea();
@@ -1096,11 +1096,11 @@
       <div class="fld"><span>Predĺženie doprava (sviečok)</span><input type="number" data-k="ext" value="${A.ext}" min="0" max="500"></div></div>
       <div class="dlg-f"><button class="btn" data-reset>Predvolené</button><span class="grow"></span><button class="btn" data-cancel>Zrušiť</button><button class="btn pri" data-x>OK</button></div>`,
       () => { S.auto = JSON.parse(before); save(); autoLayer && autoLayer.update(); closeDialog(); });
-    $('[data-sw]', d).forEach(b => b.onclick = () => colorPopover(b, A[b.dataset.sw], { width: true, style: true }, () => { save(); autoLayer && autoLayer.update(); }));
+    $$('[data-sw]', d).forEach(b => b.onclick = () => colorPopover(b, A[b.dataset.sw], { width: true, style: true }, () => { save(); autoLayer && autoLayer.update(); }));
     $('[data-k=ext]', d).onchange = e => { A.ext = Math.max(0, Math.min(500, +e.target.value || 0)); save(); autoLayer && autoLayer.update(); };
     $('[data-reset]', d).onclick = () => { for (const k of ['sup', 'res', 'lvl']) A[k] = { ...DEF.auto[k] }; save(); autoLayer && autoLayer.update(); closeDialog(); autoStyle(); };
     $('[data-cancel]', d).onclick = UI.cancelDialog;
-    $('[data-x]', d).forEach(x => x.onclick = closeDialog);
+    $$('[data-x]', d).forEach(x => x.onclick = closeDialog);
   }
   $('#bAuto').onclick = e => autoMenu(e.currentTarget);
 
@@ -1136,9 +1136,9 @@
         : `<div class="muted">${S.ideas.on ? 'Zatiaľ žiadny nápad. Skús menej potvrdení, citlivejší ZigZag (📐 Auto čiary) alebo viac sviečok.' : ''}</div>`}`;
   }
   function bindLive(body) {
-    $('[data-lv=on]', body).forEach(b => b.onclick = () => { S.ideas.on = true; save(); tlKey = ''; computeTL(); updateMarkers(); renderIdea(); });
-    $('[data-li]', body).forEach(x => x.onchange = () => { S.ideas[x.dataset.li] = +x.value; save(); tlKey = ''; computeTL(); ideaSeenT = tlIdeas.length ? tlIdeas[tlIdeas.length - 1].time : 0; updateMarkers(); renderIdea(); });
-    $('[data-li-n]', body).forEach(row => {
+    $$('[data-lv=on]', body).forEach(b => b.onclick = () => { S.ideas.on = true; save(); tlKey = ''; computeTL(); updateMarkers(); renderIdea(); });
+    $$('[data-li]', body).forEach(x => x.onchange = () => { S.ideas[x.dataset.li] = +x.value; save(); tlKey = ''; computeTL(); ideaSeenT = tlIdeas.length ? tlIdeas[tlIdeas.length - 1].time : 0; updateMarkers(); renderIdea(); });
+    $$('[data-li-n]', body).forEach(row => {
       const x = tlIdeas[+row.dataset.liN];
       $('[data-li-show]', row).onclick = () => showIdea(x);
       $('[data-li-save]', row).onclick = () => saveIdeaMark(x);
@@ -1192,7 +1192,7 @@
         <td>${x.kind === 'near' ? '👀 ' : '⚡ '}${esc(x.name)}${x.touches ? ` <small class="muted">${x.touches}×</small>` : ''}</td><td>${f2(x.entry, x.symbol)}</td><td>${x.kind === 'idea' ? f2(x.sl, x.symbol) : '–'}</td><td>${x.kind === 'idea' ? f2(x.tp, x.symbol) : '–'}</td>
         <td title="${esc(x.conf.join(', '))}">${x.kind === 'idea' ? '★'.repeat(x.score) || '☆' : ''}</td><td>${x.kind === 'idea' ? (x.ago ? `pred ${x.ago} sv.` : 'teraz') : 'teraz'}</td></tr>`).join('')}</table>`
       : '<div class="muted" style="padding:10px 0">Nič čerstvé. Skús viac timeframov, dlhšie okno alebo menej potvrdení.</div>';
-    $('[data-sr]', box).forEach(tr => tr.onclick = () => { const x = scanRes[+tr.dataset.sr]; closeDialog(); jumpTo(x.symbol, x.tf, x.time, x.kind === 'idea' ? x : null); });
+    $$('[data-sr]', box).forEach(tr => tr.onclick = () => { const x = scanRes[+tr.dataset.sr]; closeDialog(); jumpTo(x.symbol, x.tf, x.time, x.kind === 'idea' ? x : null); });
   }
   async function jumpTo(symbol, tf, time, idea) {
     Object.assign(S, { symbol, tf }); save(); applyToolbar(); exitReplay();
@@ -1212,11 +1212,11 @@
       <div class="fld"><span>Skenovať automaticky</span><select data-sc="every">${opts([['Nie', 0], ['každú minútu', 60], ['každých 5 min', 300], ['každých 15 min', 900]], C.every)}</select></div>
       <div class="fld"><button class="btn pri" data-run>🔍 Skenovať teraz</button><span id="scanProg" class="muted">${scanRes.length ? `${scanRes.filter(x => x.kind === 'idea').length} nápadov · ${scanRes.filter(x => x.kind === 'near').length} pri čiare` : ''}</span></div>
       <div id="scanBox"></div><div class="muted" style="font-size:11px;margin-top:6px">Klik na riadok otvorí symbol a timeframe so zakreslenou pozíciou. Sekundové timeframy sú pomalšie (stavajú sa z obchodov).</div></div>`, null, 'wide scan-dlg');
-    $('[data-ss]', d).forEach(x => x.onchange = () => { C.symbols = META.symbols.map(y => y.id).filter(id => (id === x.dataset.ss ? x.checked : C.symbols.includes(id))); save(); });
-    $('[data-st]', d).forEach(x => x.onchange = () => { C.tfs = KS.TIMEFRAMES.filter(tf => (tf === x.dataset.st ? x.checked : C.tfs.includes(tf))); save(); });
-    $('[data-sc]', d).forEach(x => x.onchange = () => { C[x.dataset.sc] = x.type === 'checkbox' ? x.checked : +x.value; save(); if (x.dataset.sc === 'every') scheduleScan(); });
+    $$('[data-ss]', d).forEach(x => x.onchange = () => { C.symbols = META.symbols.map(y => y.id).filter(id => (id === x.dataset.ss ? x.checked : C.symbols.includes(id))); save(); });
+    $$('[data-st]', d).forEach(x => x.onchange = () => { C.tfs = KS.TIMEFRAMES.filter(tf => (tf === x.dataset.st ? x.checked : C.tfs.includes(tf))); save(); });
+    $$('[data-sc]', d).forEach(x => x.onchange = () => { C[x.dataset.sc] = x.type === 'checkbox' ? x.checked : +x.value; save(); if (x.dataset.sc === 'every') scheduleScan(); });
     $('[data-run]', d).onclick = () => runScan(false);
-    $('[data-x]', d).forEach(x => x.onclick = closeDialog);
+    $$('[data-x]', d).forEach(x => x.onclick = closeDialog);
     $('#bScan').classList.remove('badge-on');
     paintScanResults();
     if (!scanRes.length && !scanBusy) runScan(false);
@@ -1257,7 +1257,7 @@
       <button class="btn pri sm" id="chatSend">➤</button></div></div><div id="emoPanel"></div>`;
     $('#chatFilter').value = C.filter;
     const list = $('#chatList'); list.scrollTop = list.scrollHeight;
-    $('[data-ck]').forEach(b => b.onclick = () => { C.kind = b.dataset.ck; save(); $('[data-ck]').forEach(x => x.classList.toggle('on', x === b)); });
+    $$('[data-ck]').forEach(b => b.onclick = () => { C.kind = b.dataset.ck; save(); $$('[data-ck]').forEach(x => x.classList.toggle('on', x === b)); });
     const ta = $('#chatText');
     ta.onkeydown = e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); } };
     $('#chatSend').onclick = sendChat;
@@ -1270,14 +1270,14 @@
     const p = $('#emoPanel');
     p.innerHTML = `<div class="emo-tabs">${Object.keys(EMOJI).map(k => `<span data-et="${k}" class="${k === emoTab ? 'on' : ''}">${k}</span>`).join('')}</div>
       <div class="emo-grid">${[...new Intl.Segmenter().segment(EMOJI[emoTab])].map(x => `<span data-e="${x.segment}">${x.segment}</span>`).join('')}</div>`;
-    $('[data-et]', p).forEach(x => x.onclick = () => { emoTab = x.dataset.et; paintEmoji(); });
-    $('[data-e]', p).forEach(x => x.onclick = () => {
+    $$('[data-et]', p).forEach(x => x.onclick = () => { emoTab = x.dataset.et; paintEmoji(); });
+    $$('[data-e]', p).forEach(x => x.onclick = () => {
       const ta = $('#chatText'), a = ta.selectionStart ?? ta.value.length, b = ta.selectionEnd ?? a;
       ta.value = ta.value.slice(0, a) + x.dataset.e + ta.value.slice(b); ta.focus(); ta.selectionStart = ta.selectionEnd = a + x.dataset.e.length;
     });
   }
   function bindChatList() {
-    $('#chatList .msg').forEach(div => {
+    $$('#chatList .msg').forEach(div => {
       const m = chatMsgs.find(x => x.id === +div.dataset.id); if (!m) return;
       const del = $('[data-del]', div); if (del) del.onclick = async () => {
         const r = await fetch(`api/chat/${m.id}?author=${encodeURIComponent(author())}`, { method: 'DELETE' });
@@ -1366,22 +1366,22 @@
         <div class="tiles themes">${Object.entries(BG.THEMES).map(([k, t]) => `<div class="tile" data-th="${k}"><div class="thumb" style="background:linear-gradient(135deg,${t.look.bg},${t.look.bg2})">
           <i style="background:${t.look.up}"></i><i style="background:${t.look.down}"></i><i style="background:${t.panel.accent}"></i></div><span>${esc(t.name)}</span></div>`).join('')}</div></div>
         <div class="dlg-f"><span class="grow"></span><button class="btn pri" data-x>Hotovo</button></div>`, null, 'wide styles-dlg');
-      $('[data-bg]', d).forEach(x => x.onclick = () => { if (x.dataset.bg === 'custom' && !cust) { $('[data-file]', d).click(); return; } B.id = x.dataset.bg; B.auto = false; save(); applyBg(); buildChart(); paint(); });
-      $('[data-b]', d).forEach(x => x[x.type === 'range' ? 'oninput' : 'onchange'] = () => {
+      $$('[data-bg]', d).forEach(x => x.onclick = () => { if (x.dataset.bg === 'custom' && !cust) { $('[data-file]', d).click(); return; } B.id = x.dataset.bg; B.auto = false; save(); applyBg(); buildChart(); paint(); });
+      $$('[data-b]', d).forEach(x => x[x.type === 'range' ? 'oninput' : 'onchange'] = () => {
         const k = x.dataset.b; B[k] = x.type === 'checkbox' ? x.checked : x.type === 'range' ? +x.value : x.value.trim();
         if (k === 'url' && B.url) { LS.set('nx-bg-custom', ''); B.id = 'custom'; B.auto = false; }
         if (x.type === 'range') x.nextElementSibling.textContent = `${B[k]} ${k === 'dim' ? '%' : 'px'}`;
         save(); applyBg(); if (x.type !== 'range') { buildChart(); paint(); }
       });
       $('[data-file]', d).onchange = e => { const file = e.target.files[0]; if (file) loadImage(file, () => { B.id = 'custom'; B.auto = false; B.url = ''; save(); applyBg(); buildChart(); paint(); }); };
-      $('[data-th]', d).forEach(x => x.onclick = () => {
+      $$('[data-th]', d).forEach(x => x.onclick = () => {
         const t = BG.THEMES[x.dataset.th];
         Object.assign(S.look, t.look, { borderUp: t.look.up, wickUp: t.look.up, borderDown: t.look.down, wickDown: t.look.down });
         S.look.gridV = { ...S.look.gridV, color: t.grid }; S.look.gridH = { ...S.look.gridH, color: t.grid };
         S.look.bgType = t.look.bg2 !== t.look.bg ? 'gradient' : 'solid';
         Object.assign(S.panel, t.panel); save(); applyPanel(); applyBg(); buildChart(); toast(`Téma: ${t.name}`);
       });
-      $('[data-x]', d).forEach(x => x.onclick = closeDialog);
+      $$('[data-x]', d).forEach(x => x.onclick = closeDialog);
     };
     paint();
   }
@@ -1420,14 +1420,14 @@
       <div class="fld"><span>Zvýraznenie (aktívne tlačidlá, výber)</span>${swatch('accent', P.accent)}</div></div>
       <div class="dlg-f"><button class="btn" data-reset>Predvolené</button><span class="grow"></span><button class="btn" data-cancel>Zrušiť</button><button class="btn pri" data-x>OK</button></div>`,
       () => { S.panel = JSON.parse(before); save(); applyPanel(); closeDialog(); });
-    $('[data-p]', d).forEach(x => x[x.type === 'range' ? 'oninput' : 'onchange'] = () => { const k = x.dataset.p; P[k] = x.type === 'range' ? +x.value : x.value;
+    $$('[data-p]', d).forEach(x => x[x.type === 'range' ? 'oninput' : 'onchange'] = () => { const k = x.dataset.p; P[k] = x.type === 'range' ? +x.value : x.value;
       if (x.type === 'range') x.nextElementSibling.textContent = `${P[k]} px`; save(); applyPanel(); });
     $('[data-sw=bg]', d).onclick = e => colorPopover(e.currentTarget, P, {}, () => { save(); applyPanel(); }, { color: 'bg', opacity: 'opacity' });
     $('[data-sw=text]', d).onclick = e => colorPopover(e.currentTarget, P, { noOpacity: true }, () => { save(); applyPanel(); }, { color: 'text', opacity: '_ot' });
     $('[data-sw=accent]', d).onclick = e => colorPopover(e.currentTarget, P, { noOpacity: true }, () => { save(); applyPanel(); }, { color: 'accent', opacity: '_oa' });
     $('[data-reset]', d).onclick = () => { S.panel = { ...DEF.panel }; save(); applyPanel(); closeDialog(); panelDialog(); };
     $('[data-cancel]', d).onclick = UI.cancelDialog;
-    $('[data-x]', d).forEach(x => x.onclick = closeDialog);
+    $$('[data-x]', d).forEach(x => x.onclick = closeDialog);
   }
 
   // ---- keyboard ---------------------------------------------------------------------------------
