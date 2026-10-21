@@ -31,7 +31,7 @@
             candle: { preset: 'std', body: 80, wick: 1, radius: 0, spacing: 6 }, bright: 100 },
     bubbles: { on: false, group: 0, minPct: 70, scale: 100, opacity: 70, style: 'pie', labels: true },
     panel: { w: 118, h: 30, fs: 13, font: 'system', bg: '#1e222d', text: '#d1d4dc', accent: '#2962ff', show: 'both', opacity: 100 },
-    bgImg: { id: 'none', auto: false, autoKind: 'photo', dim: 55, blur: 0, url: '' },
+    bgImg: { id: 'none', auto: false, autoKind: 'photo', dim: 55, blur: 0, url: '', anim: 'none', animSpeed: 100, animOpacity: 70 },
     auto: { on: false, lines: true, channels: false, levels: true, pivots: false, ended: false, touches: true, labels: true, k: 0, ext: 30,
             sup: { color: '#26a69a', opacity: 90, width: 2, style: 0 }, res: { color: '#ef5350', opacity: 90, width: 2, style: 0 },
             lvl: { color: '#ffb74d', opacity: 75, width: 1, style: 2 } },
@@ -49,7 +49,7 @@
     flow: { open: false, x: null, y: null }, folders: [],
     layout: { n: 1, two: 'h', sync: true, panes: [{ tf: '15m' }, { tf: '1h' }, { tf: '4h' }] },
     nexus: { hudX: null, hudY: null, avatar: '', quote: 0 },
-    account: { start: 10000, positions: [], history: [] },
+    account: { start: 10000, positions: [], history: [] }, accounts: [], accountId: 'main', board: { notes: [] },
     robot: { on: false, symbols: ['XAUUSD'], tfs: ['1m', '5m', '15m', '1h'], period: 10, sharpBars: 3, sharpAtr: 2, onSharp: 'both', paper: true, lots: 0.1, state: {}, log: [] },
     savedAt: 0,
   };
@@ -60,7 +60,7 @@
   if (EMBED) {
     if (QS.get('symbol')) S.symbol = QS.get('symbol');
     if (QS.get('tf')) S.tf = QS.get('tf');
-    S.toolbar = 'top'; S.chat.open = S.news.open = S.idea.open = S.flow.open = false; S.robot = { ...S.robot, on: false };
+    S.toolbar = QS.get('bar') === '0' ? 'hidden' : 'top'; S.chat.open = S.news.open = S.idea.open = S.flow.open = false; S.robot = { ...S.robot, on: false };
     document.body.classList.add('embed');
   }
   if (!Array.isArray(S.studies)) S.studies = [{ type: 'volume' }];
@@ -330,8 +330,8 @@
       layout: { background: bg, textColor: L.text, fontSize: L.fontSize, fontFamily: fontCss(L.font), attributionLogo: false, panes: { separatorColor: L.sepColor, enableResize: true } },
       grid: { vertLines: G(L.gridV), horzLines: G(L.gridH) },
       crosshair: { mode: C.mode === 2 ? LW.CrosshairMode.Hidden : C.mode === 1 ? LW.CrosshairMode.Magnet : C.mode === 3 ? (LW.CrosshairMode.MagnetOHLC ?? 1) : LW.CrosshairMode.Normal, vertLine: ch, horzLine: ch },
-      rightPriceScale: { borderColor: L.scaleLine, mode: L.scale, invertScale: L.invert, scaleMargins: { top: L.marginTop / 100, bottom: L.marginBottom / 100 } },
-      timeScale: { borderColor: L.scaleLine, timeVisible: true, secondsVisible: TF_SEC[S.tf] < 60, rightOffset: L.rightOffset,
+      rightPriceScale: { visible: !L.hideScale, borderColor: L.scaleLine, mode: L.scale, invertScale: L.invert, scaleMargins: { top: L.marginTop / 100, bottom: L.marginBottom / 100 } },
+      timeScale: { visible: !L.hideTime, borderColor: L.scaleLine, timeVisible: true, secondsVisible: TF_SEC[S.tf] < 60, rightOffset: L.rightOffset,
                    tickMarkFormatter: (t, type) => tzf([{ year: 'numeric' }, { month: 'short' }, { day: 'numeric', month: 'short' }, { hour: '2-digit', minute: '2-digit' },
                                                        { hour: '2-digit', minute: '2-digit', second: '2-digit' }][type] || { hour: '2-digit', minute: '2-digit' }).format(new Date(t * 1000)) },
       localization: { timeFormatter: fmtTime, locale: 'sk-SK' },
@@ -755,7 +755,7 @@
     fitToolbar();
   }
   // ---- undo / redo: drawings, indicators, symbol, timeframe, chart type, look… (not window positions) ----
-  const HIST_SKIP = ['layout', 'savedAt', 'chat', 'news', 'idea', 'labeler', 'legendOpen', 'lastToolbar', 'flow', 'folders', 'nexus', 'account', 'robot'];
+  const HIST_SKIP = ['board', 'accounts', 'accountId', 'workspaces', 'wsId', 'layout', 'savedAt', 'chat', 'news', 'idea', 'labeler', 'legendOpen', 'lastToolbar', 'flow', 'folders', 'nexus', 'account', 'robot'];
   function snap() { const o = { ...S }; HIST_SKIP.forEach(k => delete o[k]); return JSON.stringify(o, (k, v) => (k[0] === '_' ? undefined : v)); }
   function pushHist() {
     clearTimeout(histT); histT = null;
@@ -785,7 +785,7 @@
   $('#bRedo').onclick = () => stepHist(1);
 
   function setAndReload(changes) { Object.assign(S, changes); save(); applyToolbar(); exitReplay(); view = { mode: 'live' }; alertMark = null; ideaPos = null; load(); FLOW.setSymbol({ id: S.symbol, ...sym() });
-    if (EMBED) { if (parent.NX_paneChanged) parent.NX_paneChanged(+EMBED, { symbol: S.symbol, tf: S.tf }); }
+    if (EMBED) { if (parent.NX_paneChanged) parent.NX_paneChanged(+QS.get('i'), { symbol: S.symbol, tf: S.tf }); }
     else if (S.layout.sync && changes.symbol) $$('#paneGrid iframe.pane').forEach(f => { try { f.contentWindow.NX_setSymbol(S.symbol); } catch (e) {} });
   }
   window.NX_setSymbol = s => { if (s !== S.symbol) setAndReload({ symbol: s }); };
@@ -1753,43 +1753,103 @@
   }
   $('#bFlow').onclick = e => flowMenu(e.currentTarget);
 
-  // ---- 1–4 charts on one screen: the extra ones are small copies of this page (?embed=2..4) ---------------
-  const LAYOUTS = [['1', 1, 'h', 'Jeden graf'], ['2h', 2, 'h', 'Dva vedľa seba'], ['2v', 2, 'v', 'Dva pod sebou'], ['3', 3, 'h', 'Tri (veľký vľavo)'], ['4', 4, 'h', 'Štyri (2 × 2)']];
-  const layoutIcon = k => `<svg viewBox="0 0 24 16" width="26" height="18" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="1" y="1" width="22" height="14" rx="1.5"/>${
-    { '2h': '<path d="M12 1v14"/>', '2v': '<path d="M1 8h22"/>', 3: '<path d="M14 1v14M14 8h9"/>', 4: '<path d="M12 1v14M1 8h22"/>' }[k] || ''}</svg>`;
+  // ---- workspaces with 1–10 charts each: the extra charts are small copies of this page (?embed=…) -----------
+  // grid per chart count: columns, rows, and whether the main chart spans both rows on the left
+  const GRIDS = { 1: ['1fr', '1fr'], '2h': ['1fr 1fr', '1fr'], '2v': ['1fr', '1fr 1fr'], 3: ['1.6fr 1fr', '1fr 1fr', 1], 4: ['1fr 1fr', '1fr 1fr'], 5: ['1.4fr 1fr 1fr', '1fr 1fr', 1],
+                  6: ['1fr 1fr 1fr', '1fr 1fr'], 7: ['1.4fr 1fr 1fr 1fr', '1fr 1fr', 1], 8: ['repeat(4,1fr)', '1fr 1fr'], 9: ['repeat(3,1fr)', 'repeat(3,1fr)'], 10: ['repeat(5,1fr)', '1fr 1fr'] };
+  const PANE_TFS = ['15m', '1h', '4h', '1d', '1m', '5m', '30m', '1w', '3m'];
+  const layoutKey = L => (L.n === 2 ? '2' + L.two : String(L.n));
+  function workspaces() {
+    if (!Array.isArray(S.workspaces) || !S.workspaces.length) { S.workspaces = [{ id: 'w1', name: 'Plocha 1', layout: S.layout, main: { symbol: S.symbol, tf: S.tf } }]; S.wsId = 'w1'; }
+    const ws = S.workspaces.find(w => w.id === S.wsId) || S.workspaces[0];
+    S.wsId = ws.id; S.layout = ws.layout;
+    return ws;
+  }
+  function paneDefaults(L) {
+    const ids = (META.symbols || []).map(s => s.id);
+    for (let i = 0; i < L.n - 1; i++) if (!L.panes[i]) L.panes[i] = { tf: PANE_TFS[i % PANE_TFS.length], symbol: ids[(i + 1) % Math.max(1, ids.length)] || S.symbol };
+  }
   function applyLayout() {
     if (EMBED) return;
-    const L = S.layout, wrap = $('#chartWrap');
+    const ws = workspaces(), L = S.layout, wrap = $('#chartWrap');
+    paneDefaults(L);
     let grid = $('#paneGrid');
     if (!grid) { grid = document.createElement('div'); grid.id = 'paneGrid'; wrap.parentNode.insertBefore(grid, wrap); grid.appendChild(wrap); }
-    grid.className = 'lay-' + (L.n === 2 ? '2' + L.two : L.n);
-    const want = Math.max(0, Math.min(3, L.n - 1)), frames = $$('iframe.pane', grid);
+    const [cols, rows, span] = GRIDS[layoutKey(L)] || GRIDS[1];
+    grid.style.gridTemplateColumns = cols; grid.style.gridTemplateRows = rows; wrap.style.gridRow = span ? 'span 2' : '';
+    if (grid.dataset.ws !== ws.id) { $$('iframe.pane', grid).forEach(f => f.remove()); grid.dataset.ws = ws.id; }
+    const want = Math.max(0, Math.min(9, L.n - 1)), frames = $$('iframe.pane', grid);
     frames.forEach((f, i) => { if (i >= want) f.remove(); });
     for (let i = frames.length; i < want; i++) {
-      const p = L.panes[i] = L.panes[i] || { tf: ['15m', '1h', '4h'][i] };
-      const f = document.createElement('iframe');
+      const p = L.panes[i], f = document.createElement('iframe');
       f.className = 'pane'; f.dataset.i = i; f.title = `Graf ${i + 2}`;
-      f.src = `./?embed=${i + 2}&symbol=${encodeURIComponent(L.sync ? S.symbol : p.symbol || S.symbol)}&tf=${encodeURIComponent(p.tf)}`;
+      f.src = `./?embed=${encodeURIComponent(ws.id)}-${i + 2}&i=${i}${L.hideBars ? '&bar=0' : ''}&symbol=${encodeURIComponent(L.sync ? S.symbol : p.symbol || S.symbol)}&tf=${encodeURIComponent(p.tf)}`;
       grid.appendChild(f);
     }
-    $('#bLayout').classList.toggle('on', L.n > 1);
+    $('#bLayout').classList.toggle('on', L.n > 1 || S.workspaces.length > 1);
     setTimeout(fitToolbar, 50);
   }
-  window.NX_paneChanged = (n, x) => { const p = S.layout.panes[n - 2]; if (p) { Object.assign(p, x); save(); } };
+  const panes = () => $$('#paneGrid iframe.pane');
+  const eachPane = fn => panes().forEach(f => { try { fn(f.contentWindow); } catch (e) {} });
+  window.NX_paneChanged = (i, x) => { const p = S.layout.panes[i]; if (p) { Object.assign(p, x); save(); } };
+  function switchWorkspace(id) {
+    const cur = workspaces();
+    cur.main = { symbol: S.symbol, tf: S.tf };
+    S.wsId = id;
+    const ws = workspaces();
+    save(); applyLayout();
+    if (ws.main && (ws.main.symbol !== S.symbol || ws.main.tf !== S.tf)) setAndReload({ symbol: ws.main.symbol || S.symbol, tf: ws.main.tf || S.tf });
+    toast(`▦ ${ws.name} · ${S.layout.n} ${S.layout.n === 1 ? 'graf' : S.layout.n < 5 ? 'grafy' : 'grafov'}`);
+  }
+  // what is shown around every chart: price scale, time scale, legend, toolbar
+  function applyView() {
+    document.body.classList.toggle('no-legend', !!S.look.hideLegend);
+    if (chart) chart.applyOptions({ rightPriceScale: { visible: !S.look.hideScale }, timeScale: { visible: !S.look.hideTime } });
+  }
+  function setView(o, all) {
+    if ('scale' in o) S.look.hideScale = !o.scale;
+    if ('time' in o) S.look.hideTime = !o.time;
+    if ('legend' in o) S.look.hideLegend = !o.legend;
+    if ('bar' in o && (EMBED || all === 'main')) { if (o.bar) { if (S.toolbar === 'hidden') S.toolbar = S.lastToolbar && S.lastToolbar !== 'hidden' ? S.lastToolbar : 'top'; } else if (S.toolbar !== 'hidden') { S.lastToolbar = S.toolbar; S.toolbar = 'hidden'; } applyToolbar(); }
+    save(); applyView();
+    if (all === true) eachPane(w => w.NX_view(o));
+  }
+  window.NX_view = o => setView(o);
   function layoutMenu(anchor) {
-    const L = S.layout, cur = () => (L.n === 2 ? '2' + L.two : String(L.n));
-    const html = () => `<div class="sec">Rozloženie grafov</div><div class="lay-pick">${LAYOUTS.map(([k, , , n]) => `<span data-ly="${k}" class="${cur() === k ? 'on' : ''}" title="${n}">${layoutIcon(k)}<small>${n}</small></span>`).join('')}</div>
-      ${L.n > 1 ? `<label class="it"><input type="checkbox" data-sync ${L.sync ? 'checked' : ''}><span class="grow">Rovnaký symbol vo všetkých grafoch</span></label>
-      ${L.panes.slice(0, L.n - 1).map((p, i) => `<div class="lbl" style="padding:0 12px">Graf ${i + 2} – timeframe</div><div class="tchips">${['1m', '5m', '15m', '30m', '1h', '4h', '1d', '1w'].map(tf => `<span data-pane="${i}" data-ptf="${tf}" class="${p.tf === tf ? 'on' : ''}">${tf}</span>`).join('')}</div>`).join('')}
-      <div class="muted" style="font-size:11px;padding:4px 12px 6px">V každom grafe môžeš zmeniť aj symbol, typ a indikátory jeho vlastným panelom. Obchody a čiary SL / TP vidíš vo všetkých.</div>` : ''}`;
+    const L = () => S.layout;
+    const html = () => { const ws = workspaces(), cur = layoutKey(L());
+      return `<div class="sec">Plochy <small class="muted">(Alt+1…9)</small></div>
+      <div class="ws-list">${S.workspaces.map((w, k) => `<div class="ws-it ${w === ws ? 'on' : ''}" data-ws="${w.id}"><b>${k + 1}</b><span class="grow">${esc(w.name)}</span><small>${w.layout.n} ${w.layout.n === 1 ? 'graf' : 'gr.'}</small>
+        <button class="ib" data-wsr="${w.id}" title="Premenovať">✎</button>${S.workspaces.length > 1 ? `<button class="ib" data-wsd="${w.id}" title="Zmazať plochu">🗑</button>` : ''}</div>`).join('')}
+        <div class="ws-it add" data-wsnew>＋ Nová plocha</div></div>
+      <div class="sec">Počet grafov na tejto ploche</div>
+      <div class="lay-pick">${['1', '2h', '2v', '3', '4', '5', '6', '7', '8', '9', '10'].map(k => `<span data-ly="${k}" class="${cur === k ? 'on' : ''}">${k === '2h' ? '2 ⇆' : k === '2v' ? '2 ⇅' : k}</span>`).join('')}</div>
+      <div class="sec">Zobraziť pri grafoch</div>
+      <div class="vw-grid">${[['scale', 'Cenová os', !S.look.hideScale], ['time', 'Čas a dátum', !S.look.hideTime], ['legend', 'Legenda', !S.look.hideLegend], ['bar', 'Panel malých grafov', !L().hideBars]].map(([k, n, on]) => `<label><input type="checkbox" data-vw="${k}" ${on ? 'checked' : ''}> ${n}</label>`).join('')}</div>
+      ${L().n > 1 ? `<label class="it"><input type="checkbox" data-sync ${L().sync ? 'checked' : ''}><span class="grow">Rovnaký symbol vo všetkých grafoch</span></label>
+      <div class="pane-list">${L().panes.slice(0, L().n - 1).map((p, i) => `<div class="pane-row"><b>Graf ${i + 2}</b>
+        <select data-psym="${i}" ${L().sync ? 'disabled' : ''}>${(META.symbols || []).map(s => `<option value="${s.id}" ${(L().sync ? S.symbol : p.symbol) === s.id ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</select>
+        <select data-ptf="${i}">${['1m', '3m', '5m', '15m', '30m', '1h', '4h', '1d', '1w'].map(tf => `<option ${p.tf === tf ? 'selected' : ''}>${tf}</option>`).join('')}</select></div>`).join('')}</div>` : ''}
+      <div class="muted" style="font-size:11px;padding:4px 12px 6px">Pravý klik do grafu = skryť / zobraziť osi a panel len v ňom. Obchody, SL / TP aj značky vidíš vo všetkých grafoch.</div>`; };
+    const rerender = m => { m.innerHTML = html(); bind(m); };
     const bind = m => {
-      $$('[data-ly]', m).forEach(x => x.onclick = () => { const [, n, two] = LAYOUTS.find(l => l[0] === x.dataset.ly); L.n = n; L.two = two; save(); applyLayout(); m.innerHTML = html(); bind(m); });
-      const sy = $('[data-sync]', m); if (sy) sy.onchange = () => { L.sync = sy.checked; save(); if (L.sync) $$('#paneGrid iframe.pane').forEach(f => { try { f.contentWindow.NX_setSymbol(S.symbol); } catch (e) {} }); };
-      $$('[data-ptf]', m).forEach(x => x.onclick = () => {
-        const i = +x.dataset.pane; L.panes[i].tf = x.dataset.ptf; save();
-        const f = $(`#paneGrid iframe.pane[data-i="${i}"]`); try { f.contentWindow.NX_setTf(x.dataset.ptf); } catch (e) {}
-        m.innerHTML = html(); bind(m);
+      $$('[data-ws]', m).forEach(x => x.onclick = e => { if (e.target.closest('button')) return; if (x.dataset.ws !== S.wsId) { switchWorkspace(x.dataset.ws); rerender(m); } });
+      $$('[data-wsr]', m).forEach(x => x.onclick = () => { const w = S.workspaces.find(y => y.id === x.dataset.wsr), n = prompt('Názov plochy', w.name); if (n && n.trim()) { w.name = n.trim().slice(0, 30); save(); rerender(m); } });
+      $$('[data-wsd]', m).forEach(x => x.onclick = () => { const w = S.workspaces.find(y => y.id === x.dataset.wsd); if (!confirm(`Zmazať plochu „${w.name}“?`)) return;
+        S.workspaces = S.workspaces.filter(y => y !== w); if (S.wsId === w.id) switchWorkspace(S.workspaces[0].id); else save(); rerender(m); });
+      $('[data-wsnew]', m).onclick = () => {
+        const id = 'w' + Date.now().toString(36), n = S.workspaces.length + 1;
+        S.workspaces.push({ id, name: `Plocha ${n}`, layout: { n: 4, two: 'h', sync: true, panes: [] }, main: { symbol: S.symbol, tf: S.tf } });
+        switchWorkspace(id); rerender(m);
+      };
+      $$('[data-ly]', m).forEach(x => x.onclick = () => { const k = x.dataset.ly; L().n = k === '2h' || k === '2v' ? 2 : +k; L().two = k === '2v' ? 'v' : 'h'; save(); applyLayout(); rerender(m); });
+      $$('[data-vw]', m).forEach(x => x.onchange = () => {
+        if (x.dataset.vw === 'bar') { L().hideBars = !x.checked; save(); eachPane(w => w.NX_view({ bar: x.checked })); return; }
+        setView({ [x.dataset.vw]: x.checked }, true);
       });
+      const sy = $('[data-sync]', m); if (sy) sy.onchange = () => { L().sync = sy.checked; save(); if (L().sync) eachPane(w => w.NX_setSymbol(S.symbol)); rerender(m); };
+      $$('[data-psym]', m).forEach(x => x.onchange = () => { const i = +x.dataset.psym; L().panes[i].symbol = x.value; save(); const f = panes()[i]; try { f.contentWindow.NX_setSymbol(x.value); } catch (e) {} });
+      $$('[data-ptf]', m).forEach(x => x.onchange = () => { const i = +x.dataset.ptf; L().panes[i].tf = x.value; save(); const f = panes()[i]; try { f.contentWindow.NX_setTf(x.value); } catch (e) {} });
     };
     openMenu(anchor, html(), bind, { side: side(), cls: 'lay-menu' });
   }
@@ -1804,7 +1864,58 @@
     if (id.startsWith('photo:')) return photoUrl(id.slice(6));
     return id === 'none' ? '' : BG.url(id);
   }
-  function hasBg() { return !!bgUrl(); }
+  function hasBg() { return !!bgUrl() || (!EMBED && !['none', 'kenburns', undefined].includes(S.bgImg.anim)); }
+  // ---- animated backgrounds: CSS layers (cheap, GPU) or a small canvas at ≤ 30 fps that stops when the tab is hidden ----
+  const ANIMS = {
+    none: ['Bez animácie', 'linear-gradient(135deg,#161a25,#1e222d)'],
+    aurora: ['Polárna žiara', 'linear-gradient(160deg,#04131f,#0b3b3a 45%,#3b1d5c)'],
+    fog: ['Hmla nad grafom', 'linear-gradient(180deg,#1b2433,#3a4658 55%,#1b2433)'],
+    nebula: ['Hmlovina', 'radial-gradient(circle at 30% 40%,#5b2a86,transparent 60%),radial-gradient(circle at 70% 60%,#1f5f9e,#03040a 70%)'],
+    waves: ['Oceán', 'linear-gradient(180deg,#06121f,#0b3556 60%,#0e4f78)'],
+    snow: ['Sneženie', 'linear-gradient(180deg,#0f1724,#233148)'],
+    rain: ['Dážď', 'linear-gradient(180deg,#0b0f17,#1c2533)'],
+    storm: ['Búrka s bleskami', 'linear-gradient(180deg,#07090e,#1a1f2b)'],
+    kenburns: ['Pomalý pohyb fotky', 'linear-gradient(135deg,#2b3a2f,#5c4a32)'],
+  };
+  let animRaf = null, animCanvas = null;
+  function applyAnim() {
+    const B = S.bgImg, kind = EMBED ? 'none' : B.anim || 'none';
+    let el = $('#bgAnim');
+    if (!el) { el = document.createElement('div'); el.id = 'bgAnim'; $('#bgDim').after(el); }
+    cancelAnimationFrame(animRaf); animRaf = null;
+    el.className = 'anim-' + kind; el.innerHTML = '';
+    el.style.setProperty('--as', 100 / (B.animSpeed || 100)); el.style.opacity = (B.animOpacity ?? 70) / 100;
+    $('#bgLayer').classList.toggle('kenburns', kind === 'kenburns');
+    if (['aurora', 'nebula', 'fog'].includes(kind)) el.innerHTML = '<i></i><i></i><i></i>';
+    if (kind === 'waves') el.innerHTML = '<i></i><i></i><i></i>';
+    if (['snow', 'rain', 'storm'].includes(kind)) {
+      animCanvas = document.createElement('canvas'); el.appendChild(animCanvas);
+      const c = animCanvas, g = c.getContext('2d'), snow = kind === 'snow';
+      let parts = [], last = 0, flash = 0;
+      const size = () => { c.width = el.clientWidth; c.height = el.clientHeight; parts = Array.from({ length: snow ? 110 : 150 }, () => ({ x: Math.random() * c.width, y: Math.random() * c.height, v: snow ? 0.4 + Math.random() : 7 + Math.random() * 6, r: snow ? 1 + Math.random() * 2.2 : 10 + Math.random() * 12, w: Math.random() * 6.28 })); };
+      size();
+      const step = t => {
+        animRaf = requestAnimationFrame(step);
+        if (document.hidden || t - last < 33) return;                  // ≤ 30 fps
+        last = t;
+        if (c.width !== el.clientWidth || c.height !== el.clientHeight) size();
+        const sp = (B.animSpeed || 100) / 100;
+        g.clearRect(0, 0, c.width, c.height);
+        if (kind === 'storm') { if (flash > 0) { g.fillStyle = `rgba(200,210,255,${flash * 0.25})`; g.fillRect(0, 0, c.width, c.height); flash -= 0.08; } else if (Math.random() < 0.004) flash = 1; }
+        g.strokeStyle = 'rgba(180,200,230,.35)'; g.fillStyle = 'rgba(255,255,255,.75)'; g.lineWidth = 1;
+        g.beginPath();
+        for (const p of parts) {
+          if (snow) { p.w += 0.02; p.x += Math.sin(p.w) * 0.4; p.y += p.v * sp; g.moveTo(p.x + p.r, p.y); g.arc(p.x, p.y, p.r, 0, 6.28); }
+          else { p.y += p.v * sp; p.x -= p.v * sp * 0.15; g.moveTo(p.x, p.y); g.lineTo(p.x + p.r * 0.15, p.y - p.r); }
+          if (p.y > c.height + 20) { p.y = -20; p.x = Math.random() * c.width; }
+          if (p.x < -20) p.x = c.width + 10;
+        }
+        if (snow) g.fill(); else g.stroke();
+      };
+      animRaf = requestAnimationFrame(step);
+    }
+  }
+
   function applyBright() { const b = S.look.bright || 100; document.documentElement.style.filter = b !== 100 ? `brightness(${b / 100})` : ''; }
   function applyBg() {
     const url = bgUrl(), B = S.bgImg;
@@ -1886,6 +1997,11 @@
           <div class="fld"><span>Vlastný obrázok zo zariadenia</span><label class="btn sm">📁 Vybrať súbor<input type="file" accept="image/*" data-file hidden></label></div>
           <div class="fld"><span>…alebo adresa obrázka z internetu (URL)</span><input type="text" data-b="url" value="${esc(B.url)}" placeholder="https://…jpg" style="width:260px"></div>`;
       }
+      if (stTab === 'anim') return `<div class="tiles">${Object.entries(ANIMS).map(([k, [n, bg]]) => `<div class="tile ${(B.anim || 'none') === k ? 'on' : ''}" data-an="${k}"><div class="thumb an-thumb an-${k}" style="background:${bg}"><i></i></div><span>${esc(n)}</span></div>`).join('')}</div>
+          <div class="fld"><span>Rýchlosť</span><span class="op" style="width:240px"><input type="range" min="30" max="250" data-ab="animSpeed" value="${B.animSpeed || 100}"><b>${B.animSpeed || 100} %</b></span></div>
+          <div class="fld"><span>Výraznosť</span><span class="op" style="width:240px"><input type="range" min="10" max="100" data-ab="animOpacity" value="${B.animOpacity ?? 70}"><b>${B.animOpacity ?? 70} %</b></span></div>
+          <div class="muted" style="font-size:11px">Animácia ide nad pozadím (aj nad fotkou), pod sviečkami. Žiara, hmla, hmlovina a oceán sú čisté CSS animácie – takmer nezaťažia počítač.
+          Sneh, dážď a búrka kreslia max. 30 snímok za sekundu a zastavia sa, keď je okno skryté. V malých grafoch (rozloženie viac grafov) sa animácia nespúšťa.</div>`;
       if (stTab === 'drawn') return `<div class="tiles">${tile('none', 'Bez obrázka', `background:${S.look.bg}`)}${Object.entries(BG.SCENES).map(([k, x]) => tile(k, x.name, `background-image:url('${BG.url(k)}')`, `<small>${esc(x.season)}</small>`)).join('')}</div>${common()}`;
       if (stTab === 'candles') {
         const L = S.look, now = { up: L.up, down: L.down, borderUp: L.borderUp, borderDown: L.borderDown, wickUp: L.wickUp, wickDown: L.wickDown, body: L.body };
@@ -1900,9 +2016,11 @@
     };
     const paint = () => {
       const d = openDialog(`<div class="dlg-h"><span>🖼 Štýly a pozadia</span><button class="ib" data-x>✕</button></div><div class="dlg-b">
-        <div class="tabs">${[['photos', '📷 Fotky'], ['drawn', '🏔 Kreslené'], ['candles', '🕯 Farby sviečok'], ['themes', '🎨 Témy']].map(([k, n]) => `<span class="tab ${stTab === k ? 'on' : ''}" data-tab="${k}">${n}</span>`).join('')}</div>
+        <div class="tabs">${[['photos', '📷 Fotky'], ['drawn', '🏔 Kreslené'], ['anim', '✨ Animované'], ['candles', '🕯 Farby sviečok'], ['themes', '🎨 Témy']].map(([k, n]) => `<span class="tab ${stTab === k ? 'on' : ''}" data-tab="${k}">${n}</span>`).join('')}</div>
         ${body()}</div><div class="dlg-f"><span class="grow"></span><button class="btn pri" data-x>Hotovo</button></div>`, null, 'wide styles-dlg');
       $$('[data-tab]', d).forEach(x => x.onclick = () => { stTab = x.dataset.tab; paint(); });
+      $$('[data-an]', d).forEach(x => x.onclick = () => { B.anim = x.dataset.an; save(); applyAnim(); buildChart(); paint(); });
+      $$('[data-ab]', d).forEach(x => x.oninput = () => { B[x.dataset.ab] = +x.value; x.nextElementSibling.textContent = x.value + ' %'; save(); applyAnim(); });
       $$('[data-bg]', d).forEach(x => x.onclick = () => {
         if (x.dataset.bg === 'custom' && !(LS.get('nx-bg-custom', '') || B.url)) { $('[data-file]', d).click(); return; }
         B.id = x.dataset.bg; B.auto = false; save(); applyBg(); buildChart(); paint();
@@ -2008,7 +2126,9 @@
     ctxMenu(ev, `${item('settings', '⚙', 'Nastavenia grafu…')}${item('canvas', '▦', 'Plátno a mriežka…')}${item('legend', '🏷', 'Legenda (čo sa zobrazí vľavo hore)…')}
       ${item('styles', '🖼', 'Štýly, pozadia a farby sviečok…')}<div class="sep"></div>${item('ind', 'ƒx', 'Pridať indikátor…')}${item('auto', '📐', S.auto.on ? 'Vypnúť auto čiary' : 'Zapnúť auto čiary', 'Alt+A')}
       ${item('draw', '✎', 'Kresliť trendovú čiaru', 'Alt+T')}${item('tech', '📊', 'Technicals tohto symbolu')}<div class="sep"></div>
-      ${item('reset', '⤢', 'Resetovať zobrazenie')}${item('panel', '☰', S.toolbar === 'hidden' ? 'Zobraziť panel' : 'Skryť panel', 'Alt+P')}`, m => bindItems(m, {
+      ${item('reset', '⤢', 'Resetovať zobrazenie')}${item('panel', '☰', S.toolbar === 'hidden' ? 'Zobraziť panel' : 'Skryť panel', 'Alt+P')}
+      ${item('vscale', '↕', S.look.hideScale ? 'Zobraziť cenovú os' : 'Skryť cenovú os')}${item('vtime', '↔', S.look.hideTime ? 'Zobraziť čas a dátum' : 'Skryť čas a dátum')}${item('vleg', '🏷', S.look.hideLegend ? 'Zobraziť legendu' : 'Skryť legendu')}`, m => bindItems(m, {
+      vscale: () => setView({ scale: !!S.look.hideScale }), vtime: () => setView({ time: !!S.look.hideTime }), vleg: () => setView({ legend: !!S.look.hideLegend }),
       settings: () => settings(), canvas: () => settings('canvas'), legend: () => settings('legend'), styles: () => stylesDialog(), ind: () => $('#bInd').click(),
       auto: () => toggleAuto(), draw: () => draw.start('trend'), tech: () => openTech(),
       reset: () => { chart.priceScale('right').applyOptions({ autoScale: true }); chart.timeScale().setVisibleLogicalRange({ from: disp.length - 150, to: disp.length + 5 }); },
@@ -2254,6 +2374,7 @@
       if (e.key === 'ArrowLeft') { e.preventDefault(); playReplay(false); stepReplay(e.shiftKey ? -10 : -1); return; }
       if (e.key === ' ') { e.preventDefault(); playReplay(!replayTimer); return; }
     }
+    if (e.altKey && !EMBED && /^Digit[1-9]$/.test(e.code)) { const w = (S.workspaces || [])[+e.code.slice(5) - 1]; if (w) { e.preventDefault(); if (w.id !== S.wsId) switchWorkspace(w.id); return; } }
     if (e.altKey && e.code === 'KeyP') { e.preventDefault(); if (S.toolbar === 'hidden') $('#showToolbar').click(); else { S.lastToolbar = S.toolbar; S.toolbar = 'hidden'; save(); applyToolbar(); } return; }
     if (draw.key(e)) e.preventDefault();
   });
@@ -2267,7 +2388,7 @@
     try { PHOTOS = await (await fetch('static/photos/photos.json')).json(); } catch (e) { PHOTOS = []; }
     if (!SYM[S.symbol]) S.symbol = 'XAUUSD';
     if (S.labeler) await pullPrefs(S.labeler);
-    applyPanel(); applyBg(); applyBright(); applyToolbar();
+    applyPanel(); applyBg(); applyBright(); applyToolbar(); applyView(); applyAnim();
     applyLayout();
     await load();
     if (EMBED) { hist = [snap()]; hpos = 0; paintHist(); return; }

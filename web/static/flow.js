@@ -4,7 +4,7 @@
 const FLOW = (() => {
   const { $, $$, esc, LS } = UI;
   // contract size of one standard lot (what forex / CFD brokers call 1 lot)
-  const LOT = { XAUUSD: [100, 'oz'], XAGUSD: [5000, 'oz'], BTCUSD: [1, 'BTC'] };
+  const LOT = { XAUUSD: [100, 'oz'], XAGUSD: [5000, 'oz'], XPTUSD: [100, 'oz'], XPDUSD: [100, 'oz'], EURUSD: [100000, 'EUR'], BTCUSD: [1, 'BTC'], ETHUSD: [1, 'ETH'], SOLUSD: [1, 'SOL'], BNBUSD: [1, 'BNB'], XRPUSD: [1, 'XRP'], ADAUSD: [1, 'ADA'], DOGEUSD: [1, 'DOGE'] };
   const st = { unit: 'lots', big: 0, ...LS.get('nx-flow', {}) };
   let sym = null, ws = null, retry = null, trades = [], seed = [], paintT = null, el = null, open = false;
   const lot = () => (LOT[sym && sym.id] || [1, ''])[0];
