@@ -54,7 +54,7 @@
     nexus: { hudX: null, hudY: null, avatar: '', quote: 0 },
     account: { start: 10000, positions: [], history: [] }, accounts: [], accountId: 'main', board: { notes: [] },
     robot: { on: false, symbols: ['XAUUSD'], tfs: ['1m', '5m', '15m', '1h'], period: 10, sharpBars: 3, sharpAtr: 2, onSharp: 'both', paper: true, lots: 0.1, state: {}, log: [] },
-    alerts: [], scripts: [], addons: { follow: false, always: false, float: true, floatBg: 35, scroll: false, scrollH: 75, scrollCols: 1 },
+    alerts: [], scripts: [], addons: { follow: false, always: false, float: true, floatClean: true, floatBg: 35, scroll: false, scrollH: 75, scrollCols: 1 },
     savedAt: 0,
   };
   const merge = (a, b) => { const o = { ...a }; for (const k in b || {}) o[k] = a && a[k] && typeof a[k] === 'object' && !Array.isArray(a[k]) && b[k] && typeof b[k] === 'object' && !Array.isArray(b[k]) ? merge(a[k], b[k]) : b[k]; return o; };
@@ -679,8 +679,8 @@
   function makeFloat(u, k) {
     const s = u.s, wrap = $('#chartWrap');
     if (!s.box) s.box = { x: 1 + (k % 2) * 45, y: clampN(4, 70 - Math.floor(k / 2) * 27, 90), w: 43, h: 25 };
-    const el = u.fel = document.createElement('div'); el.className = 'fl-box no-chart';
-    el.innerHTML = `<div class="fl-h"><span class="fl-n">${esc(u.def.label(s))}</span><span class="fl-v"></span><span class="grow"></span>
+    const el = u.fel = document.createElement('div'); el.className = 'fl-box no-chart' + (S.addons.floatClean !== false ? ' clean' : '');
+    el.innerHTML = `<div class="fl-h"><span class="fl-n">${esc(u.def.label(s))}</span><span class="fl-v"></span><button class="fl-gear" data-fa="menu" title="Nastavenia okna">⚙</button><span class="grow"></span>
       <button data-fa="cfg" title="Nastavenia indikátora">⚙</button><button data-fa="dock" title="Späť do panela pod grafom">⇲</button><button data-fa="hide" title="Skryť">✕</button></div>
       <div class="fl-c"></div><span class="fl-rz" title="Ťahaj = veľkosť okna"></span>`;
     wrap.appendChild(el); placeFloat(u);
@@ -699,11 +699,28 @@
       handle.addEventListener('pointerup', () => { if (d) { d = null; el.classList.remove('drag'); save(); } });
     };
     drag($('.fl-h', el), (d, dx, dy) => { s.box.x = clampN(0, d.b.x + dx, 100 - s.box.w); s.box.y = clampN(0, d.b.y + dy, 100 - 5); });
-    drag($('.fl-rz', el), (d, dx, dy) => { s.box.w = clampN(12, d.b.w + dx, 100 - s.box.x); s.box.h = clampN(8, d.b.h + dy, 100 - s.box.y); });
+    drag($('.fl-rz', el), (d, dx, dy) => { s.box.w = clampN(4, d.b.w + dx, 100 - s.box.x); s.box.h = clampN(4, d.b.h + dy, 100 - s.box.y); });
+    // transparent window: a click selects it (small ⚙ appears), clicking elsewhere hides it again
+    el.addEventListener('pointerdown', () => { $$('#chartWrap .fl-box.sel').forEach(x => x !== el && x.classList.remove('sel', 'edit')); el.classList.add('sel'); }, true);
     el.addEventListener('click', e => { const a = e.target.closest('[data-fa]'); if (!a) return;
-      if (a.dataset.fa === 'cfg') studySettings(s); else if (a.dataset.fa === 'dock') { s.float = false; studiesChanged(); toast(`${u.def.name}: späť v paneli pod grafom (🧩 Add-ons ho vráti do okna)`); } else { s.visible = false; studiesChanged(); } });
+      if (a.dataset.fa === 'menu') floatMenu(u, a);
+      else if (a.dataset.fa === 'cfg') studySettings(s); else if (a.dataset.fa === 'dock') { s.float = false; studiesChanged(); toast(`${u.def.name}: späť v paneli pod grafom (🧩 Add-ons ho vráti do okna)`); } else { s.visible = false; studiesChanged(); } });
     el.addEventListener('dblclick', e => { if (e.target.closest('.fl-h')) studySettings(s); });
   }
+  function floatMenu(u, anchor) {
+    const s = u.s, el = u.fel;
+    openMenu(anchor, `<div class="it" data-fm="cfg"><span class="ic">⚙</span><span class="grow">Nastavenia indikátora</span></div>
+      <div class="it" data-fm="edit"><span class="ic">✥</span><span class="grow">Presunúť / zmeniť veľkosť</span></div>
+      <div class="it" data-fm="dock"><span class="ic">⇲</span><span class="grow">Späť do panela pod grafom</span></div>
+      <div class="it" data-fm="hide"><span class="ic">✕</span><span class="grow">Skryť</span></div><div class="sep"></div>
+      <div class="it" data-fm="frame"><span class="ic">🪟</span><span class="grow">Okná vždy s rámikom (ako predtým)</span></div>`, m => {
+      $$('[data-fm]', m).forEach(x => x.onclick = () => { const k = x.dataset.fm; closeMenu();
+        if (k === 'cfg') studySettings(s); else if (k === 'edit') el.classList.add('edit');
+        else if (k === 'dock') { s.float = false; studiesChanged(); } else if (k === 'hide') { s.visible = false; studiesChanged(); }
+        else { S.addons.floatClean = false; save(); $$('#chartWrap .fl-box').forEach(b => b.classList.remove('clean')); toast('🪟 Okná s rámikom – priehľadné zapneš v 🧩 Add-ons'); } });
+    }, { cls: 'tools-menu' });
+  }
+  window.addEventListener('pointerdown', e => { if (!e.target.closest('.fl-box, .dd')) $$('#chartWrap .fl-box.sel').forEach(x => x.classList.remove('sel', 'edit')); }, true);
   function destroyFloats() { for (const u of units || []) if (u.fc) { try { u.fc.remove(); } catch (e) {} u.fel.remove(); u.fc = null; } $$('#chartWrap .fl-box').forEach(x => x.remove()); }
   function syncFloats(r) { if (!r) return; for (const u of units) if (u.fc) u.fc.timeScale().setVisibleLogicalRange(r); }
   // the crosshair and the values of the bar under the mouse (the last bar otherwise)
@@ -3008,14 +3025,15 @@
       <div class="sec">🪟 Plávajúce indikátory</div>
       <label class="it"><input type="checkbox" data-ad="float" ${A.float ? 'checked' : ''}><span class="grow"><b>Indikátory v plávajúcich oknách</b><br><small class="muted">MACD, RSI… nezmenšujú sviečky: okno presunieš za názov, veľkosť rohom ◢, mierku ťahaním po jeho cenovej osi (dvojklik = späť)</small></span></label>
       ${studies.filter(s => !s.temp && (KS.STUDIES[s.type].pane === true || s.type === 'volume') && !KS.STUDIES[s.type].custom && !KS.STUDIES[s.type].pattern).map(s => `<label class="it fl-sub"><input type="checkbox" data-fls="${s.uid}" ${isFloat(s) ? 'checked' : ''} ${s.overlay ? 'disabled' : ''}><span class="grow">${esc(KS.STUDIES[s.type].label(s))}${s.overlay ? ' <small class="muted">(prekrýva graf)</small>' : s.float === undefined && s.type !== 'volume' ? ' <small class="muted">podľa hlavného prepínača</small>' : ''}</span></label>`).join('')}
-      <div class="it fl-op"><span class="ic">◐</span><span class="grow">Pozadie okien</span><input type="range" min="0" max="90" step="5" data-flbg value="${A.floatBg ?? 35}"><b>${A.floatBg ?? 35} %</b></div>
+      <label class="it fl-sub"><input type="checkbox" data-ad="floatClean" ${A.floatClean !== false ? 'checked' : ''}><span class="grow">Priehľadné okná<br><small class="muted">bez rámika a pozadia · klik na okno ukáže malé ⚙</small></span></label>
+      <div class="it fl-op"><span class="ic">◐</span><span class="grow">Pozadie okien (s rámikom)</span><input type="range" min="0" max="90" step="5" data-flbg value="${A.floatBg ?? 35}"><b>${A.floatBg ?? 35} %</b></div>
       <div class="it" data-flarr><span class="ic">⊞</span><span class="grow">Zoradiť okná (dole vľavo)</span></div>
       <div class="sep"></div>
       <div class="it" data-adall><span class="ic">🔁</span><span class="grow">Tieto doplnky aj vo všetkých grafoch</span></div>
       <div class="it" data-adfeat><span class="ic">🎛</span><span class="grow">Všetky funkcie on / off…</span></div>`;
     const bind = m => {
       $$('[data-ad]', m).forEach(x => x.onchange = () => { const k = x.dataset.ad;
-        if (k === 'follow') setFollow(x.checked); else if (k === 'scroll') setPageScroll(x.checked); else if (k === 'float') { A.float = x.checked; save(); buildChart(); toast(A.float ? '🪟 Indikátory v plávajúcich oknách – sviečky majú celú výšku' : 'Indikátory späť v paneloch pod grafom'); }
+        if (k === 'follow') setFollow(x.checked); else if (k === 'scroll') setPageScroll(x.checked); else if (k === 'floatClean') { A.floatClean = x.checked; save(); $$('#chartWrap .fl-box').forEach(b => b.classList.toggle('clean', x.checked)); } else if (k === 'float') { A.float = x.checked; save(); buildChart(); toast(A.float ? '🪟 Indikátory v plávajúcich oknách – sviečky majú celú výšku' : 'Indikátory späť v paneloch pod grafom'); }
         else { A.always = x.checked; save(); followTick(true); } m.innerHTML = html(); bind(m); });
       bindCop(m, mm => { mm.innerHTML = html(); bind(mm); });
       const sh = $('[data-scrh]', m), sc = $('[data-scrc]', m), sn = $('[data-scrn]', m);

@@ -1137,7 +1137,7 @@ table.al-t tr.bad { opacity: .62; }
 .tools-menu .it.dis { opacity: .5; }
 
 /* 🪟 floating indicators */
-.fl-box { position: absolute; z-index: 4; display: flex; flex-direction: column; min-width: 120px; min-height: 60px; border-radius: 8px; border: 1px solid rgba(255,255,255,.14);
+.fl-box { position: absolute; z-index: 4; display: flex; flex-direction: column; min-width: 50px; min-height: 26px; border-radius: 8px; border: 1px solid rgba(255,255,255,.14);
   background: rgba(18,21,30,var(--fl-bg,.35)); box-shadow: 0 4px 16px rgba(0,0,0,.35); overflow: hidden; }
 .fl-box.drag { box-shadow: 0 0 0 2px var(--accent), 0 6px 20px rgba(0,0,0,.5); }
 .fl-h { display: flex; align-items: center; gap: 6px; padding: 2px 4px 2px 8px; font-size: 11px; cursor: grab; user-select: none; background: rgba(18,21,30,calc(var(--fl-bg,.35) + .3)); border-bottom: 1px solid rgba(255,255,255,.08); white-space: nowrap; }
@@ -1145,6 +1145,15 @@ table.al-t tr.bad { opacity: .62; }
 .fl-h button { background: none; border: 0; color: #9598a1; cursor: pointer; padding: 0 3px; font-size: 12px; } .fl-h button:hover { color: #fff; }
 .fl-c { flex: 1; min-height: 0; position: relative; }
 .fl-rz { position: absolute; z-index: 5; right: 0; bottom: 0; width: 16px; height: 16px; cursor: nwse-resize; background: linear-gradient(135deg, transparent 50%, rgba(255,255,255,.35) 50%); border-bottom-right-radius: 7px; }
+.fl-h button.fl-gear { display: none; width: 18px; height: 18px; padding: 0; border-radius: 4px; border: 1px solid rgba(255,255,255,.18); background: rgba(18,21,30,.75); color: #d1d4dc; font-size: 11px; line-height: 16px; } .fl-h button.fl-gear:hover { border-color: var(--accent); }
+/* transparent window: the mouse goes through to the chart, only the name line reacts (hover / click = ⚙ and the resize corner) */
+.fl-box.clean:not(.edit) { background: none; border-color: transparent; box-shadow: none; pointer-events: none; }
+.fl-box.clean:not(.edit) .fl-h { align-self: flex-start; background: none; border-bottom-color: transparent; text-shadow: 0 1px 2px rgba(0,0,0,.8); pointer-events: auto; border-radius: 4px; }
+.fl-box.clean:not(.edit) .fl-h button, .fl-box.clean:not(.edit) .fl-rz { display: none; }
+.fl-box.clean:not(.edit) .fl-h button.fl-gear { display: none; }
+.fl-box.clean:not(.edit):hover .fl-h button.fl-gear, .fl-box.clean.sel:not(.edit) .fl-h button.fl-gear { display: inline-block; }
+.fl-box.clean.sel:not(.edit) { border-color: rgba(255,255,255,.12); } .fl-box.clean.sel:not(.edit) .fl-rz { display: block; pointer-events: auto; }
+.fl-box.clean:not(.edit):hover .fl-h, .fl-box.clean.sel:not(.edit) .fl-h { background: rgba(18,21,30,.55); }
 .tools-menu .it.fl-sub { padding-left: 34px; } .tools-menu .fl-op input { width: 110px; }
 
 /* 📜 page of charts */
