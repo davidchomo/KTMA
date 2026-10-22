@@ -6,6 +6,9 @@
   const { $, $$, esc, LS, openMenu, closeMenu, openDialog, closeDialog, cancelDialog, dialogOpen, colorPopover, closePop, swatch, opts, toast, rgba } = UI;
   const LW = LightweightCharts;
   const SECONDS = { '1s': 1, '5s': 5, '15s': 15, '30s': 30 };
+  // 🌱 Overgrown Lab and 🧪 Nexus Lab as tabs of the workspace panel (open over the chart area, stay loaded when hidden)
+  const PAGES = { og: ['🌱', 'Overgrown Lab', 'overgrown'], lab: ['🧪', 'Nexus Lab', 'lab'] };
+  let pageOn = null;
   const TF_SEC = { ...SECONDS, '1m': 60, '3m': 180, '5m': 300, '15m': 900, '30m': 1800, '1h': 3600, '2h': 7200, '4h': 14400, '6h': 21600,
                    '8h': 28800, '12h': 43200, '1d': 86400, '3d': 259200, '1w': 604800, '1M': 2592000 };
   const TF_GROUPS = [['Sekundy', ['1s', '5s', '15s', '30s']], ['Minúty', ['1m', '3m', '5m', '15m', '30m']], ['Hodiny', ['1h', '2h', '4h', '6h', '8h', '12h']],
@@ -2661,6 +2664,7 @@
     studies = (S.studies || []).map(KS.normalize).filter(Boolean);
   }
   function switchWorkspace(id) {
+    if (pageOn) openPage(null);
     const cur = workspaces();
     cur.main = { symbol: S.symbol, tf: S.tf };
     if (cur.own) cur.own = snapOwn(); else S.wsShared = snapOwn();
@@ -2816,14 +2820,14 @@
       $('[data-allind]', m).onclick = () => { closeMenu(); indMenu($('#bInd').style.display === 'none' ? anchor : $('#bInd')); };
       $('[data-area]', m).onclick = () => { closeMenu(); areaLearn(); };
       $('[data-ticket]', m).onclick = () => { NEXUS.toggleTicket(); m.innerHTML = html(); bind(m); };
-      $('[data-lab]', m).onclick = () => { closeMenu(); window.open('lab', '_blank'); };
+      $('[data-lab]', m).onclick = () => { closeMenu(); openPage('lab'); };
       $$('[data-qbuy]', m).forEach(x => x.onclick = () => { closeMenu(); NEXUS.quickDialog(+x.dataset.qbuy); });
       $('[data-qlim]', m).onclick = () => { closeMenu(); NEXUS.limitByMouse(null, ((S.nexus || {}).qt || {}).lots || 0.1); };
       $('[data-qbar]', m).onclick = () => { NEXUS.setFlag('quick', !(NEXUS.flags() || {}).quick); m.innerHTML = html(); bind(m); };
       $('[data-feat]', m).onclick = () => { closeMenu(); featuresDialog(); };
       $('[data-alerts]', m).onclick = () => { closeMenu(); alertsDialog(); };
       $('[data-script]', m).onclick = () => { closeMenu(); NEXUS.openApp('script'); };
-      $('[data-og]', m).onclick = () => { closeMenu(); window.open('overgrown', '_blank'); };
+      $('[data-og]', m).onclick = () => { closeMenu(); openPage('og'); };
     };
     openMenu(anchor, html(), bind, { side: side(), cls: 'tools-menu' });
   }
@@ -3262,7 +3266,7 @@
         if (id === 'saves') return NEXUS.openApp('saves');
         if (id === 'area') return areaLearn();
         if (id === 'alerts') return alertsDialog();
-        if (id === 'og') return window.open('overgrown', '_blank');
+        if (id === 'og') return openPage('og');
         if (id === 'script') return NEXUS.openApp('script');
         if (id === 'ticket') return NEXUS.toggleTicket();
         if (id === 'styles') return stylesDialog();
@@ -3296,6 +3300,28 @@
     switchWorkspace(id);
     if (clean) toast('◻ Čistý graf: bez indikátorov, čiar a stratégií – čo tu zapneš, platí len pre túto plochu');
   }
+  function openPage(k) {
+    if (EMBED) { try { return parent.NX_page(k); } catch (e) { return window.open(PAGES[k][2], '_blank'); } }
+    pageOn = PAGES[k] ? k : null;
+    let v = $('#pageView');
+    if (pageOn && !v) { v = document.createElement('div'); v.id = 'pageView'; v.className = 'no-chart'; document.body.appendChild(v); }
+    if (v) {
+      for (const [id, p] of Object.entries(PAGES)) {
+        let fr = $(`iframe[data-pg="${id}"]`, v);
+        if (id === pageOn && !fr) { fr = document.createElement('iframe'); fr.dataset.pg = id; fr.src = p[2]; fr.title = p[1]; v.appendChild(fr); }
+        if (fr) fr.hidden = id !== pageOn;
+      }
+      v.hidden = !pageOn;
+    }
+    document.body.classList.toggle('page-on', !!pageOn);
+    paintDock(); placePage();
+  }
+  window.NX_page = openPage;
+  function placePage() {
+    const v = $('#pageView'); if (!v || !pageOn) return;
+    const r = ($('#paneGrid') || $('#chartWrap')).getBoundingClientRect();
+    Object.assign(v.style, { left: r.left + 'px', top: r.top + 'px', width: r.width + 'px', height: r.height + 'px' });
+  }
   function paintDock() {
     if (EMBED) return;
     let d = $('#wsDock');
@@ -3314,24 +3340,25 @@
       d.addEventListener('pointermove', e => { if (!g) return; S.wsDock.x = e.clientX - g.x; S.wsDock.y = e.clientY - g.y; placeDock(); });
       d.addEventListener('pointerup', () => { if (g) { g = null; save(); } });
       d.addEventListener('click', e => {
-        const D = dockCfg(), w = e.target.closest('[data-dws]'); if (w) { if (w.dataset.dws !== S.wsId) switchWorkspace(w.dataset.dws); paintDock(); return; }
+        const D = dockCfg(), w = e.target.closest('[data-dws]'); if (w) { if (pageOn) openPage(null); if (w.dataset.dws !== S.wsId) switchWorkspace(w.dataset.dws); paintDock(); return; }
+        const pg = e.target.closest('[data-dpg]'); if (pg) return openPage(pg.dataset.dpg);
         if (e.target.closest('[data-dadd]')) { newWorkspace(false); paintDock(); }
         if (e.target.closest('[data-dclean]')) { newWorkspace(true); paintDock(); }
-        if (e.target.closest('[data-dlab]')) window.open('lab', '_blank');
         if (e.target.closest('[data-dcfg]')) dockMenu(e.target.closest('[data-dcfg]'));
         if (e.target.closest('[data-drot]')) { D.vertical = !D.vertical; save(); paintDock(); }
         if (e.target.closest('[data-dmin]')) { D.min = !D.min; save(); paintDock(); }
         if (e.target.closest('[data-dhide]')) { D.on = false; save(); paintDock(); toast('Prepínač plôch skrytý – zapneš ho v ▦ menu'); }
       });
       d.addEventListener('contextmenu', e => { e.preventDefault(); dockMenu(d); });
+      d.addEventListener('auxclick', e => { const pg = e.target.closest('[data-dpg]'); if (pg && e.button === 1) window.open(PAGES[pg.dataset.dpg][2], '_blank'); });
     }
     workspaces();
     const T = DOCK_THEMES[D.theme] || DOCK_THEMES.blue, docked = D.mode !== 'float';
     [['--wd-bg', 1], ['--wd-acc', 2], ['--wd-on', 3], ['--wd-tx', 4]].forEach(([v, i]) => d.style.setProperty(v, T[i]));
     d.style.zoom = D.size / 100;
     d.className = `no-chart dock-${D.mode}${!docked && D.vertical ? ' vert' : ''}${D.min ? ' mini' : ''}${dockNames(D) ? '' : ' nonames'}${D.theme === 'light' ? ' light' : ''}`;
-    d.innerHTML = `${docked ? '' : '<span class="ws-grip" data-grip title="Potiahni a presuň · pravý klik = nastavenia">⋮⋮</span>'}${S.workspaces.map((w, i) => `<button data-dws="${w.id}" class="${w.id === S.wsId ? 'on' : ''}" title="${esc(w.name)} · Alt+${i + 1}${w.own ? ' · vlastné nastavenia' : ''}"><b>${i + 1}</b><span>${w.own ? '◻ ' : ''}${esc(w.name)}</span><small>${w.layout.n}▦</small></button>`).join('')}
-      <button data-dadd title="Nová plocha">＋</button><button data-dclean title="Čistý graf – nová plocha bez indikátorov, čiar a stratégií (prázdne plátno)">◻</button><button data-dlab title="Nexus Lab – druhý grafový systém (nová karta)">🧪</button>
+    d.innerHTML = `${docked ? '' : '<span class="ws-grip" data-grip title="Potiahni a presuň · pravý klik = nastavenia">⋮⋮</span>'}${S.workspaces.map((w, i) => `<button data-dws="${w.id}" class="${w.id === S.wsId && !pageOn ? 'on' : ''}" title="${esc(w.name)} · Alt+${i + 1}${w.own ? ' · vlastné nastavenia' : ''}"><b>${i + 1}</b><span>${w.own ? '◻ ' : ''}${esc(w.name)}</span><small>${w.layout.n}▦</small></button>`).join('')}
+      <button data-dadd title="Nová plocha">＋</button><button data-dclean title="Čistý graf – nová plocha bez indikátorov, čiar a stratégií (prázdne plátno)">◻</button>${Object.entries(PAGES).map(([k, p]) => `<button data-dpg="${k}" class="${pageOn === k ? 'on' : ''}" title="${p[1]} – otvorí sa tu ako karta · stredné tlačidlo myši = nová karta prehliadača"><b>${p[0]}</b><span>${p[1]}</span></button>`).join('')}
       <button data-dcfg title="Veľkosť, farby, umiestnenie (karty hore / v bočnom paneli)">⚙</button>${docked ? '' : `<button data-drot title="Otočiť (vodorovne / zvislo)">⤾</button><button data-dmin title="Zbaliť / rozbaliť">${D.min ? '▸' : '–'}</button>`}<button data-dhide title="Skryť prepínač plôch (vrátiš ho v ▦ menu)">✕</button>${D.mode === 'side' ? '<span class="ws-rz" data-dwrz title="Potiahni = šírka panela (text ostáva rovnaký) · dvojklik = automatická šírka"></span>' : ''}`;
     placeDock();
   }
@@ -3354,7 +3381,7 @@
     const w = d.offsetWidth * z, h = d.offsetHeight * z, x = D.x ?? innerWidth / 2 + 60, y = D.y ?? innerHeight - h - 14;
     d.style.left = Math.max(0, Math.min(innerWidth - w, x)) / z + 'px'; d.style.top = Math.max(0, Math.min(innerHeight - h, y)) / z + 'px';
   }
-  window.addEventListener('resize', () => placeDock());
+  window.addEventListener('resize', () => { placeDock(); placePage(); });
   function dockMenu(anchor) {
     const D = dockCfg();
     const html = () => `<div class="sec">Umiestnenie prepínača plôch</div>
@@ -3365,6 +3392,7 @@
       <div class="it" data-dswa><span class="ic">↺</span><span class="grow">Automatická šírka <small class="muted">· alebo potiahni pravý okraj panela</small></span></div>` : ''}
       <div class="sec">Farebná téma</div><div class="dock-themes">${Object.entries(DOCK_THEMES).map(([k, t]) => `<span data-dt="${k}" class="${D.theme === k ? 'on' : ''}" style="background:${t[1]};border-color:${t[2]};color:${t[4]}" title="${t[0]}"><i style="background:${t[2]}"></i>${t[0]}</span>`).join('')}</div>
       <div class="sep"></div><div class="it" data-dnew><span class="ic">＋</span><span class="grow">Nová plocha</span></div><div class="it" data-dnclean><span class="ic">◻</span><span class="grow">Čistý graf (prázdne plátno, vlastné nastavenia)</span></div>
+      <div class="it" data-dnog><span class="ic">🌱</span><span class="grow">Overgrown Lab (všetky timeframy naraz)</span></div>
       <div class="it" data-dnlab><span class="ic">🧪</span><span class="grow">Nexus Lab (druhý grafový systém)</span></div>`;
     const bind = m => {
       $$('[data-dm]', m).forEach(x => x.onclick = () => { D.mode = x.dataset.dm; save(); paintDock(); m.innerHTML = html(); bind(m); });
@@ -3375,7 +3403,8 @@
       $$('[data-dt]', m).forEach(x => x.onclick = () => { D.theme = x.dataset.dt; save(); paintDock(); m.innerHTML = html(); bind(m); });
       $('[data-dnew]', m).onclick = () => { closeMenu(); newWorkspace(false); };
       $('[data-dnclean]', m).onclick = () => { closeMenu(); newWorkspace(true); };
-      $('[data-dnlab]', m).onclick = () => { closeMenu(); window.open('lab', '_blank'); };
+      $('[data-dnlab]', m).onclick = () => { closeMenu(); openPage('lab'); };
+      $('[data-dnog]', m).onclick = () => { closeMenu(); openPage('og'); };
     };
     openMenu(anchor, html(), bind, { cls: 'dock-menu' });
   }

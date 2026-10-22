@@ -105,9 +105,116 @@ def _bucket(rows, sec: int) -> list[list]:
     return [out[k] for k in sorted(out)]
 
 
+# ---- second bars of futures (gold, silver): Binance has no 1s klines there and 15 pages of trades are only ~25 minutes
+# of gold, so 30s showed ~50 bars. A background thread keeps 1s bars of the last REC_KEEP seconds from the trade stream
+# (new trades every few seconds, older ones slowly back to REC_BACK), saved in data/ so a restart keeps them.
+REC_KEEP, REC_BACK = 86400, 12 * 3600
+REC_DIR = ROOT / "data"
+_rec: dict = {}          # ticker -> {"bars": {t_s: [t_ms, o, h, l, c, v, buy]}, "last": newest trade id, "first": oldest trade id}
+_rec_lock = threading.Lock()
+
+
+def _rec_add(R: dict, trades: list, older: bool = False) -> None:
+    """Trades (oldest first) into 1s bars; `older` = trades from before everything recorded so far."""
+    B = R["bars"]
+    for t in (reversed(trades) if older else trades):
+        p, q = float(t["p"]), float(t["q"])
+        k, bv = int(t["T"]) // 1000, (0.0 if t["m"] else q)
+        b = B.get(k)
+        if b is None:
+            B[k] = [k * 1000, p, p, p, p, q, bv]
+        else:
+            b[2], b[3], b[5], b[6] = max(b[2], p), min(b[3], p), b[5] + q, b[6] + bv
+            b[1 if older else 4] = p
+
+
+def _rec_file(ticker: str) -> Path:
+    return REC_DIR / f"web_sec_{ticker}.json.gz"
+
+
+def _rec_loop(ticker: str) -> None:
+    url = f"{API['futures'][0]}/aggTrades"
+    R = {"bars": {}, "last": None, "first": None}
+    try:
+        d = json.loads(gzip.decompress(_rec_file(ticker).read_bytes()))
+        if time.time() - d["saved"] < 600:          # a short restart: carry on from the last trade id
+            R = {"bars": {int(k): v for k, v in d["bars"].items()}, "last": d["last"], "first": d["first"]}
+    except Exception:
+        pass
+    with _rec_lock:
+        _rec[ticker] = R
+    B, saved = R["bars"], time.time()
+    while True:
+        try:
+            if R["last"] is None:
+                tr = _get(url, {"symbol": ticker, "limit": 1000})
+                with _rec_lock:
+                    _rec_add(R, tr)
+                    if tr:
+                        R["last"], R["first"] = tr[-1]["a"], tr[0]["a"]
+            else:
+                for _ in range(20):                 # catch up with the newest trades
+                    tr = _get(url, {"symbol": ticker, "fromId": R["last"] + 1, "limit": 1000})
+                    with _rec_lock:
+                        _rec_add(R, tr)
+                        if tr:
+                            R["last"] = tr[-1]["a"]
+                    if len(tr) < 1000:
+                        break
+            # one older page per round until REC_BACK is covered
+            if R["first"] and B and min(B) > time.time() - REC_BACK:
+                tr = [t for t in _get(url, {"symbol": ticker, "fromId": max(0, R["first"] - 1000), "limit": 1000}) if t["a"] < R["first"]]
+                with _rec_lock:
+                    _rec_add(R, tr, older=True)
+                    if tr:
+                        R["first"] = tr[0]["a"]
+            cut = int(time.time()) - REC_KEEP
+            if B and min(B) < cut - 600:
+                with _rec_lock:
+                    for k in [k for k in B if k < cut]:
+                        del B[k]
+            if time.time() - saved > 300:
+                with _rec_lock:
+                    raw = json.dumps({"saved": time.time(), "last": R["last"], "first": R["first"], "bars": B}).encode()
+                tmp = _rec_file(ticker).with_suffix(".tmp")
+                tmp.write_bytes(gzip.compress(raw, 5))
+                tmp.replace(_rec_file(ticker))
+                saved = time.time()
+        except Exception:
+            time.sleep(20)
+        time.sleep(3)
+
+
+def _rec_rows(ticker: str, from_ms: int, end_ms: int | None) -> tuple[list, int | None]:
+    """Recorded 1s bars in [from_ms, end_ms] and the oldest recorded time (ms); None when nothing is recorded yet."""
+    with _rec_lock:
+        B = (_rec.get(ticker) or {}).get("bars")
+        if not B:
+            return [], None
+        lo, hi = from_ms // 1000, (end_ms // 1000 if end_ms else 1 << 40)
+        return [list(B[k]) for k in sorted(k for k in B if lo <= k <= hi)], min(B) * 1000
+
+
+@app.on_event("startup")
+def _rec_start() -> None:
+    for sym in SYMBOLS.values():
+        if sym["market"] == "futures" and sym["ticker"] not in _rec:
+            threading.Thread(target=_rec_loop, args=(sym["ticker"],), daemon=True).start()
+
+
 def _seconds(sym: dict, sec: int, end_ms: int | None, limit: int) -> list[list]:
     if sym["market"] == "spot":       # spot has 1s klines
         return _bucket(_klines(sym, "1s", end_ms, min(limit * sec, MAX_REQUESTS * 1000)), sec)
+    rec, rec_from = _rec_rows(sym["ticker"], (end_ms or int(time.time() * 1000)) - limit * sec * 1000, end_ms)
+    if rec_from is not None and (end_ms is None or end_ms > rec_from + sec * 1000):
+        # the recording covers this window (or its newest part); scrolling back past it falls back to the trades
+        n = len(_bucket(rec, sec))
+        older = _seconds_trades(sym, sec, rec_from - 1, limit - n) if end_ms is not None and n < limit * 0.9 else []
+        return _bucket([r for r in older if r[0] < rec_from] + rec, sec)
+    return _bucket(_seconds_trades(sym, sec, end_ms, limit), sec)
+
+
+def _seconds_trades(sym: dict, sec: int, end_ms: int | None, limit: int) -> list:
     # Futures: build the bars from aggregated trades, paging backwards by trade id from the newest one.
     base, _ = API["futures"]
     url, ticker = f"{base}/aggTrades", sym["ticker"]
@@ -136,7 +243,7 @@ def _seconds(sym: dict, sec: int, end_ms: int | None, limit: int) -> list[list]:
     # "m" = the buyer was the maker, i.e. an aggressive seller hit the bid
     rows = [(int(t["T"]), float(t["p"]), float(t["p"]), float(t["p"]), float(t["p"]), float(t["q"]), 0.0 if t["m"] else float(t["q"]))
             for t in trades if int(t["T"]) >= want_from]
-    return _bucket(rows, sec)
+    return rows
 
 
 def _market_hours(sym: dict, tf: str, rows: list[list]) -> list[list]:

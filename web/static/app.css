@@ -1164,3 +1164,11 @@ body.light #tfBadge, .light #tfBadge { background: rgba(255,255,255,.7); color: 
 #wsDock .ws-rz { position: absolute; top: 0; right: 0; bottom: 0; width: 7px; cursor: ew-resize; z-index: 2; } #wsDock .ws-rz:hover, #wsDock.rz .ws-rz { background: var(--wd-acc, #2962ff); opacity: .6; }
 #wsDock.dock-side.nonames button[data-dws] { justify-content: center; }
 #wsDock.dock-side > button:not([data-dws]) { justify-content: center; }
+
+/* 🌱 / 🧪 lab tabs in the workspace panel, the page opens over the chart area */
+#pageView { position: fixed; z-index: 28; background: var(--bg, #0b0e14); } #pageView[hidden], #pageView iframe[hidden] { display: none; }
+#pageView iframe { display: block; width: 100%; height: 100%; border: 0; }
+#wsDock button[data-dpg="og"] { margin-left: 6px; } #wsDock.dock-side button[data-dpg="og"], #wsDock.vert button[data-dpg="og"] { margin-left: 0; margin-top: 6px; }
+#wsDock.dock-side > button[data-dpg] { justify-content: flex-start; text-align: left; } #wsDock.dock-side.nonames > button[data-dpg] { justify-content: center; }
+#wsDock.dock-side button[data-dpg] span { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 140px; }
+#wsDock button[data-dpg] b { background: transparent; }

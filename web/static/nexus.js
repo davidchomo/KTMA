@@ -1136,7 +1136,7 @@ api.log(text)  api.notify(text)  api.every(ms, async fn)  api.state (pamäť skr
     og: ['Overgrown Lab', 'linear-gradient(135deg,#a3e635,#166534)', 'Tretí grafový systém: trend a čiary na všetkých timeframoch, kde sa začína pohyb (otvorí sa v novej karte)'],
     saves: ['Uloženia', 'linear-gradient(135deg,#818cf8,#312e81)', 'Uložené rozloženia grafov – každé s vlastným názvom, dátumom a časom (Ctrl+S)'],
   };
-  const ACTIONS = { og: () => window.open('overgrown', '_blank'), lab: () => window.open('lab', '_blank'), chat: () => ctx.openChat(), lib: () => { close(); LIB.open(); }, ticket: () => { const P = PL(); P.open = !P.open; ctx.save(); paintTicket(); ctx.onTrades(); ctx.toast(P.open ? '💹 Obchodný panel zobrazený v grafe' : 'Obchodný panel skrytý'); } };
+  const ACTIONS = { og: () => window.NX_page ? (close(), window.NX_page('og')) : window.open('overgrown', '_blank'), lab: () => window.NX_page ? (close(), window.NX_page('lab')) : window.open('lab', '_blank'), chat: () => ctx.openChat(), lib: () => { close(); LIB.open(); }, ticket: () => { const P = PL(); P.open = !P.open; ctx.save(); paintTicket(); ctx.onTrades(); ctx.toast(P.open ? '💹 Obchodný panel zobrazený v grafe' : 'Obchodný panel skrytý'); } };
   const DK = () => {
     const N = S().nexus, d = N.desk = N.desk || {};
     d.icons = d.icons || {}; d.wins = d.wins || {}; d.z = d.z || 10;
