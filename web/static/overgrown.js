@@ -2,24 +2,28 @@
 // gets its trend and a BUY / SELL verdict, and the moves are listed: where buyers or sellers stepped in (a break of a trendline, level,
 // range or of the structure), how many pips and minutes the move ran, on how much volume, how one-sided the trades were and how sharp.
 // Own workspaces (tabs, 1–10 charts each, any timeframe per chart), live prices from the Binance trade stream, indicators for all
-// charts of a workspace or for one chart.
+// charts of a workspace or for one chart. 🎯 Strategy (strategy.js): RSI / MACD divergences, similar situations from the past on every
+// timeframe, the trendlines of the higher timeframes on every chart and a scalp plan – trend from 30m+, setup from 1m–15m, entry when the
+// second charts' momentum agrees.
 (() => {
   const { $, $$, esc, LS, toast, openMenu, closeMenu } = UI;
   const LW = LightweightCharts, ALL_TFS = ['5m', '15m', '1h'];
-  const TF_SEC = { '1m': 60, '3m': 180, '5m': 300, '15m': 900, '30m': 1800, '1h': 3600, '2h': 7200, '4h': 14400, '6h': 21600, '12h': 43200, '1d': 86400, '1w': 604800 };
+  const TF_SEC = { '1s': 1, '5s': 5, '15s': 15, '30s': 30, '1m': 60, '3m': 180, '5m': 300, '15m': 900, '30m': 1800, '1h': 3600, '2h': 7200, '4h': 14400, '6h': 21600, '12h': 43200, '1d': 86400, '1w': 604800 };
   const TF_LIST = Object.keys(TF_SEC), DEF_TFS = ['1m', '5m', '15m', '1h', '4h', '1d', '3m', '30m', '2h', '6h'];
-  const W = { '1m': 0.6, '3m': 0.8, '5m': 1, '15m': 1.3, '30m': 1.45, '1h': 1.6, '2h': 1.8, '4h': 2, '6h': 2.05, '12h': 2.1, '1d': 2.2, '1w': 2.4 };
+  const W = { '1s': 0.3, '5s': 0.35, '15s': 0.4, '30s': 0.5, '1m': 0.6, '3m': 0.8, '5m': 1, '15m': 1.3, '30m': 1.45, '1h': 1.6, '2h': 1.8, '4h': 2, '6h': 2.05, '12h': 2.1, '1d': 2.2, '1w': 2.4 };
   const S = Object.assign({ symbol: 'XAUUSD', minAtr: 3, minPips: 0, auto: true, live: true, indAllWs: false, ws: null, wsId: null }, LS.get('nxog', {}));
-  S.show = { lines: true, levels: false, marks: true, vol: true, ...(S.show || {}) };
+  S.show = { lines: true, levels: false, marks: true, vol: true, div: true, match: true, htf: true, plan: true, ...(S.show || {}) };
   if (!S.lv0) { S.lv0 = 1; S.show.levels = false; }      // the orange level lines are off (⚙ Grafy can bring them back)
   if (!Array.isArray(S.ws) || !S.ws.length) S.ws = [{ id: 'w1', name: 'Všetky TF', symbol: S.symbol, tfs: DEF_TFS.slice(0, 6), ind: [], cind: {} }];
+  const SCALP_TFS = ['1s', '15s', '1m', '5m', '15m', '1h', '4h', '30s'];
+  if (!S.sg0) { S.sg0 = 1; S.ws.push({ id: 'wsc', name: '🎯 Scalp 1s–4h', symbol: S.ws[0].symbol, tfs: SCALP_TFS.slice(), ind: [], cind: {} }); S.wsId = 'wsc'; }
   const save = () => LS.set('nxog', S);
   const WS = () => S.ws.find(w => w.id === S.wsId) || S.ws[(S.wsId = S.ws[0].id, 0)];
   const sym = () => WS().symbol;
   const tz = (LS.get('nx2', {}) || {}).tz || 'Europe/Bratislava';
   const fmtT = new Intl.DateTimeFormat('sk-SK', { timeZone: tz, day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
   const when = t => fmtT.format(new Date(t * 1000));
-  let SYM = {}, META = { symbols: [] }, data = {}, charts = {}, autoT = null, seen = new Set(), scanTok = 0;
+  let SYM = {}, META = { symbols: [] }, data = {}, charts = {}, autoT = null, seen = new Set(), scanTok = 0, plan = null, planKey = '', planLK = '';
   const status = t => { $('#ogStatus').textContent = t; };
   const digits = s => (SYM[s] ? SYM[s].digits : 2) ?? 2;
   const fmtP = (v, s = sym()) => v == null ? '–' : v.toLocaleString('sk-SK', { minimumFractionDigits: digits(s), maximumFractionDigits: digits(s) });
@@ -36,9 +40,10 @@
     if (!bars.length) throw new Error('žiadne dáta');
     // too short for lines and moves (gold has only ~50 weekly bars on Binance): just the candles
     if (closed.length < 120) return { D: MV.toD(closed), R: null, mv: { moves: [], starting: [] }, bars, off, thin: true };
-    const D = MV.toD(closed), R = TL.run(D, { k: TL.zigK(tf, TF_SEC[tf]) });
+    const D = MV.toD(closed), k = TL.zigK(tf, TF_SEC[tf]), R = TL.run(D, { k });
     const mv = MV.moves(D, { tf, tfSec: TF_SEC[tf], digits: digits(symbol), minAtr: S.minAtr, minPips: S.minPips, R });
-    return { D, R, mv, bars, off, tr: MV.trend(D, R), vd: MV.verdict(D, tf, { tfSec: TF_SEC[tf] }) };
+    const O = SG.osc(D), dv = SG.divergences(D, O, Math.max(1, 0.7 * k));
+    return { D, R, mv, bars, off, tr: MV.trend(D, R), vd: MV.verdict(D, tf, { tfSec: TF_SEC[tf] }), O, Z: SG.prep(D, O), dv, mom: SG.momentum(D, O) };
   }
 
   // ---- workspaces (tabs) ---------------------------------------------------------------------------------------------
@@ -52,7 +57,9 @@
   }
   function newWsMenu(anchor) {
     openMenu(anchor, `<div class="sec">Nová plocha · počet grafov</div><div class="og-nums">${[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(n => `<span data-n="${n}">${n}</span>`).join('')}</div>
-      <div class="sec">Timeframy</div><div class="it" style="cursor:default"><small class="muted">${DEF_TFS.join(' · ')} – v poradí; každý graf zmeníš v jeho hlavičke</small></div>`, m => {
+      <div class="sec">Timeframy</div><div class="it" style="cursor:default"><small class="muted">${DEF_TFS.join(' · ')} – v poradí; každý graf zmeníš v jeho hlavičke</small></div>
+      <div class="it" data-scalp><span class="ic">🎯</span><span class="grow">Scalp plocha: ${SCALP_TFS.join(' · ')}</span></div>`, m => {
+      $('[data-scalp]', m).onclick = () => { const id = 'w' + Date.now().toString(36); S.ws.push({ id, name: '🎯 Scalp', symbol: sym(), tfs: SCALP_TFS.slice(), ind: S.indAllWs ? clone(WS().ind) : [], cind: {} }); closeMenu(); switchWs(id); };
       $$('[data-n]', m).forEach(x => x.onclick = () => {
         const n = +x.dataset.n, id = 'w' + Date.now().toString(36);
         S.ws.push({ id, name: `Plocha ${S.ws.length + 1}`, symbol: sym(), tfs: DEF_TFS.slice(0, n), ind: S.indAllWs ? clone(WS().ind) : [], cind: {} });
@@ -115,16 +122,37 @@
         lineStyle: l.ended == null ? 0 : 2, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false, autoscaleInfoProvider: () => null });
       s.setData([{ time: D.t[l.i1], value: R.value(l, l.i1) }, { time: D.t[end], value: R.value(l, end) }]);
     }
+    if (S.show.htf && R) htfLines(ch, tf, bars);
+    if (S.show.div && x.dv) for (const d of x.dv.list.filter(d => d.idx > n - 300).slice(-3)) {
+      const s = ch.addSeries(LW.LineSeries, { color: d.dir > 0 ? 'rgba(0,229,255,.9)' : 'rgba(255,64,129,.9)', lineWidth: d.kind === 'reg' ? 2 : 1, lineStyle: d.kind === 'reg' ? 0 : 1,
+        priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false, autoscaleInfoProvider: () => null });
+      s.setData([{ time: d.t0, value: d.p0 }, { time: d.t, value: d.price }]);
+    }
+    // the current pattern (gold) and the places in this chart's history that looked like a pattern now (violet)
+    const ms = S.show.match ? matchesOn(tf) : [];
+    if (S.show.match && x.match && x.match.n) {
+      const s = ch.addSeries(LW.LineSeries, { color: 'rgba(255,214,0,.75)', lineWidth: 3, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false, autoscaleInfoProvider: () => null });
+      s.setData(bars.slice(n - SG.L, n).map(b => ({ time: b.time, value: b.close })));
+    }
+    for (const m of ms) {
+      const s = ch.addSeries(LW.LineSeries, { color: 'rgba(179,136,255,.85)', lineWidth: 3, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false, autoscaleInfoProvider: () => null });
+      s.setData(D.t.slice(m.j - SG.L + 1, m.j + 1).map((t, k) => ({ time: t, value: D.c[m.j - SG.L + 1 + k] })));
+    }
     // levels with 3+ touches still alive
     if (S.show.levels && R) for (const lv of R.levels.filter(v => v.ended == null && v.touches >= 3).slice(-6)) main.createPriceLine({ price: lv.price, color: 'rgba(255,183,77,.6)', lineWidth: 1, lineStyle: 2, axisLabelVisible: false, title: `${lv.touches}×` });
+    const marks = [];
+    if (S.show.div && x.dv) for (const d of x.dv.list.filter(d => d.idx > n - 300).slice(-3)) marks.push({ time: d.t, position: d.dir > 0 ? 'belowBar' : 'aboveBar', shape: d.dir > 0 ? 'arrowUp' : 'arrowDown',
+      color: d.dir > 0 ? '#00e5ff' : '#ff4081', text: `${d.kind === 'reg' ? 'DIV' : 'skr.DIV'} ${d.by.map(b => b[0]).join('+')}`, size: d.kind === 'reg' ? 1.5 : 1 });
+    for (const m of ms) marks.push({ time: m.t, position: 'aboveBar', shape: 'square', color: '#b388ff', text: `≈${m.sim}%${m.of !== tf ? ' ' + m.of : ''}→${m.out > 0 ? '▲' : '▼'}${Math.abs(m.out).toFixed(1)}`, size: 1 });
     if (S.show.marks) {
-      const marks = mv.moves.filter(m => m.i > n - 400).map(m => ({ time: m.t, position: m.dir > 0 ? 'belowBar' : 'aboveBar', shape: m.dir > 0 ? 'arrowUp' : 'arrowDown',
-        color: m.dir > 0 ? '#00e676' : '#ff5252', text: `${m.pips} p${'★'.repeat(Math.min(3, m.stars))}`, size: 1 + Math.min(1.5, m.stars / 3) }));
+      marks.push(...mv.moves.filter(m => m.i > n - 400).map(m => ({ time: m.t, position: m.dir > 0 ? 'belowBar' : 'aboveBar', shape: m.dir > 0 ? 'arrowUp' : 'arrowDown',
+        color: m.dir > 0 ? '#00e676' : '#ff5252', text: `${m.pips} p${'★'.repeat(Math.min(3, m.stars))}`, size: 1 + Math.min(1.5, m.stars / 3) })));
       for (const m of mv.starting) marks.push({ time: m.t, position: m.dir > 0 ? 'belowBar' : 'aboveBar', shape: 'circle', color: '#ffd600', text: 'ZAČÍNA', size: 2 });
-      marks.sort((a, b) => a.time - b.time);
-      LW.createSeriesMarkers(main, marks);
     }
-    const c = charts[i] = { ch, main, vol, tf, n: bars.length, ind: [] };
+    marks.sort((a, b) => a.time - b.time);
+    if (marks.length) LW.createSeriesMarkers(main, marks);
+    const c = charts[i] = { ch, main, vol, tf, n: bars.length, ind: [], pl: [] };
+    planLines(c);
     indicators(c, [...w.ind, ...cind], bars);
     if (keep) ch.timeScale().setVisibleLogicalRange(keep); else ch.timeScale().setVisibleLogicalRange({ from: bars.length - 160, to: bars.length + 3 });
     x.chart = ch;
@@ -134,6 +162,30 @@
     B('tr', badge(x.tr.dir, x.tr.dir > 0 ? 'trend ▲' : x.tr.dir < 0 ? 'trend ▼' : 'trend –'));
     B('vd', badge(x.vd.dir, `${x.vd.dir > 0 ? '🐂 BUY' : x.vd.dir < 0 ? '🐻 SELL' : 'NEUTRÁL'} ${Math.round(Math.abs(x.vd.score) * 100)} %`));
     B('st', mv.starting.length ? badge(mv.starting[0].dir, `⚡ začína ${mv.starting[0].dir > 0 ? '▲' : '▼'}`) : '');
+  }
+  // active trendlines of the higher timeframes of this workspace, carried over in time (label = their timeframe)
+  function htfLines(ch, tf, bars) {
+    const t0 = bars[Math.max(0, bars.length - 400)].time, tN = bars[bars.length - 1].time;
+    for (const [htf, y] of Object.entries(data)) {
+      if (!y || !y.R || TF_SEC[htf] <= TF_SEC[tf] || !WS().tfs.includes(htf)) continue;
+      const Dy = y.D, ny = Dy.t.length;
+      for (const l of y.R.lines.filter(l => l.ended == null).sort((a, b) => b.score - a.score).slice(0, 2)) {
+        const ta = Dy.t[l.i1], tb = Dy.t[ny - 1], va = y.R.value(l, l.i1), vb = y.R.value(l, ny - 1); if (tb <= ta) continue;
+        const at = t => va + (vb - va) * (t - ta) / (tb - ta), from = bars.find(b => b.time >= Math.max(ta, t0)); if (!from || from.time >= tN) continue;
+        const s = ch.addSeries(LW.LineSeries, { color: l.kind === 'sup' ? 'rgba(129,199,132,.8)' : 'rgba(229,115,115,.8)', lineWidth: 1, lineStyle: 3, title: htf,
+          priceLineVisible: false, lastValueVisible: true, crosshairMarkerVisible: false, autoscaleInfoProvider: () => null });
+        s.setData([{ time: from.time, value: at(from.time) }, { time: tN, value: at(tN) }]);
+      }
+    }
+  }
+  // past places in this timeframe's history that looked like the current pattern of some timeframe
+  const matchesOn = tf => Object.values(data).flatMap(y => (y && y.match ? y.match.top : [])).filter(m => m.tf === tf && m.j > (data[tf].D.t.length - 400)).sort((a, b) => b.sim - a.sim).slice(0, 3);
+  // the plan's entry / stop / targets on the charts under 30m
+  function planLines(c) {
+    c.pl.forEach(p => { try { c.main.removePriceLine(p); } catch (e) {} }); c.pl = [];
+    if (!S.show.plan || !plan || !plan.lean || plan.sl == null || TF_SEC[c.tf] >= 1800) return;
+    const L = (price, color, title, st = 2) => price != null && c.pl.push(c.main.createPriceLine({ price, color, lineWidth: 1, lineStyle: st, axisLabelVisible: true, title }));
+    L(plan.entry, plan.go ? '#e0e0e0' : 'rgba(224,224,224,.5)', plan.go ? 'vstup' : 'príprava', 0); L(plan.sl, '#ff5252', 'SL'); L(plan.tp1, '#00e676', 'TP1'); L(plan.tp2, '#00e676', 'TP2');
   }
   const volBar = b => ({ time: b.time, value: b.volume, color: b.close >= b.open ? 'rgba(38,166,154,.35)' : 'rgba(239,83,80,.35)' });
   const badge = (d, t) => `<span class="og-bd ${d > 0 ? 'b' : d < 0 ? 's' : 'n'}">${t}</span>`;
@@ -214,7 +266,7 @@
   function viewMenu(anchor) {
     const w = WS();
     const html = () => `<div class="sec">Na všetkých grafoch</div>
-      ${[['lines', 'Trendové čiary'], ['levels', 'Úrovne (3+ dotyky)'], ['marks', 'Šípky pohybov a ZAČÍNA'], ['vol', 'Objem']].map(([k, n]) => `<label class="it"><input type="checkbox" data-sh="${k}" ${S.show[k] ? 'checked' : ''}><span class="grow">${n}</span></label>`).join('')}
+      ${[['lines', 'Trendové čiary'], ['htf', 'Čiary vyšších timeframov (bodkované)'], ['levels', 'Úrovne (3+ dotyky)'], ['marks', 'Šípky pohybov a ZAČÍNA'], ['div', 'Divergencie RSI / MACD'], ['match', 'Podobné situácie z minulosti (≈)'], ['plan', 'Plán: vstup, SL, TP'], ['vol', 'Objem']].map(([k, n]) => `<label class="it"><input type="checkbox" data-sh="${k}" ${S.show[k] ? 'checked' : ''}><span class="grow">${n}</span></label>`).join('')}
       <label class="it"><input type="checkbox" data-live ${S.live ? 'checked' : ''}><span class="grow">Živá cena (Binance, každý obchod)</span></label>
       <div class="sec">Počet grafov na ploche „${esc(w.name)}“</div><div class="og-nums">${[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(n => `<span data-n="${n}" class="${w.tfs.length === n ? 'on' : ''}">${n}</span>`).join('')}</div>
       <div class="sec">Plochy</div>
@@ -267,8 +319,10 @@
       const b = x.bars[x.bars.length - 1];
       try { c.main.update({ time: b.time, open: b.open, high: b.high, low: b.low, close: b.close }); if (c.vol) c.vol.update(volBar(b)); } catch (e) {}
       if (ind || x.bars.length !== c.n) { c.n = x.bars.length; indData(c, x.bars); }
+      if (ind && TF_SEC[c.tf] < 60 && x.O && x.bars.length > 60) { const Dl = MV.toD(x.bars); x.momLive = SG.momentum(Dl, SG.osc(Dl)); }
       const px = $(`.og-cell[data-i="${i}"] [data-px]`); if (px) px.textContent = fmtP(b.close);
     }
+    if (ind) strategy();
   }, 400);
 
   // ---- side panel: trend on every timeframe, who is in control, moves starting now, the list of moves ---------------
@@ -291,6 +345,38 @@
     $$('[data-go]', $('#ogSide')).forEach(e => e.onclick = () => { const [tf, t] = e.dataset.go.split('|'); focus(tf, +t); });
     for (const m of now.filter(m => m.strong)) { const k = `${sym()}${m.tf}${m.t}${m.dir}`; if (!seen.has(k)) { seen.add(k); toast(`⚡ ${sym()} ${m.tf}: ${m.name} – pohyb sa začína ${m.dir > 0 ? 'nahor' : 'nadol'} (objem ${m.volX}×)`, 7000); } }
   }
+  // ---- 🎯 the plan and the similar situations -------------------------------------------------------------------
+  const rowsSG = () => wtfs().map(tf => ({ tf, sec: TF_SEC[tf], w: W[tf] || 1, x: data[tf] })).filter(r => r.x && r.x.O);
+  function strategy() {
+    const rows = rowsSG(); if (!rows.length) return;
+    const last = rows[0].x.bars[rows[0].x.bars.length - 1].close;
+    plan = SG.plan(rows, last, 10 ** -digits(sym()));
+    const el = $('#ogPlan'); if (!el || !plan) return;
+    const dg = digits(sym()), pp = v => (v == null ? '–' : fmtP(v)), pips = v => Math.round(Math.abs(v - plan.entry) * 10 ** dg).toLocaleString('sk-SK');
+    const ar = d => (d > 0 ? '▲' : d < 0 ? '▼' : '–');
+    el.innerHTML = `<h4>🎯 Stratégia <small class="muted">trend 30m+ · setup 1m–15m · vstup podľa sekúnd</small></h4>
+      <div class="og-plan ${plan.go ? (plan.dir > 0 ? 'b' : 's') : plan.lean ? 'w' : 'n'}">${esc(plan.label)}</div>
+      ${plan.sl != null ? `<div class="og-lv">${plan.go ? 'Vstup' : 'Cena'} <b>${pp(plan.entry)}</b> · SL <b class="s">${pp(plan.sl)}</b> <small>(${pips(plan.sl)} p)</small> · TP1 <b class="b">${pp(plan.tp1)}</b>${plan.tp2 != null ? ` · TP2 <b class="b">${pp(plan.tp2)}</b> <small>(${pips(plan.tp2)} p)</small>` : ''}${plan.counter ? '<br><small>Proti trendu: menšia pozícia, zober TP1 a von.</small>' : ''}</div>` : ''}
+      <ul class="og-why">${plan.why.map(w => `<li class="${w.d > 0 ? 'b' : w.d < 0 ? 's' : 'n'}">${esc(w.txt)}</li>`).join('')}</ul>
+      <div class="og-sc">skóre ${plan.total > 0 ? '+' : ''}${plan.total} · trend ${plan.bias} · setup ${plan.setup} · momentum ${plan.trig}</div>
+      <table class="og-t"><tr><th>TF</th><th>RSI</th><th>MACD</th><th>Divergencia</th><th>≈ minulosť</th><th>Moment</th></tr>${rows.map(({ tf, x }) => {
+        const n = x.D.c.length, h = x.O.hist[n - 1], h1 = x.O.hist[n - 2], dv = x.dv.list[x.dv.list.length - 1], m = x.match, mo = x.momLive || x.mom;
+        return `<tr><td><b>${tf}</b></td><td>${mo.rsi ?? Math.round(x.O.rsi[n - 1])}</td><td>${badge(Math.sign(h), (h >= 0 ? '+' : '−') + (Math.abs(h) >= Math.abs(h1) ? '↑' : '↓'))}</td>
+          <td>${dv && dv.i >= n - 30 ? badge(dv.dir, `${dv.kind === 'reg' ? 'DIV' : 'skr.'} ${ar(dv.dir)} ${n - 1 - dv.i} sv.`) : '<span class="muted">–</span>'}</td>
+          <td>${m && m.n ? badge(m.dir, `${m.ups}/${m.n} ▲ ${m.avg > 0 ? '+' : ''}${m.avg}`) : '<span class="muted">–</span>'}</td><td>${badge(mo.dir, ar(mo.dir))}</td></tr>`; }).join('')}</table>`;
+    const key = plan.go ? plan.label + sym() : '';
+    if (key && key !== planKey) toast(`🎯 ${sym()}: ${plan.label} · vstup ${pp(plan.entry)} · SL ${pp(plan.sl)} · TP1 ${pp(plan.tp1)}`, 8000);
+    const lk = plan.lean && plan.sl != null ? plan.label + '|' + Math.round(plan.sl * 10 ** dg) : '';
+    if (lk !== planLK) { planLK = lk; Object.values(charts).forEach(planLines); }
+    planKey = key;
+  }
+  function similar() {
+    const el = $('#ogSimilar'); if (!el) return;
+    const all = rowsSG().filter(r => r.x.match && r.x.match.n);
+    el.innerHTML = `<h4>≈ Podobné situácie z minulosti <small class="muted">posledných ${SG.L} sviečok · aj na iných TF · výsledok o ${SG.H} sv.</small></h4>${all.length ? all.map(({ tf, x }) => `<div class="og-simh"><b>${tf}</b> teraz → ${badge(x.match.dir, `${x.match.ups}× ▲ / ${x.match.n - x.match.ups}× ▼ · ${x.match.avg > 0 ? '+' : ''}${x.match.avg} ATR`)} <small class="muted">max ▲${x.match.up} / ▼${x.match.dn}</small></div>
+      ${x.match.top.slice(0, 4).map(m => `<div class="og-mv ${m.out > 0 ? 'b' : 's'}" data-go="${m.tf}|${m.t}"><small><b>${m.tf}</b> ${when(m.t)} · zhoda <b>${m.sim} %</b> · potom ${m.out > 0 ? '▲ +' : '▼ '}${m.out} ATR (max ▲${m.up} / ▼${m.dn})${WS().tfs.includes(m.tf) ? '' : ' · graf nie je na ploche'}</small></div>`).join('')}`).join('') : '<div class="muted">Zatiaľ nič podobné (zhoda pod 82 %).</div>'}`;
+    $$('[data-go]', el).forEach(e => e.onclick = () => { const [tf, t] = e.dataset.go.split('|'); focus(tf, +t); });
+  }
   const moveRow = (m, now) => `<div class="og-mv ${m.dir > 0 ? 'b' : 's'}" data-go="${m.tf}|${m.t}"><div><b>${m.dir > 0 ? '▲' : '▼'} ${m.tf}</b> ${esc(m.name)} <span class="og-st">${'★'.repeat(m.stars)}${'☆'.repeat(5 - m.stars)}</span>${m.live ? ' <span class="og-bd n">beží</span>' : ''}</div>
     <small>${when(m.t)} · <b>${m.pips.toLocaleString('sk-SK')} pips</b> (${m.moveAtr} ATR) za ${m.minutes >= 120 ? (m.minutes / 60).toFixed(1) + ' h' : m.minutes + ' min'} · ${m.sharp} · objem ${m.volX ?? '–'}×${m.delta !== null ? ` · ${m.delta > 0 ? 'kupujúci' : 'predávajúci'} ${Math.abs(m.delta)} %` : ''}${now && m.strong ? ' · <b>silný štart</b>' : ''}</small></div>`;
   function focus(tf, t) {
@@ -306,10 +392,14 @@
     await Promise.all(tfs.map(async tf => {
       let x; try { x = await analyse(s, tf); } catch (e) { x = { err: String(e.message || e) }; }
       if (tok !== scanTok) return;
+      if (data[tf] && data[tf].bars && x.bars) x.momLive = data[tf].momLive;
       data[tf] = x; WS().tfs.forEach((t, i) => { if (t === tf) draw(i); }); status(`skenujem… ${--left}`);
     }));
     if (tok !== scanTok) return;
-    side(); status('aktualizované ' + new Date().toLocaleTimeString('sk-SK'));
+    const pools = wtfs().filter(tf => data[tf] && data[tf].Z).map(tf => ({ ...data[tf], tf }));
+    for (const P of pools) data[P.tf].match = SG.matches(P, pools);
+    strategy(); WS().tfs.forEach((_, i) => draw(i));
+    side(); similar(); status('aktualizované ' + new Date().toLocaleTimeString('sk-SK'));
   }
   async function scanAll() {
     const out = [], syms = META.symbols.map(s => s.id), jobs = [];

@@ -44,3 +44,12 @@ body.og { background: radial-gradient(120% 90% at 0% 0%, #13211a, #0f1218 60%); 
 .og-menu .it input[data-q] { background: var(--panel2); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 4px 6px; font: inherit; }
 .og-nums { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; padding: 4px 12px 8px; }
 .og-nums span { text-align: center; padding: 5px 0; border-radius: 6px; background: rgba(255,255,255,.06); cursor: pointer; font-weight: 600; } .og-nums span:hover { background: rgba(132,204,22,.25); } .og-nums span.on { background: #84cc16; color: #0b0e14; }
+
+/* 🎯 strategy card */
+.og-plan { font-size: 15px; font-weight: 800; padding: 6px 10px; border-radius: 7px; margin: 2px 0 6px; text-align: center; }
+.og-plan.b { background: linear-gradient(90deg, #047857, #10b981); color: #fff; } .og-plan.s { background: linear-gradient(90deg, #e11d48, #9f1239); color: #fff; }
+.og-plan.w { background: rgba(255,214,0,.12); color: #ffd600; border: 1px dashed rgba(255,214,0,.5); } .og-plan.n { background: rgba(255,255,255,.06); color: var(--muted); }
+.og-lv { margin-bottom: 6px; line-height: 1.6; } .og-lv b.s { color: #ff7b86; } .og-lv b.b { color: #4cd6b5; } .og-lv small { color: var(--muted); }
+.og-why { margin: 0 0 6px; padding-left: 16px; } .og-why li { margin: 2px 0; } .og-why li.b::marker { color: #26a69a; } .og-why li.s::marker { color: #ef5350; } .og-why li.n { color: var(--muted); }
+.og-sc { color: var(--muted); font-size: 10px; margin-bottom: 4px; }
+.og-simh { margin: 8px 0 2px; }
