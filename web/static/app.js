@@ -22,7 +22,7 @@
 
   // ---- state (this browser; also synced to the server under your name) ---------------------------
   const DEF = {
-    symbol: 'XAUUSD', tf: '5m', type: 'candles', toolbar: 'top', tz: 'Europe/Bratislava', lang: 'sk', hours: true, spot: true, bars: 1000, tradeMarks: false,
+    symbol: 'XAUUSD', tf: '5m', type: 'candles', toolbar: 'top', tz: 'Europe/Bratislava', lang: 'sk', hours: true, spot: true, bars: 1000, tradeMarks: false, tfBadge: { on: true, x: null, y: null, size: 100 },
     look: { up: '#089981', down: '#f23645', borderUp: '#089981', borderDown: '#f23645', wickUp: '#089981', wickDown: '#f23645',
             body: true, borders: true, wicks: true, line: '#2962ff', lineWidth: 2, bg: '#161a25', text: '#d1d4dc', grid: true, gridColor: '#1f2433',
             scale: 0, invert: false, lastLine: true, liveW: 2, liveStyle: 0, rightOffset: 8,
@@ -675,37 +675,55 @@
     return s.type === 'volume' && s.float === true;
   }
   const clampN = (a, v, b) => Math.max(a, Math.min(b, v));
-  function placeFloat(u) { const b = u.s.box; Object.assign(u.fel.style, { left: b.x + '%', top: b.y + '%', width: b.w + '%', height: b.h + '%' }); }
+  // a floating indicator is locked to the price area: same left edge, plot width and price-scale width as the candles,
+  // so every bar sits exactly under its candle; only its top and bottom (in % of the price pane) can be changed
+  // every bar time as whitespace, so logical index i is the same bar as on the price chart (indicators start later)
+  function floatTimes(u) { if (!u.tl || !disp || u.tlN === disp.length) return; u.tl.setData(disp.map(b => ({ time: b.time }))); u.tlN = disp.length; }
+  function priceArea() {
+    const wrap = $('#chartWrap').getBoundingClientRect(), r = el.getBoundingClientRect(), P = chart.panes();
+    return { left: r.left - wrap.left, top: r.top - wrap.top + mainTop(), w: chart.timeScale().width(), h: P[mainIdx] ? P[mainIdx].getHeight() : r.height };
+  }
+  function placeFloat(u) {
+    if (!chart) return;
+    const b = u.s.box, A = priceArea();
+    Object.assign(u.fel.style, { left: A.left + 'px', width: A.w + 'px', top: A.top + A.h * b.y / 100 + 'px', height: A.h * b.h / 100 + 'px' });
+  }
+  function alignFloats(force) {
+    const fl = (units || []).filter(u => u.fc); if (!chart || !fl.length) return;
+    fl.forEach(u => { floatTimes(u); placeFloat(u); });
+  }
   function makeFloat(u, k) {
     const s = u.s, wrap = $('#chartWrap');
-    if (!s.box || s.box.v === 2 || s.box.x === undefined) s.box = { x: 1 + (k % 2) * 45, y: clampN(4, 70 - Math.floor(k / 2) * 27, 90), w: 43, h: 25 };
+    if (!s.box || s.box.v !== 2) s.box = { v: 2, h: 22, y: clampN(0, 100 - 22 * (k + 1), 78) };
     const el = u.fel = document.createElement('div'); el.className = 'fl-box no-chart';
     el.innerHTML = `<div class="fl-h"><span class="fl-n">${esc(u.def.label(s))}</span><span class="fl-v"></span><span class="grow"></span>
       <button data-fa="cfg" title="Nastavenia indikátora">⚙</button><button data-fa="dock" title="Späť do panela pod grafom">⇲</button><button data-fa="hide" title="Skryť">✕</button></div>
-      <div class="fl-c"></div><span class="fl-rz" title="Ťahaj = veľkosť okna"></span>`;
-    wrap.appendChild(el); placeFloat(u);
+      <div class="fl-c"></div><span class="fl-rz fl-rt" title="Ťahaj = horný okraj"></span><span class="fl-rz fl-rb" title="Ťahaj = spodný okraj"></span>`;
+    wrap.appendChild(el);
     const L = S.look;
     u.fc = LW.createChart($('.fl-c', el), { autoSize: true,
       layout: { background: { type: 'solid', color: 'rgba(0,0,0,0)' }, textColor: L.text, fontSize: Math.max(9, L.fontSize - 1), fontFamily: fontCss(L.font), attributionLogo: false },
       grid: { vertLines: { visible: false }, horzLines: { color: rgba(L.gridH.color, 45), visible: L.gridH.on } },
-      rightPriceScale: { borderVisible: false, scaleMargins: { top: 0.12, bottom: 0.08 } }, timeScale: { visible: false, borderVisible: false },
-      crosshair: { mode: 0, vertLine: { labelVisible: false, color: rgba(S.crosshair.color, 60) }, horzLine: { color: rgba(S.crosshair.color, 60) } },
-      handleScroll: false, handleScale: { axisPressedMouseMove: { time: false, price: true }, axisDoubleClickReset: { price: true, time: false }, mouseWheel: false, pinch: false } });
-    // move by the title, resize by the corner (in % of the chart, so it fits any window size)
+      rightPriceScale: { visible: false, scaleMargins: { top: 0.12, bottom: 0.08 } }, timeScale: { visible: false, borderVisible: false, rightOffset: 0 },
+      crosshair: { mode: 0, vertLine: { labelVisible: false, color: rgba(S.crosshair.color, 60) }, horzLine: { labelVisible: false, color: rgba(S.crosshair.color, 60) } },
+      handleScroll: false, handleScale: false });
+    u.tl = u.fc.addSeries(LW.LineSeries, { lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false }); u.tlN = 0; floatTimes(u);
+    // top / bottom edge = height (in % of the price pane, so it fits any window size); the width always follows the price
     const drag = (handle, fn) => {
       let d = null;
-      handle.addEventListener('pointerdown', e => { if (e.button !== 0 || e.target.closest('button')) return; d = { x: e.clientX, y: e.clientY, b: { ...s.box }, W: wrap.getBoundingClientRect() }; handle.setPointerCapture(e.pointerId); e.preventDefault(); e.stopPropagation(); el.classList.add('drag'); });
-      handle.addEventListener('pointermove', e => { if (!d) return; fn(d, 100 * (e.clientX - d.x) / d.W.width, 100 * (e.clientY - d.y) / d.W.height); placeFloat(u); });
+      handle.addEventListener('pointerdown', e => { if (e.button !== 0) return; d = { y: e.clientY, b: { ...s.box }, H: priceArea().h }; handle.setPointerCapture(e.pointerId); e.preventDefault(); e.stopPropagation(); el.classList.add('drag'); });
+      handle.addEventListener('pointermove', e => { if (!d) return; fn(d, 100 * (e.clientY - d.y) / d.H); placeFloat(u); });
       handle.addEventListener('pointerup', () => { if (d) { d = null; el.classList.remove('drag'); save(); } });
     };
-    drag($('.fl-h', el), (d, dx, dy) => { s.box.x = clampN(0, d.b.x + dx, 100 - s.box.w); s.box.y = clampN(0, d.b.y + dy, 100 - 5); });
-    drag($('.fl-rz', el), (d, dx, dy) => { s.box.w = clampN(12, d.b.w + dx, 100 - s.box.x); s.box.h = clampN(8, d.b.h + dy, 100 - s.box.y); });
+    drag($('.fl-rt', el), (d, dy) => { const bot = d.b.y + d.b.h; s.box.y = clampN(0, d.b.y + dy, bot - 5); s.box.h = bot - s.box.y; });
+    drag($('.fl-rb', el), (d, dy) => { s.box.h = clampN(5, d.b.h + dy, 100 - s.box.y); });
     el.addEventListener('click', e => { const a = e.target.closest('[data-fa]'); if (!a) return;
       if (a.dataset.fa === 'cfg') studySettings(s); else if (a.dataset.fa === 'dock') { s.float = false; studiesChanged(); toast(`${u.def.name}: späť v paneli pod grafom (🧩 Add-ons ho vráti do okna)`); } else { s.visible = false; studiesChanged(); } });
     el.addEventListener('dblclick', e => { if (e.target.closest('.fl-h')) studySettings(s); });
   }
+  new ResizeObserver(() => { try { alignFloats(); } catch (e) {} }).observe($('#chartWrap'));
   function destroyFloats() { for (const u of units || []) if (u.fc) { try { u.fc.remove(); } catch (e) {} u.fel.remove(); u.fc = null; } $$('#chartWrap .fl-box').forEach(x => x.remove()); }
-  function syncFloats(r) { if (!r) return; for (const u of units) if (u.fc) u.fc.timeScale().setVisibleLogicalRange(r); }
+  function syncFloats(r) { if (!r) return; for (const u of units) if (u.fc) { floatTimes(u); u.fc.timeScale().setVisibleLogicalRange(r); } }
   // the crosshair and the values of the bar under the mouse (the last bar otherwise)
   function floatCross(p) {
     const n = D ? D.t.length : 0;
@@ -770,14 +788,15 @@
     legendRows();
     showOHLC(); if (mainIdx) requestAnimationFrame(() => showOHLC());
     chart.subscribeCrosshairMove(p => { lastCross = p; crossTime = p && p.time !== undefined ? p.time : null; showOHLC(crossTime); floatCross(p); });
+    paintTfBadge();
     if (!S.addons.fl0) { S.addons.fl0 = 1; S.addons.floatBg = 0; } // floating windows became transparent (v29)
     $('#chartWrap').style.setProperty('--fl-bg', ((S.addons.floatBg ?? 0) / 100).toFixed(2));
     const ts = chart.timeScale();
     if (range) ts.setVisibleLogicalRange(range);
     else if (view.focus !== undefined) focusOn(view.focus);
     else { ts.applyOptions({ barSpacing: S.look.candle.spacing }); ts.scrollToRealTime(); }
-    ts.subscribeVisibleLogicalRangeChange(r => { if (r && r.from < 30) loadOlder(); syncFloats(r); });
-    if (units.some(u => u.fc)) requestAnimationFrame(() => { if (chart) { syncFloats(chart.timeScale().getVisibleLogicalRange()); floatCross(null); } });
+    ts.subscribeVisibleLogicalRangeChange(r => { if (r && r.from < 30) loadOlder(); syncFloats(r); alignFloats(); });
+    if (units.some(u => u.fc)) requestAnimationFrame(() => { if (chart) { alignFloats(true); syncFloats(chart.timeScale().getVisibleLogicalRange()); floatCross(null); } });
     if (S.addons.follow && !range) followTick(true);
     paintAddonsBtn();
     perf.build = performance.now() - tB;
@@ -1202,7 +1221,7 @@
     fitToolbar();
   }
   // ---- undo / redo: drawings, indicators, symbol, timeframe, chart type, look… (not window positions) ----
-  const HIST_SKIP = ['addons', 'alerts', 'scripts', 'wsShared', 'wsDock', 'algo', 'board', 'accounts', 'accountId', 'workspaces', 'wsId', 'layout', 'savedAt', 'chat', 'news', 'idea', 'labeler', 'legendOpen', 'lastToolbar', 'flow', 'folders', 'nexus', 'account', 'robot'];
+  const HIST_SKIP = ['tfBadge', 'addons', 'alerts', 'scripts', 'wsShared', 'wsDock', 'algo', 'board', 'accounts', 'accountId', 'workspaces', 'wsId', 'layout', 'savedAt', 'chat', 'news', 'idea', 'labeler', 'legendOpen', 'lastToolbar', 'flow', 'folders', 'nexus', 'account', 'robot'];
   function snap() { const o = { ...S }; HIST_SKIP.forEach(k => delete o[k]); return JSON.stringify(o, (k, v) => (k[0] === '_' ? undefined : v)); }
   function pushHist() {
     clearTimeout(histT); histT = null;
@@ -2862,6 +2881,7 @@
     if (JSON.stringify(getPath(S, path)) === JSON.stringify(v)) return;
     setPath(S, path, v); save(); tlKey = ''; stKey = '';
     if (path === 'bars') return load();
+    if (path.startsWith('tfBadge')) return paintTfBadge();
     if (path.startsWith('bgImg')) { applyBg(); applyAnim(); }
     buildChart(); applyTint(true); const b = $('#bAuto'); if (b) b.classList.toggle('on', !!S.auto.on);
   }
@@ -2895,6 +2915,40 @@
     applyAll('study', studyStyle(s), add);
   }
   document.addEventListener('click', e => { if (e.target.closest('[data-allc]')) applyAll('look', lookNow()); });
+
+  // ---- ⏱ floating timeframe badge with the countdown to the bar close (each chart has its own; drag = move, click = timeframe menu)
+  const tfB = () => S.tfBadge = { on: true, x: null, y: null, size: 100, ...(S.tfBadge || {}) };
+  const fmtLeft = sec => { const d = Math.floor(sec / 86400), h = Math.floor(sec % 86400 / 3600), m = Math.floor(sec % 3600 / 60), x = sec % 60, p = v => String(v).padStart(2, '0');
+    return d ? `${d}d ${p(h)}:${p(m)}` : h ? `${h}:${p(m)}:${p(x)}` : `${p(m)}:${p(x)}`; };
+  function paintTfBadge() {
+    const B = tfB(), wrap = $('#chartWrap'); let b = $('#tfBadge');
+    if (!B.on) { if (b) b.remove(); return; }
+    if (!b) {
+      b = document.createElement('div'); b.id = 'tfBadge'; b.className = 'no-chart';
+      b.innerHTML = '<b class="tfb-tf"></b><span class="tfb-cd"></span><button class="tfb-x" title="Skryť (zapneš v 🧩 Add-ons)">✕</button>';
+      wrap.appendChild(b);
+      let d = null;
+      b.addEventListener('pointerdown', e => { if (e.button !== 0 || e.target.closest('.tfb-x')) return; const r = b.getBoundingClientRect(), W = wrap.getBoundingClientRect(); d = { x: e.clientX, y: e.clientY, ox: r.left - W.left, oy: r.top - W.top, W, moved: false }; b.setPointerCapture(e.pointerId); e.preventDefault(); e.stopPropagation(); });
+      b.addEventListener('pointermove', e => { if (!d) return; const dx = e.clientX - d.x, dy = e.clientY - d.y; if (!d.moved && Math.hypot(dx, dy) < 4) return; d.moved = true;
+        const B = tfB(); B.x = clampN(0, 100 * (d.ox + dx) / d.W.width, 100 - 100 * b.offsetWidth / d.W.width); B.y = clampN(0, 100 * (d.oy + dy) / d.W.height, 100 - 100 * b.offsetHeight / d.W.height); placeTfBadge(); });
+      b.addEventListener('pointerup', () => { if (!d) return; const moved = d.moved; d = null; if (moved) save(); else { const t = $('#bTf'); if (t) t.click(); } });
+      $('.tfb-x', b).onclick = e => { e.stopPropagation(); setTfBadge(false); };
+    }
+    b.style.zoom = (B.size || 100) / 100; placeTfBadge(); tickTfBadge();
+  }
+  function placeTfBadge() { const b = $('#tfBadge'), B = tfB(); if (!b) return; if (B.x == null) { b.style.left = ''; b.style.top = ''; b.classList.add('tfb-def'); } else { b.classList.remove('tfb-def'); b.style.left = B.x + '%'; b.style.top = B.y + '%'; } }
+  function tickTfBadge() {
+    const b = $('#tfBadge'); if (!b || document.hidden) return;
+    const sec = TF_SEC[S.tf], last = disp && disp.length ? disp[disp.length - 1].time : null;
+    $('.tfb-tf', b).textContent = S.tf;
+    let txt = '', cls = '';
+    if (view.replay) txt = 'replay';
+    else if (last != null && sec) { const left = Math.round(last + sec - Date.now() / 1000); if (left < 0) { txt = left < -sec ? 'zatvorené' : '00:00'; cls = 'closed'; } else { txt = fmtLeft(left); cls = left <= Math.min(10, sec / 6) ? 'soon' : ''; } }
+    const cd = $('.tfb-cd', b); cd.textContent = txt; cd.className = 'tfb-cd ' + cls;
+    b.title = `Timeframe ${S.tf}${txt && cls !== 'closed' ? ` · sviečka sa uzavrie o ${txt}` : ''} · potiahni = presunúť · klik = zmeniť timeframe`;
+  }
+  function setTfBadge(on) { tfB().on = on; save(); paintTfBadge(); syncAll('tfBadge.on', on); if (!on) toast('⏱ Timeframe a odpočet skryté – zapneš v 🧩 Add-ons'); }
+  setInterval(tickTfBadge, 1000);
 
   // ---- shortcut buttons next to 🧰 Tools: hide all indicators, candles, all functions, Buy / Sell scanner ---------------
   function setHideStudies(on, all) {
@@ -3046,6 +3100,8 @@
       <label class="it"><input type="checkbox" data-ad="follow" ${A.follow ? 'checked' : ''}><span class="grow">📡 <b>Sledovať cenu</b> ${A.follow ? (followPaused ? '<small class="muted">⏸ pozastavené</small>' : '<small class="up">● zapnuté</small>') : ''}<br><small class="muted">graf sa posúva so živou cenou – posledná sviečka vpravo, cena vždy v obraze · Alt+F</small></span></label>
       <label class="it ${A.follow ? '' : 'dis'}"><input type="checkbox" data-ad="always" ${A.always ? 'checked' : ''} ${A.follow ? '' : 'disabled'}><span class="grow">Vrátiť sa na cenu aj keď odscrollujem<br><small class="muted">inak sa sledovanie pozastaví, kým sa nevrátiš na koniec grafu</small></span></label>
       <div class="it" data-adback><span class="ic">⏎</span><span class="grow">Späť na živú cenu teraz</span></div>
+      <label class="it"><input type="checkbox" data-ad="tfb" ${tfB().on ? 'checked' : ''}><span class="grow">⏱ <b>Timeframe a odpočet do konca sviečky</b><br><small class="muted">plávajúci štítok na grafe (všetky grafy) · potiahni = presunúť · klik = zmeniť timeframe</small></span></label>
+      <div class="it ${tfB().on ? '' : 'dis'}" style="cursor:default"><span class="ic">⏱</span><span class="grow">Veľkosť štítka</span><select data-tfbs>${[80, 100, 125, 150, 200].map(v => `<option value="${v}" ${(tfB().size || 100) === v ? 'selected' : ''}>${v} %</option>`).join('')}</select><button class="btn sm" data-tfbr title="Späť na pôvodné miesto">↺</button></div>
       ${copHtml()}
       <div class="sec">📜 Stránka grafov</div>
       <label class="it"><input type="checkbox" data-ad="scroll" ${A.scroll ? 'checked' : ''}><span class="grow"><b>Grafy pod sebou – rolovať ako na stránke</b><br><small class="muted">každý graf plochy má svoju výšku, kolieskom roluješ nadol na ďalšie · Ctrl + koliesko = zoom grafu</small></span></label>
@@ -3053,18 +3109,20 @@
         <select data-scrc>${[1, 2, 3].map(v => `<option value="${v}" ${(A.scrollCols || 1) === v ? 'selected' : ''}>${v} ${v === 1 ? 'stĺpec' : 'stĺpce'}</option>`).join('')}</select>
         <select data-scrn>${[2, 3, 4, 5, 6, 7, 8, 9, 10].map(v => `<option value="${v}" ${S.layout.n === v ? 'selected' : ''}>${v} grafov</option>`).join('')}</select></div>
       <div class="sec">🪟 Plávajúce indikátory</div>
-      <label class="it"><input type="checkbox" data-ad="float" ${A.float ? 'checked' : ''}><span class="grow"><b>Indikátory v plávajúcich oknách</b><br><small class="muted">MACD, RSI… nezmenšujú sviečky: okno presunieš za názov, veľkosť rohom ◢, mierku ťahaním po jeho cenovej osi (dvojklik = späť)</small></span></label>
+      <label class="it"><input type="checkbox" data-ad="float" ${A.float ? 'checked' : ''}><span class="grow"><b>Indikátory v plávajúcich oknách</b><br><small class="muted">MACD, RSI… nezmenšujú sviečky a sú presne pod svojimi sviečkami (šírka ide s cenou) · výšku meníš ťahaním horného alebo spodného okraja, hodnoty sú v názve okna</small></span></label>
       ${studies.filter(s => !s.temp && (KS.STUDIES[s.type].pane === true || s.type === 'volume') && !KS.STUDIES[s.type].custom && !KS.STUDIES[s.type].pattern).map(s => `<label class="it fl-sub"><input type="checkbox" data-fls="${s.uid}" ${isFloat(s) ? 'checked' : ''} ${s.overlay ? 'disabled' : ''}><span class="grow">${esc(KS.STUDIES[s.type].label(s))}${s.overlay ? ' <small class="muted">(prekrýva graf)</small>' : s.float === undefined && s.type !== 'volume' ? ' <small class="muted">podľa hlavného prepínača</small>' : ''}</span></label>`).join('')}
       <div class="it fl-op"><span class="ic">◐</span><span class="grow">Pozadie okien</span><input type="range" min="0" max="90" step="5" data-flbg value="${A.floatBg ?? 0}"><b>${A.floatBg ?? 0} %</b></div>
-      <div class="it" data-flarr><span class="ic">⊞</span><span class="grow">Zoradiť okná (dole vľavo)</span></div>
+      <div class="it" data-flarr><span class="ic">⊞</span><span class="grow">Zoradiť okná (dole pod sebou)</span></div>
       <div class="sep"></div>
       <div class="it" data-adall><span class="ic">🔁</span><span class="grow">Tieto doplnky aj vo všetkých grafoch</span></div>
       <div class="it" data-adfeat><span class="ic">🎛</span><span class="grow">Všetky funkcie on / off…</span></div>`;
     const bind = m => {
       $$('[data-ad]', m).forEach(x => x.onchange = () => { const k = x.dataset.ad;
-        if (k === 'follow') setFollow(x.checked); else if (k === 'scroll') setPageScroll(x.checked); else if (k === 'float') { A.float = x.checked; save(); buildChart(); toast(A.float ? '🪟 Indikátory v plávajúcich oknách – sviečky majú celú výšku' : 'Indikátory späť v paneloch pod grafom'); }
+        if (k === 'follow') setFollow(x.checked); else if (k === 'tfb') setTfBadge(x.checked); else if (k === 'scroll') setPageScroll(x.checked); else if (k === 'float') { A.float = x.checked; save(); buildChart(); toast(A.float ? '🪟 Indikátory v plávajúcich oknách – sviečky majú celú výšku' : 'Indikátory späť v paneloch pod grafom'); }
         else { A.always = x.checked; save(); followTick(true); } m.innerHTML = html(); bind(m); });
       bindCop(m, mm => { mm.innerHTML = html(); bind(mm); });
+      $('[data-tfbs]', m).onchange = e => { tfB().size = +e.target.value; save(); paintTfBadge(); };
+      $('[data-tfbr]', m).onclick = () => { const B = tfB(); B.x = B.y = null; save(); placeTfBadge(); };
       const sh = $('[data-scrh]', m), sc = $('[data-scrc]', m), sn = $('[data-scrn]', m);
       sh.onchange = () => { A.scrollH = +sh.value; save(); applyLayout(); };
       sc.onchange = () => { A.scrollCols = +sc.value; save(); applyLayout(); };
@@ -3140,6 +3198,7 @@
       R('Indikátory', 'float', '🪟 Indikátory v plávajúcich oknách', S.addons.float, v => { S.addons.float = v; buildChart(); }, 0, `${units.filter(u => u.fc).length} v oknách`, () => addonsMenu($('#bAddons'))),
       R('Graf', 'cop', `🔆 Jas sviečok ${S.look.cop ?? 100} %`, (S.look.cop ?? 100) < 100, v => applyAll('cop', { cop: v ? 70 : 100 }), 0, 'vypnuté = plné farby; presety v 🕯 Sviečky / 🧩 Add-ons', () => candlesMenu($('#bCandles'))),
       R('Graf', 'scroll', '📜 Stránka grafov (rolovať nadol)', S.addons.scroll, v => setPageScroll(v), 0, S.addons.scroll ? `${S.layout.n} grafov · ${S.addons.scrollH || 75} % výšky` : '', () => addonsMenu($('#bAddons'))),
+      R('Graf', 'tfb', '⏱ Timeframe a odpočet sviečky', tfB().on, v => setTfBadge(v), 0, '', () => addonsMenu($('#bAddons'))),
       R('Graf', 'follow', '📡 Sledovať cenu (graf ide s cenou)', S.addons.follow, v => setFollow(v), 0, S.addons.follow ? (S.addons.always ? 'vráti sa aj po odscrollovaní' : 'pri odscrollovaní sa pozastaví') : '', () => addonsMenu($('#bAddons'))),
       R('Graf', 'live', 'Živá cenová čiara', S.look.lastLine, v => { S.look.lastLine = v; buildChart(); }, 0, `hrúbka ${S.look.liveW || 2} px`, () => settings('scale')),
       R('Graf', 'legend', 'Legenda (názvy a hodnoty)', !S.look.hideLegend, v => setView({ legend: v }), 0),
@@ -3244,7 +3303,10 @@
     green: ['Zelená', 'rgba(10,26,22,.92)', '#10b981', 'rgba(16,185,129,.28)', '#b8e0d2'], purple: ['Fialová', 'rgba(24,16,36,.92)', '#8b5cf6', 'rgba(139,92,246,.3)', '#d4c8f0'],
     neon: ['Neón', 'rgba(6,6,14,.94)', '#ff2bd6', 'rgba(0,229,255,.2)', '#9ef'], mono: ['Šedá', 'rgba(32,32,32,.92)', '#9e9e9e', 'rgba(255,255,255,.14)', '#ddd'],
     light: ['Svetlá', 'rgba(245,247,250,.96)', '#2962ff', 'rgba(41,98,255,.15)', '#333'] };
-  const dockCfg = () => { const D = S.wsDock = S.wsDock || {}; for (const [k, v] of Object.entries({ on: true, x: null, y: null, vertical: false, min: false, mode: 'float', size: 100, theme: 'blue', names: true })) if (D[k] === undefined) D[k] = v; return D; };
+  const dockCfg = () => { const D = S.wsDock = S.wsDock || {}; for (const [k, v] of Object.entries({ on: true, x: null, y: null, vertical: false, min: false, mode: 'float', size: 100, theme: 'blue', names: true, sideW: null })) if (D[k] === undefined) D[k] = v; return D; };
+  // names: true = always, false = only numbers, 'auto' = only numbers when the side panel is narrow
+  const DOCK_NARROW = 110;
+  const dockNames = D => D.names === 'auto' ? !(D.mode === 'side' && D.sideW && D.sideW < DOCK_NARROW) : !!D.names;
   function newWorkspace(clean) {
     const id = 'w' + Date.now().toString(36), n = S.workspaces.length + 1;
     S.workspaces.push({ id, name: clean ? `Čistý graf ${n}` : `Plocha ${n}`, layout: clean ? { n: 1, two: 'h', sync: true, panes: [] } : { n: 4, two: 'h', sync: true, panes: [] },
@@ -3261,6 +3323,11 @@
     if (!d) {
       d = document.createElement('div'); d.id = 'wsDock'; d.className = 'no-chart'; document.body.appendChild(d);
       let g = null;
+      let wr = null;
+      d.addEventListener('pointerdown', e => { if (!e.target.closest('[data-dwrz]')) return; wr = { x: e.clientX, w: d.getBoundingClientRect().width }; d.setPointerCapture(e.pointerId); e.preventDefault(); e.stopPropagation(); d.classList.add('rz'); }, true);
+      d.addEventListener('pointermove', e => { if (!wr) return; const D = dockCfg(); D.sideW = Math.round(clampN(40, wr.w + e.clientX - wr.x, 420)); d.classList.toggle('nonames', !dockNames(D)); placeDock(); });
+      d.addEventListener('pointerup', () => { if (wr) { wr = null; d.classList.remove('rz'); save(); paintDock(); } });
+      d.addEventListener('dblclick', e => { if (e.target.closest('[data-dwrz]')) { dockCfg().sideW = null; save(); paintDock(); } });
       d.addEventListener('pointerdown', e => { if (!e.target.closest('[data-grip]') || S.wsDock.mode !== 'float') return; const r = d.getBoundingClientRect(); g = { x: e.clientX - r.left, y: e.clientY - r.top }; d.setPointerCapture(e.pointerId); e.preventDefault(); });
       d.addEventListener('pointermove', e => { if (!g) return; S.wsDock.x = e.clientX - g.x; S.wsDock.y = e.clientY - g.y; placeDock(); });
       d.addEventListener('pointerup', () => { if (g) { g = null; save(); } });
@@ -3280,10 +3347,10 @@
     const T = DOCK_THEMES[D.theme] || DOCK_THEMES.blue, docked = D.mode !== 'float';
     [['--wd-bg', 1], ['--wd-acc', 2], ['--wd-on', 3], ['--wd-tx', 4]].forEach(([v, i]) => d.style.setProperty(v, T[i]));
     d.style.zoom = D.size / 100;
-    d.className = `no-chart dock-${D.mode}${!docked && D.vertical ? ' vert' : ''}${D.min ? ' mini' : ''}${D.names ? '' : ' nonames'}${D.theme === 'light' ? ' light' : ''}`;
+    d.className = `no-chart dock-${D.mode}${!docked && D.vertical ? ' vert' : ''}${D.min ? ' mini' : ''}${dockNames(D) ? '' : ' nonames'}${D.theme === 'light' ? ' light' : ''}`;
     d.innerHTML = `${docked ? '' : '<span class="ws-grip" data-grip title="Potiahni a presuň · pravý klik = nastavenia">⋮⋮</span>'}${S.workspaces.map((w, i) => `<button data-dws="${w.id}" class="${w.id === S.wsId ? 'on' : ''}" title="${esc(w.name)} · Alt+${i + 1}${w.own ? ' · vlastné nastavenia' : ''}"><b>${i + 1}</b><span>${w.own ? '◻ ' : ''}${esc(w.name)}</span><small>${w.layout.n}▦</small></button>`).join('')}
       <button data-dadd title="Nová plocha">＋</button><button data-dclean title="Čistý graf – nová plocha bez indikátorov, čiar a stratégií (prázdne plátno)">◻</button><button data-dlab title="Nexus Lab – druhý grafový systém (nová karta)">🧪</button>
-      <button data-dcfg title="Veľkosť, farby, umiestnenie (karty hore / v bočnom paneli)">⚙</button>${docked ? '' : `<button data-drot title="Otočiť (vodorovne / zvislo)">⤾</button><button data-dmin title="Zbaliť / rozbaliť">${D.min ? '▸' : '–'}</button>`}<button data-dhide title="Skryť prepínač plôch (vrátiš ho v ▦ menu)">✕</button>`;
+      <button data-dcfg title="Veľkosť, farby, umiestnenie (karty hore / v bočnom paneli)">⚙</button>${docked ? '' : `<button data-drot title="Otočiť (vodorovne / zvislo)">⤾</button><button data-dmin title="Zbaliť / rozbaliť">${D.min ? '▸' : '–'}</button>`}<button data-dhide title="Skryť prepínač plôch (vrátiš ho v ▦ menu)">✕</button>${D.mode === 'side' ? '<span class="ws-rz" data-dwrz title="Potiahni = šírka panela (text ostáva rovnaký) · dvojklik = automatická šírka"></span>' : ''}`;
     placeDock();
   }
   function placeDock() {
@@ -3292,12 +3359,13 @@
     if (D.mode === 'top' || D.mode === 'side') {
       // docked: the chart area makes room for the tabs (margin), the tabs sit in that room
       document.body.classList.add(D.mode === 'top' ? 'ws-top' : 'ws-side');
-      d.style.width = d.style.height = '';
+      d.style.width = D.mode === 'side' && D.sideW ? D.sideW / z + 'px' : ''; d.style.height = ''; if (D.mode === 'side' && D.sideW) d.style.maxWidth = 'none';
       const r0 = d.getBoundingClientRect();
       document.body.style.setProperty('--ws-dock', Math.ceil(D.mode === 'top' ? r0.height : r0.width) + 'px');
       const r = grid.getBoundingClientRect();
       if (D.mode === 'top') { d.style.left = r.left / z + 'px'; d.style.top = (r.top - r0.height) / z + 'px'; d.style.width = r.width / z + 'px'; }
       else { d.style.left = (r.left - r0.width) / z + 'px'; d.style.top = r.top / z + 'px'; d.style.height = r.height / z + 'px'; }
+      if (D.mode === 'side') d.style.maxWidth = D.sideW ? 'none' : '';
       return;
     }
     d.style.width = d.style.height = '';
@@ -3310,14 +3378,18 @@
     const html = () => `<div class="sec">Umiestnenie prepínača plôch</div>
       ${[['float', '🪟 Plávajúci (potiahni kamkoľvek)'], ['top', '▭ Karty hore nad grafom'], ['side', '▯ Karty v bočnom paneli vľavo']].map(([k, n]) => `<div class="it ${D.mode === k ? 'on' : ''}" data-dm="${k}"><span class="ic">${D.mode === k ? '✓' : ''}</span><span class="grow">${n}</span></div>`).join('')}
       <div class="sec">Veľkosť</div><div class="it" style="cursor:default"><span class="op" style="width:100%"><input type="range" min="70" max="170" step="5" data-dsz value="${D.size}"><b>${D.size} %</b></span></div>
-      <label class="it"><input type="checkbox" data-dnames ${D.names ? 'checked' : ''}><span class="grow">Zobraziť názvy plôch</span></label>
+      <div class="sec">Názvy plôch</div>${[[true, 'Zobraziť názvy'], ['auto', 'Automaticky – len čísla, keď je bočný panel úzky'], [false, 'Skryť názvy (len čísla)']].map(([v, n]) => `<div class="it ${D.names === v ? 'on' : ''}" data-dnm="${v}"><span class="ic">${D.names === v ? '✓' : ''}</span><span class="grow">${n}</span></div>`).join('')}
+      ${D.mode === 'side' ? `<div class="sec">Šírka bočného panela</div><div class="it" style="cursor:default"><span class="op" style="width:100%"><input type="range" min="40" max="420" step="5" data-dsw value="${D.sideW || 140}"><b>${D.sideW ? D.sideW + ' px' : 'auto'}</b></span></div>
+      <div class="it" data-dswa><span class="ic">↺</span><span class="grow">Automatická šírka <small class="muted">· alebo potiahni pravý okraj panela</small></span></div>` : ''}
       <div class="sec">Farebná téma</div><div class="dock-themes">${Object.entries(DOCK_THEMES).map(([k, t]) => `<span data-dt="${k}" class="${D.theme === k ? 'on' : ''}" style="background:${t[1]};border-color:${t[2]};color:${t[4]}" title="${t[0]}"><i style="background:${t[2]}"></i>${t[0]}</span>`).join('')}</div>
       <div class="sep"></div><div class="it" data-dnew><span class="ic">＋</span><span class="grow">Nová plocha</span></div><div class="it" data-dnclean><span class="ic">◻</span><span class="grow">Čistý graf (prázdne plátno, vlastné nastavenia)</span></div>
       <div class="it" data-dnlab><span class="ic">🧪</span><span class="grow">Nexus Lab (druhý grafový systém)</span></div>`;
     const bind = m => {
       $$('[data-dm]', m).forEach(x => x.onclick = () => { D.mode = x.dataset.dm; save(); paintDock(); m.innerHTML = html(); bind(m); });
       const sz = $('[data-dsz]', m); sz.oninput = () => { D.size = +sz.value; sz.nextElementSibling.textContent = D.size + ' %'; paintDock(); clearTimeout(sz._t); sz._t = setTimeout(save, 300); };
-      $('[data-dnames]', m).onchange = e => { D.names = e.target.checked; save(); paintDock(); };
+      $$('[data-dnm]', m).forEach(x => x.onclick = () => { const v = x.dataset.dnm; D.names = v === 'auto' ? 'auto' : v === 'true'; save(); paintDock(); m.innerHTML = html(); bind(m); });
+      const sw = $('[data-dsw]', m); if (sw) sw.oninput = () => { D.sideW = +sw.value; sw.nextElementSibling.textContent = D.sideW + ' px'; paintDock(); clearTimeout(sw._t); sw._t = setTimeout(save, 300); };
+      const swa = $('[data-dswa]', m); if (swa) swa.onclick = () => { D.sideW = null; save(); paintDock(); m.innerHTML = html(); bind(m); };
       $$('[data-dt]', m).forEach(x => x.onclick = () => { D.theme = x.dataset.dt; save(); paintDock(); m.innerHTML = html(); bind(m); });
       $('[data-dnew]', m).onclick = () => { closeMenu(); newWorkspace(false); };
       $('[data-dnclean]', m).onclick = () => { closeMenu(); newWorkspace(true); };
