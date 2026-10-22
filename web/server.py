@@ -143,7 +143,7 @@ def _rec_loop(ticker: str) -> None:
         pass
     with _rec_lock:
         _rec[ticker] = R
-    B, saved = R["bars"], time.time()
+    B, saved, rnd = R["bars"], time.time(), 0
     while True:
         try:
             if R["last"] is None:
@@ -161,8 +161,9 @@ def _rec_loop(ticker: str) -> None:
                             R["last"] = tr[-1]["a"]
                     if len(tr) < 1000:
                         break
-            # two older pages per round until REC_BACK is covered
-            for _ in range(2):
+            # one older page every other round until REC_BACK is covered (aggTrades weighs 20 of the IP's 2400 / min,
+            # shared with the scanner)
+            for _ in range(rnd % 2):
                 if not (R["first"] and B and min(B) > time.time() - REC_BACK):
                     break
                 tr = [t for t in _get(url, {"symbol": ticker, "fromId": max(0, R["first"] - 1000), "limit": 1000}) if t["a"] < R["first"]]
@@ -183,8 +184,9 @@ def _rec_loop(ticker: str) -> None:
                 tmp.replace(_rec_file(ticker))
                 saved = time.time()
         except Exception:
-            time.sleep(20)
-        time.sleep(3)
+            time.sleep(60)
+        rnd += 1
+        time.sleep(5)
 
 
 def _rec_rows(ticker: str, from_ms: int, end_ms: int | None) -> tuple[list, int | None]:
@@ -208,10 +210,11 @@ def _seconds(sym: dict, sec: int, end_ms: int | None, limit: int) -> list[list]:
     if sym["market"] == "spot":       # spot has 1s klines
         return _bucket(_klines(sym, "1s", end_ms, min(limit * sec, MAX_REQUESTS * 1000)), sec)
     rec, rec_from = _rec_rows(sym["ticker"], (end_ms or int(time.time() * 1000)) - limit * sec * 1000, end_ms)
-    if rec_from is not None and (end_ms is None or end_ms > rec_from + sec * 1000):
-        # the recording covers this window (or its newest part); older than the recording (just after a restart, scrolling back) comes from the trades
+    # serve the recording once it is longer than what the trade pages give (~30 min), so a fresh start does not poll Binance hard
+    if rec_from is not None and (end_ms is None or end_ms > rec_from + sec * 1000) and (end_ms or time.time() * 1000) - rec_from > 1_800_000:
+        # the recording covers this window (or its newest part); scrolling back past it falls back to the trades
         n = len(_bucket(rec, sec))
-        older = _seconds_trades(sym, sec, rec_from - 1, limit - n) if n < limit * 0.9 else []
+        older = _seconds_trades(sym, sec, rec_from - 1, limit - n) if end_ms is not None and n < limit * 0.9 else []
         return _bucket([r for r in older if r[0] < rec_from] + rec, sec)
     return _bucket(_seconds_trades(sym, sec, end_ms, limit), sec)
 
