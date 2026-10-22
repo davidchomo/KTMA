@@ -675,37 +675,55 @@
     return s.type === 'volume' && s.float === true;
   }
   const clampN = (a, v, b) => Math.max(a, Math.min(b, v));
-  function placeFloat(u) { const b = u.s.box; Object.assign(u.fel.style, { left: b.x + '%', top: b.y + '%', width: b.w + '%', height: b.h + '%' }); }
+  // a floating indicator is locked to the price area: same left edge, plot width and price-scale width as the candles,
+  // so every bar sits exactly under its candle; only its top and bottom (in % of the price pane) can be changed
+  // every bar time as whitespace, so logical index i is the same bar as on the price chart (indicators start later)
+  function floatTimes(u) { if (!u.tl || !disp || u.tlN === disp.length) return; u.tl.setData(disp.map(b => ({ time: b.time }))); u.tlN = disp.length; }
+  function priceArea() {
+    const wrap = $('#chartWrap').getBoundingClientRect(), r = el.getBoundingClientRect(), P = chart.panes();
+    return { left: r.left - wrap.left, top: r.top - wrap.top + mainTop(), w: chart.timeScale().width(), h: P[mainIdx] ? P[mainIdx].getHeight() : r.height };
+  }
+  function placeFloat(u) {
+    if (!chart) return;
+    const b = u.s.box, A = priceArea();
+    Object.assign(u.fel.style, { left: A.left + 'px', width: A.w + 'px', top: A.top + A.h * b.y / 100 + 'px', height: A.h * b.h / 100 + 'px' });
+  }
+  function alignFloats(force) {
+    const fl = (units || []).filter(u => u.fc); if (!chart || !fl.length) return;
+    fl.forEach(u => { floatTimes(u); placeFloat(u); });
+  }
   function makeFloat(u, k) {
     const s = u.s, wrap = $('#chartWrap');
-    if (!s.box) s.box = { x: 1 + (k % 2) * 45, y: clampN(4, 70 - Math.floor(k / 2) * 27, 90), w: 43, h: 25 };
+    if (!s.box || s.box.v !== 2) s.box = { v: 2, h: 22, y: clampN(0, 100 - 22 * (k + 1), 78) };
     const el = u.fel = document.createElement('div'); el.className = 'fl-box no-chart';
     el.innerHTML = `<div class="fl-h"><span class="fl-n">${esc(u.def.label(s))}</span><span class="fl-v"></span><span class="grow"></span>
       <button data-fa="cfg" title="Nastavenia indikátora">⚙</button><button data-fa="dock" title="Späť do panela pod grafom">⇲</button><button data-fa="hide" title="Skryť">✕</button></div>
-      <div class="fl-c"></div><span class="fl-rz" title="Ťahaj = veľkosť okna"></span>`;
-    wrap.appendChild(el); placeFloat(u);
+      <div class="fl-c"></div><span class="fl-rz fl-rt" title="Ťahaj = horný okraj"></span><span class="fl-rz fl-rb" title="Ťahaj = spodný okraj"></span>`;
+    wrap.appendChild(el);
     const L = S.look;
     u.fc = LW.createChart($('.fl-c', el), { autoSize: true,
       layout: { background: { type: 'solid', color: 'rgba(0,0,0,0)' }, textColor: L.text, fontSize: Math.max(9, L.fontSize - 1), fontFamily: fontCss(L.font), attributionLogo: false },
       grid: { vertLines: { visible: false }, horzLines: { color: rgba(L.gridH.color, 45), visible: L.gridH.on } },
-      rightPriceScale: { borderVisible: false, scaleMargins: { top: 0.12, bottom: 0.08 } }, timeScale: { visible: false, borderVisible: false },
-      crosshair: { mode: 0, vertLine: { labelVisible: false, color: rgba(S.crosshair.color, 60) }, horzLine: { color: rgba(S.crosshair.color, 60) } },
-      handleScroll: false, handleScale: { axisPressedMouseMove: { time: false, price: true }, axisDoubleClickReset: { price: true, time: false }, mouseWheel: false, pinch: false } });
-    // move by the title, resize by the corner (in % of the chart, so it fits any window size)
+      rightPriceScale: { visible: false, scaleMargins: { top: 0.12, bottom: 0.08 } }, timeScale: { visible: false, borderVisible: false, rightOffset: 0 },
+      crosshair: { mode: 0, vertLine: { labelVisible: false, color: rgba(S.crosshair.color, 60) }, horzLine: { labelVisible: false, color: rgba(S.crosshair.color, 60) } },
+      handleScroll: false, handleScale: false });
+    u.tl = u.fc.addSeries(LW.LineSeries, { lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false }); u.tlN = 0; floatTimes(u);
+    // top / bottom edge = height (in % of the price pane, so it fits any window size); the width always follows the price
     const drag = (handle, fn) => {
       let d = null;
-      handle.addEventListener('pointerdown', e => { if (e.button !== 0 || e.target.closest('button')) return; d = { x: e.clientX, y: e.clientY, b: { ...s.box }, W: wrap.getBoundingClientRect() }; handle.setPointerCapture(e.pointerId); e.preventDefault(); e.stopPropagation(); el.classList.add('drag'); });
-      handle.addEventListener('pointermove', e => { if (!d) return; fn(d, 100 * (e.clientX - d.x) / d.W.width, 100 * (e.clientY - d.y) / d.W.height); placeFloat(u); });
+      handle.addEventListener('pointerdown', e => { if (e.button !== 0) return; d = { y: e.clientY, b: { ...s.box }, H: priceArea().h }; handle.setPointerCapture(e.pointerId); e.preventDefault(); e.stopPropagation(); el.classList.add('drag'); });
+      handle.addEventListener('pointermove', e => { if (!d) return; fn(d, 100 * (e.clientY - d.y) / d.H); placeFloat(u); });
       handle.addEventListener('pointerup', () => { if (d) { d = null; el.classList.remove('drag'); save(); } });
     };
-    drag($('.fl-h', el), (d, dx, dy) => { s.box.x = clampN(0, d.b.x + dx, 100 - s.box.w); s.box.y = clampN(0, d.b.y + dy, 100 - 5); });
-    drag($('.fl-rz', el), (d, dx, dy) => { s.box.w = clampN(12, d.b.w + dx, 100 - s.box.x); s.box.h = clampN(8, d.b.h + dy, 100 - s.box.y); });
+    drag($('.fl-rt', el), (d, dy) => { const bot = d.b.y + d.b.h; s.box.y = clampN(0, d.b.y + dy, bot - 5); s.box.h = bot - s.box.y; });
+    drag($('.fl-rb', el), (d, dy) => { s.box.h = clampN(5, d.b.h + dy, 100 - s.box.y); });
     el.addEventListener('click', e => { const a = e.target.closest('[data-fa]'); if (!a) return;
       if (a.dataset.fa === 'cfg') studySettings(s); else if (a.dataset.fa === 'dock') { s.float = false; studiesChanged(); toast(`${u.def.name}: späť v paneli pod grafom (🧩 Add-ons ho vráti do okna)`); } else { s.visible = false; studiesChanged(); } });
     el.addEventListener('dblclick', e => { if (e.target.closest('.fl-h')) studySettings(s); });
   }
+  new ResizeObserver(() => { try { alignFloats(); } catch (e) {} }).observe($('#chartWrap'));
   function destroyFloats() { for (const u of units || []) if (u.fc) { try { u.fc.remove(); } catch (e) {} u.fel.remove(); u.fc = null; } $$('#chartWrap .fl-box').forEach(x => x.remove()); }
-  function syncFloats(r) { if (!r) return; for (const u of units) if (u.fc) u.fc.timeScale().setVisibleLogicalRange(r); }
+  function syncFloats(r) { if (!r) return; for (const u of units) if (u.fc) { floatTimes(u); u.fc.timeScale().setVisibleLogicalRange(r); } }
   // the crosshair and the values of the bar under the mouse (the last bar otherwise)
   function floatCross(p) {
     const n = D ? D.t.length : 0;
@@ -776,8 +794,8 @@
     if (range) ts.setVisibleLogicalRange(range);
     else if (view.focus !== undefined) focusOn(view.focus);
     else { ts.applyOptions({ barSpacing: S.look.candle.spacing }); ts.scrollToRealTime(); }
-    ts.subscribeVisibleLogicalRangeChange(r => { if (r && r.from < 30) loadOlder(); syncFloats(r); });
-    if (units.some(u => u.fc)) requestAnimationFrame(() => { if (chart) { syncFloats(chart.timeScale().getVisibleLogicalRange()); floatCross(null); } });
+    ts.subscribeVisibleLogicalRangeChange(r => { if (r && r.from < 30) loadOlder(); syncFloats(r); alignFloats(); });
+    if (units.some(u => u.fc)) requestAnimationFrame(() => { if (chart) { alignFloats(true); syncFloats(chart.timeScale().getVisibleLogicalRange()); floatCross(null); } });
     if (S.addons.follow && !range) followTick(true);
     paintAddonsBtn();
     perf.build = performance.now() - tB;
@@ -1885,7 +1903,7 @@
       $('[data-a-strat]', m).onclick = () => { closeMenu(); strategiesDialog(); };
       $$('input[type=range][data-a]', m).forEach(x => x.oninput = () => { x.nextElementSibling.textContent = x.value; });
       $$('[data-a]', m).forEach(x => x.onchange = () => {
-        const [o, k] = x.dataset.a.split('.'); S[o][k] = x.type === 'checkbox' ? x.checked : +x.value; save();
+        const [o, k] = x.dataset.a.split('.'); S[o][k] = x.type === 'checkbox' ? x.checked : +x.value; save(); if (x.type === 'checkbox') syncAll(x.dataset.a);
         tlKey = ''; computeTL(); ideaSeenT = tlIdeas.length ? tlIdeas[tlIdeas.length - 1].time : 0; autoLayer && autoLayer.update(); updateMarkers();
         if (S.idea.open && S.idea.tab === 'live') renderIdea();
       });
@@ -1894,7 +1912,7 @@
   function toggleAuto(on) {
     S.auto.on = on ?? !S.auto.on; save(); $('#bAuto').classList.toggle('on', S.auto.on);
     tlKey = ''; computeTL(); autoLayer && autoLayer.update(); updateMarkers();
-    toast(S.auto.on ? '📐 Auto čiary zapnuté' : 'Auto čiary vypnuté');
+    syncAll('auto.on'); toast(S.auto.on ? '📐 Auto čiary zapnuté (všetky grafy)' : 'Auto čiary vypnuté (všetky grafy)');
   }
   // the same controls as a trendline you draw yourself (drawings.js settings): colour, width, style, extend, labels
   function autoStyle(tab0) {
@@ -2266,7 +2284,7 @@
       <div class="it" data-fa="help"><span class="ic">❓</span><span class="grow">Čo je objem, delta a tok príkazov?</span></div>`;
     const bind = m => {
       const redraw = () => { save(); bubbles && bubbles.update(); $('#bFlow').classList.toggle('on', B.on || FLOW.isOpen()); };
-      $('[data-bon]', m).onchange = e => { B.on = e.target.checked; redraw(); };
+      $('[data-bon]', m).onchange = e => { B.on = e.target.checked; redraw(); syncAll('bubbles.on'); };
       $('[data-blab]', m).onchange = e => { B.labels = e.target.checked; redraw(); };
       $$('[data-bb]', m).forEach(x => x.oninput = () => { B[x.dataset.bb] = +x.value; x.nextElementSibling.textContent = `${x.value} %`; redraw(); });
       $$('[data-bg2]', m).forEach(x => x.onclick = () => { B.group = +x.dataset.bg2; B.on = true; redraw(); m.innerHTML = html(); bind(m); });
@@ -2305,7 +2323,7 @@
       $$('[data-tn]', m).forEach(x => x[x.type === 'range' ? 'oninput' : 'onchange'] = () => {
         const k = x.dataset.tn; T[k] = x.type === 'checkbox' ? x.checked : +x.value;
         if (x.type === 'range') x.nextElementSibling.textContent = x.value + ' %';
-        save(); if (k === 'on') buildChart(); applyTint(true);
+        save(); if (k === 'on') buildChart(); applyTint(true); if (x.type === 'checkbox') syncAll('tint.' + k);
       });
     };
     openMenu(anchor, html(), bind, { side: side(), cls: 'func-menu' });
@@ -2392,7 +2410,7 @@
     const apply = () => { save(); stKey = ''; computeStruct(); structLayer && structLayer.update(); };
     openMenu(anchor, html, m => {
       $$('[data-sx]', m).forEach(x => x[x.type === 'range' ? 'oninput' : 'onchange'] = () => {
-        const k = x.dataset.sx; X[k] = x.type === 'checkbox' ? x.checked : x.tagName === 'SELECT' && k === 'type' ? x.value : +x.value;
+        const k = x.dataset.sx; if (x.type === 'checkbox') setTimeout(() => syncAll(what + '.' + k)); X[k] = x.type === 'checkbox' ? x.checked : x.tagName === 'SELECT' && k === 'type' ? x.value : +x.value;
         if (x.type === 'range') x.nextElementSibling.textContent = x.value + (x.nextElementSibling.textContent.endsWith('%') ? ' %' : '');
         apply();
       });
@@ -2421,9 +2439,9 @@
       <div class="dlg-f"><span class="grow"></span><button class="btn pri" data-x>Hotovo</button></div>`, null, 'wide strat-dlg');
     const redo = () => { save(); tlKey = ''; computeTL(); ideaSeenT = tlIdeas.length ? tlIdeas[tlIdeas.length - 1].time : 0; autoLayer && autoLayer.update(); updateMarkers(); if (S.idea.open && S.idea.tab === 'live') renderIdea(); closeDialog(); strategiesDialog(); };
     $$('[data-sk]', d).forEach(x => x.onchange = () => { const c = ST[x.dataset.sk] = ST[x.dataset.sk] || {}, f = x.dataset.f;
-      if (f === 'on') c.on = x.checked; else if (x.value === '') delete c[f]; else c[f] = +x.value; redo(); });
-    $('[data-gon]', d).onchange = e => { S.ideas.on = e.target.checked; redo(); };
-    $$('[data-all]', d).forEach(x => x.onclick = () => { TL.STRATS.forEach(k => { (ST[k] = ST[k] || {}).on = x.dataset.all === '1'; }); redo(); });
+      if (f === 'on') { c.on = x.checked; syncAll('ideas.strat'); } else if (x.value === '') delete c[f]; else c[f] = +x.value; redo(); });
+    $('[data-gon]', d).onchange = e => { S.ideas.on = e.target.checked; syncAll('ideas.on'); redo(); };
+    $$('[data-all]', d).forEach(x => x.onclick = () => { TL.STRATS.forEach(k => { (ST[k] = ST[k] || {}).on = x.dataset.all === '1'; }); syncAll('ideas.strat'); redo(); });
     $('[data-reset]', d).onclick = () => { S.ideas.strat = {}; redo(); };
     $$('[data-x]', d).forEach(x => x.onclick = closeDialog);
   }
@@ -2854,6 +2872,34 @@
     toast(`🔁 ${what === 'look' ? 'Vzhľad, sviečky a pozadie' : what === 'cop' ? `🔆 Jas sviečok ${src.cop} %` : KS.STUDIES[src.type].name} – použité na všetky grafy (${keys.length + 1})`);
   }
   window.NX_applyAll = applyAll;
+  // on / off in 🧩 Funkcie and 🎛 goes to every chart of every workspace (open panes now, the others from their saved state)
+  const getPath = (st, path) => path.split('.').reduce((o, k) => o && o[k], st);
+  const setPath = (st, path, v) => { const ks = path.split('.'), last = ks.pop(); let o = st; for (const k of ks) o = o[k] && typeof o[k] === 'object' ? o[k] : (o[k] = {}); o[last] = clone(v); };
+  function setPathLive(path, v) {
+    if (JSON.stringify(getPath(S, path)) === JSON.stringify(v)) return;
+    setPath(S, path, v); save(); tlKey = ''; stKey = '';
+    if (path.startsWith('bgImg')) { applyBg(); applyAnim(); }
+    buildChart(); applyTint(true); const b = $('#bAuto'); if (b) b.classList.toggle('on', !!S.auto.on);
+  }
+  window.NX_setPath = setPathLive;
+  function patchEvery(patch) {
+    (S.workspaces || []).forEach(w => { if (w.own) patch(w.own); }); if (S.wsShared) patch(S.wsShared); save();
+    for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k && k.startsWith('nx2:pane')) { const st = LS.get(k, null); if (st && typeof st === 'object') { patch(st); LS.set(k, st); } } }
+  }
+  function syncAll(path, v) {
+    if (v === undefined) v = getPath(S, path);
+    if (EMBED) { try { parent.NX_syncAll(path, clone(v)); } catch (e) {} return; }
+    setPathLive(path, v); patchEvery(st => setPath(st, path, v));
+    eachPane(w => w.NX_setPath && w.NX_setPath(path, clone(v)));
+  }
+  window.NX_syncAll = syncAll;
+  function syncStudyVis(type, on) {
+    if (EMBED) { try { parent.NX_syncStudyVis(type, on); } catch (e) {} return; }
+    const patch = st => (st.studies || []).forEach(x => { if (x && x.type === type) x.visible = on; });
+    if (studies.some(x => x.type === type && (x.visible !== false) !== on)) { patch({ studies }); studiesChanged(); }
+    patchEvery(patch); eachPane(w => w.NX_reloadState && w.NX_reloadState());
+  }
+  window.NX_syncStudyVis = syncStudyVis;
   window.NX_reloadState = () => {
     const st = LS.get(KEY, null); if (!st) return;
     for (const k of [...LOOK_KEYS, 'studies', 'hideStudies']) if (k in st) S[k] = DEF[k] && typeof DEF[k] === 'object' && !Array.isArray(DEF[k]) ? merge(DEF[k], st[k]) : st[k];
@@ -3007,10 +3053,10 @@
         <select data-scrc>${[1, 2, 3].map(v => `<option value="${v}" ${(A.scrollCols || 1) === v ? 'selected' : ''}>${v} ${v === 1 ? 'stĺpec' : 'stĺpce'}</option>`).join('')}</select>
         <select data-scrn>${[2, 3, 4, 5, 6, 7, 8, 9, 10].map(v => `<option value="${v}" ${S.layout.n === v ? 'selected' : ''}>${v} grafov</option>`).join('')}</select></div>
       <div class="sec">🪟 Plávajúce indikátory</div>
-      <label class="it"><input type="checkbox" data-ad="float" ${A.float ? 'checked' : ''}><span class="grow"><b>Indikátory v plávajúcich oknách</b><br><small class="muted">MACD, RSI… nezmenšujú sviečky: okno presunieš za názov, veľkosť rohom ◢, mierku ťahaním po jeho cenovej osi (dvojklik = späť)</small></span></label>
+      <label class="it"><input type="checkbox" data-ad="float" ${A.float ? 'checked' : ''}><span class="grow"><b>Indikátory v plávajúcich oknách</b><br><small class="muted">MACD, RSI… nezmenšujú sviečky a sú presne pod svojimi sviečkami (šírka ide s cenou) · výšku meníš ťahaním horného alebo spodného okraja, hodnoty sú v názve okna</small></span></label>
       ${studies.filter(s => !s.temp && (KS.STUDIES[s.type].pane === true || s.type === 'volume') && !KS.STUDIES[s.type].custom && !KS.STUDIES[s.type].pattern).map(s => `<label class="it fl-sub"><input type="checkbox" data-fls="${s.uid}" ${isFloat(s) ? 'checked' : ''} ${s.overlay ? 'disabled' : ''}><span class="grow">${esc(KS.STUDIES[s.type].label(s))}${s.overlay ? ' <small class="muted">(prekrýva graf)</small>' : s.float === undefined && s.type !== 'volume' ? ' <small class="muted">podľa hlavného prepínača</small>' : ''}</span></label>`).join('')}
       <div class="it fl-op"><span class="ic">◐</span><span class="grow">Pozadie okien</span><input type="range" min="0" max="90" step="5" data-flbg value="${A.floatBg ?? 0}"><b>${A.floatBg ?? 0} %</b></div>
-      <div class="it" data-flarr><span class="ic">⊞</span><span class="grow">Zoradiť okná (dole vľavo)</span></div>
+      <div class="it" data-flarr><span class="ic">⊞</span><span class="grow">Zoradiť okná (dole pod sebou)</span></div>
       <div class="sep"></div>
       <div class="it" data-adall><span class="ic">🔁</span><span class="grow">Tieto doplnky aj vo všetkých grafoch</span></div>
       <div class="it" data-adfeat><span class="ic">🎛</span><span class="grow">Všetky funkcie on / off…</span></div>`;
@@ -3125,6 +3171,8 @@
       R('Automatika', 'algo', '🧠 Algo živé signály', al > 0, null, al ? 2 : 0, `${al} systémov`, () => toggleAlgo(true)),
     ];
   }
+  const FEAT_SYNC = { float: 'addons.float', live: 'look.lastLine', legend: 'look.hideLegend', photo: 'bgImg', video: 'bgImg', anim: 'bgImg', tint: 'tint.on', allind: 'hideStudies', auto: 'auto.on', major: 'auto.major', range: 'range.on', fork: 'fork.on', ideas: 'ideas.on', bubbles: 'bubbles.on', marks: 'tradeMarks', follow: 'addons.follow' };
+  function featSync(k, v) { if (k.startsWith('st:')) { const st = studies.find(x => x.uid === k.slice(3)); if (st) syncStudyVis(st.type, v); } else if (FEAT_SYNC[k]) syncAll(FEAT_SYNC[k]); }
   function featuresDialog() {
     const d = openDialog(`<div class="dlg-h"><span>🎛 Prehľad funkcií – čo je zapnuté</span><button class="ib" data-x>✕</button></div><div class="dlg-b fm-dlg"><div class="fm-top"></div><div class="fm-body"></div></div>
       <div class="dlg-f"><button class="btn" data-fmoff title="Vypne všetko, čo graf zaťažuje (pozadie, animácie, analýzy, bubliny) – indikátory a obchody nechá">🪶 Odľahčiť graf</button><span class="grow"></span><button class="btn pri" data-x>Hotovo</button></div>`, null, 'wide fm-wide');
@@ -3138,10 +3186,10 @@
       $('.fm-body', d).innerHTML = groups.map(g => `<div class="sec2">${g}</div>` + rows.filter(r => r.g === g).map(r => `<div class="fm-row ${r.on ? 'on' : ''}"><label class="ctl"><input type="checkbox" data-fk="${esc(r.k)}" ${r.on ? 'checked' : ''} ${r.set ? '' : 'disabled'}></label>
         <span class="grow"><b>${esc(r.name)}</b>${r.info ? `<small>${esc(r.info)}</small>` : ''}</span><span class="fm-cost c${r.on ? Math.min(4, r.cost) : 0}" title="Zaťaženie: ${COST_TXT[Math.min(4, r.cost)]}">${'▮'.repeat(Math.max(1, Math.min(4, r.cost)))}</span>
         ${r.cfg ? `<button class="ib" data-fc="${esc(r.k)}" title="Nastavenia">⚙</button>` : '<span class="ib"></span>'}</div>`).join('')).join('');
-      $$('[data-fk]', d).forEach(x => x.onchange = () => { const r = featRows().find(y => y.k === x.dataset.fk); if (r && r.set) { r.set(x.checked); save(); } setTimeout(paint, 250); });
+      $$('[data-fk]', d).forEach(x => x.onchange = () => { const r = featRows().find(y => y.k === x.dataset.fk); if (r && r.set) { r.set(x.checked); save(); featSync(r.k, x.checked); } setTimeout(paint, 250); });
       $$('[data-fc]', d).forEach(x => x.onclick = () => { const r = featRows().find(y => y.k === x.dataset.fc); if (r && r.cfg) { closeDialog(); r.cfg(); } });
     };
-    $('[data-fmoff]', d).onclick = () => { for (const r of featRows()) if (r.on && r.set && ['photo', 'video', 'anim', 'tint', 'auto', 'major', 'range', 'fork', 'bubbles', 'scan'].includes(r.k)) r.set(false); save(); setTimeout(paint, 300); toast('🪶 Graf odľahčený'); };
+    $('[data-fmoff]', d).onclick = () => { for (const r of featRows()) if (r.on && r.set && ['photo', 'video', 'anim', 'tint', 'auto', 'major', 'range', 'fork', 'bubbles', 'scan'].includes(r.k)) { r.set(false); featSync(r.k, false); } save(); setTimeout(paint, 300); toast('🪶 Graf odľahčený'); };
     paint();
   }
 
