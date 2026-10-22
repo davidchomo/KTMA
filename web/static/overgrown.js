@@ -10,7 +10,8 @@
   const TF_LIST = Object.keys(TF_SEC), DEF_TFS = ['1m', '5m', '15m', '1h', '4h', '1d', '3m', '30m', '2h', '6h'];
   const W = { '1m': 0.6, '3m': 0.8, '5m': 1, '15m': 1.3, '30m': 1.45, '1h': 1.6, '2h': 1.8, '4h': 2, '6h': 2.05, '12h': 2.1, '1d': 2.2, '1w': 2.4 };
   const S = Object.assign({ symbol: 'XAUUSD', minAtr: 3, minPips: 0, auto: true, live: true, indAllWs: false, ws: null, wsId: null }, LS.get('nxog', {}));
-  S.show = { lines: true, levels: true, marks: true, vol: true, ...(S.show || {}) };
+  S.show = { lines: true, levels: false, marks: true, vol: true, ...(S.show || {}) };
+  if (!S.lv0) { S.lv0 = 1; S.show.levels = false; }      // the orange level lines are off (⚙ Grafy can bring them back)
   if (!Array.isArray(S.ws) || !S.ws.length) S.ws = [{ id: 'w1', name: 'Všetky TF', symbol: S.symbol, tfs: DEF_TFS.slice(0, 6), ind: [], cind: {} }];
   const save = () => LS.set('nxog', S);
   const WS = () => S.ws.find(w => w.id === S.wsId) || S.ws[(S.wsId = S.ws[0].id, 0)];

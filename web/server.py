@@ -199,6 +199,19 @@ def _rec_rows(ticker: str, from_ms: int, end_ms: int | None) -> tuple[list, int 
         return [list(B[k]) for k in sorted(k for k in B if lo <= k <= hi)], min(B) * 1000
 
 
+# a second instance (branch3) takes the second bars from the one that records them (NX_SEC_FROM=http://ktma-b2-web-1:8000)
+SEC_FROM = os.environ.get("NX_SEC_FROM", "").rstrip("/")
+
+
+def _seconds_remote(symbol: str, tf: str, end_ms: int | None, limit: int) -> list[list]:
+    try:
+        p = {"symbol": symbol, "tf": tf, "limit": limit, "hours": "false", "spot": "false", **({"end": end_ms} if end_ms else {})}
+        bars = http.get(f"{SEC_FROM}/api/candles", params=p, timeout=20).json()["bars"]
+        return [[b[0] * 1000, *b[1:]] for b in bars]
+    except Exception:
+        return []
+
+
 @app.on_event("startup")
 def _rec_start() -> None:
     if os.environ.get("NX_SEC_REC", "1") == "0":     # a second instance on the same IP can leave it to the first one
@@ -315,7 +328,9 @@ def candles(symbol: str, tf: str, end: int | None = None, limit: int = Query(100
         hit = _cache.get(key)
         if hit and time.time() - hit[0] < (3 if end is None else 300):
             return hit[1]
-    if tf in SECONDS:
+    if tf in SECONDS and sym["market"] == "futures" and SEC_FROM:
+        rows = _seconds_remote(symbol, tf, end, limit) or _seconds(sym, SECONDS[tf], end, limit)
+    elif tf in SECONDS:
         rows = _seconds(sym, SECONDS[tf], end, limit)
     else:
         rows = _klines(sym, tf, end, limit)
