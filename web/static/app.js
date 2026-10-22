@@ -6,8 +6,8 @@
   const { $, $$, esc, LS, openMenu, closeMenu, openDialog, closeDialog, cancelDialog, dialogOpen, colorPopover, closePop, swatch, opts, toast, rgba } = UI;
   const LW = LightweightCharts;
   const SECONDS = { '1s': 1, '5s': 5, '15s': 15, '30s': 30 };
-  // 🌱 Overgrown Lab and 🧪 Nexus Lab as tabs of the workspace panel (open over the chart area, stay loaded when hidden)
-  const PAGES = { og: ['🌱', 'Overgrown Lab', 'overgrown'], lab: ['🧪', 'Nexus Lab', 'lab'] };
+  // 🌱 NOL (Nexus Overgrown Lab) and 🧪 Nexus Lab as tabs of the workspace panel (open over the chart area, stay loaded when hidden)
+  const PAGES = { og: ['🌱', 'NOL', 'overgrown'], lab: ['🧪', 'Nexus Lab', 'lab'] };
   let pageOn = null;
   const TF_SEC = { ...SECONDS, '1m': 60, '3m': 180, '5m': 300, '15m': 900, '30m': 1800, '1h': 3600, '2h': 7200, '4h': 14400, '6h': 21600,
                    '8h': 28800, '12h': 43200, '1d': 86400, '3d': 259200, '1w': 604800, '1M': 2592000 };
@@ -2812,7 +2812,7 @@
         <div class="sec">💹 Obchod</div><div class="tl-grid">${tile('data-qbuy="1"', '🐂', 'Kúpiť (vyber loty)')}${tile('data-qbuy="-1"', '🐻', 'Predať (vyber loty)')}${tile('data-qlim', '🖱', 'Limit / stop myšou')}
           ${tile('data-qbar', '⚡', 'Rýchle tlačidlá na grafe', (NEXUS.flags() || {}).quick)}${tile('data-ticket', '🎛', 'Obchodný panel', (NEXUS.flags() || {}).ticket)}</div>
         <div class="sec">🧠 Učenie, roboty, prehľad</div><div class="tl-grid">${tile('data-area', '✂', 'Uložiť oblasť do učenia')}${tile('data-feat', '🎛', 'Prehľad funkcií (on / off)')}${tile('data-alerts', '🔔', 'RSI upozornenia')}
-          ${tile('data-script', '📜', 'Script – roboty')}${tile('data-og', '🌱', 'Overgrown Lab')}${tile('data-lab', '🧪', 'Nexus Lab')}</div>`;
+          ${tile('data-script', '📜', 'Script – roboty')}${tile('data-og', '🌱', 'NOL')}${tile('data-lab', '🧪', 'Nexus Lab')}</div>`;
     };
     const bind = m => {
       $$('[data-tool]', m).forEach(x => x.onclick = () => { closeMenu(); draw.start(x.dataset.tool); });
@@ -3244,7 +3244,7 @@
     ['Kreslenie a text', [['bTools', '🧰', 'Tools', 'Kreslenie + text + indikátory v jednom menu · Alt+T'], ['bHideInd', '👁', 'Skryť indikátory', 'Skryje / zobrazí všetky indikátory vo všetkých grafoch · Alt+H'], ['bCandles', '🕯', 'Sviečky', 'Typ grafu, tvar a farby sviečok'], ['bDraw', '✎', 'Kreslenie', 'Čiary, Fibonacci, vzory, tvary'], ['bText', 'T', 'Text', 'Poznámky, pin, tabuľka, obrázok, nápad']]],
     ['Analýza', [['bInd', 'ƒx', 'Indikátory', 'RSI, MACD, kĺzavé priemery, vzory'], ['bFunc', '🧩', 'Funkcie', 'Čiary, objem, stratégie, pozadie podľa Technicals'], ['lines', '📐', 'Čiary', 'Auto trendové čiary a úrovne'], ['volume', '🫧', 'Objem', 'Bubliny, delta, tok obchodov'], ['strats', '⚡', 'Stratégie nápadov', 'Zapnúť / vypnúť, R:R, stop'], ['bAlgo', '🧠', 'Algo', 'Overené stratégie, test, živé signály'], ['area', '✂', 'Oblasť do učenia', 'Označ sviečky, ktoré už prebehli: štatistika + indikátory v číslach do Nexus Lab'],
       ['tech', '📊', 'Technicals', 'Súhrn pre všetky timeframy (v Knižnici)'], ['bScan', '🔍', 'Skenovať', 'Hľadá vstupy na trhoch'], ['bSig', '🎯', 'Buy / Sell skener', 'Nákup alebo predaj? Verdikt pre každý trh a timeframe'], ['bFeat', '🎛', 'Prehľad funkcií', 'Všetko, čo je zapnuté – vypni / zapni a pozri, ako zaťažuje graf'], ['alerts', '🔔', 'RSI upozornenia', 'Napr. RSI 80 / 20 na 1 minúte'],
-      ['og', '🌱', 'Overgrown Lab', 'Tretí grafový systém: trend na všetkých TF, kde sa začína pohyb'], ['script', '📜', 'Script', 'Roboty: Director skenuje, dáva signály, kladie príkazy'], ['bReplay', '⏯', 'Replay', 'Tréning na histórii'],
+      ['og', '🌱', 'NOL', 'Nexus Overgrown Lab – tretí grafový systém: trend na všetkých TF, kde sa začína pohyb'], ['script', '📜', 'Script', 'Roboty: Director skenuje, dáva signály, kladie príkazy'], ['bReplay', '⏯', 'Replay', 'Tréning na histórii'],
       ['lab', '🧪', 'Nexus Lab', 'Druhý grafový systém: karty, skener objemových pohybov, učenie'], ['elec', '🔌', 'Electricals', 'Štatistiky: čo sa stalo pri akej hodnote indikátorov']]],
     ['Obchod', [['nexus', '◆', 'Nexus', 'Účet, pozície, robot, nástenka'], ['ticket', '🐂', 'Obchodný panel', 'Býk = kúpiť, medveď = predať · SL, TP, čiastočné výstupy'], ['bIdea', '💡', 'Nápad', 'Alerty skenera a labelovanie']]],
     ['Komunikácia', [['bChat', '💬', 'Chat', 'Tím, nápady, otázky pre Clauda'], ['news', '📰', 'Správy', 'Novinky, kalendár, odkazy (v okne chatu)']]],
@@ -3392,7 +3392,7 @@
       <div class="it" data-dswa><span class="ic">↺</span><span class="grow">Automatická šírka <small class="muted">· alebo potiahni pravý okraj panela</small></span></div>` : ''}
       <div class="sec">Farebná téma</div><div class="dock-themes">${Object.entries(DOCK_THEMES).map(([k, t]) => `<span data-dt="${k}" class="${D.theme === k ? 'on' : ''}" style="background:${t[1]};border-color:${t[2]};color:${t[4]}" title="${t[0]}"><i style="background:${t[2]}"></i>${t[0]}</span>`).join('')}</div>
       <div class="sep"></div><div class="it" data-dnew><span class="ic">＋</span><span class="grow">Nová plocha</span></div><div class="it" data-dnclean><span class="ic">◻</span><span class="grow">Čistý graf (prázdne plátno, vlastné nastavenia)</span></div>
-      <div class="it" data-dnog><span class="ic">🌱</span><span class="grow">Overgrown Lab (všetky timeframy naraz)</span></div>
+      <div class="it" data-dnog><span class="ic">🌱</span><span class="grow">NOL – Nexus Overgrown Lab (všetky timeframy naraz)</span></div>
       <div class="it" data-dnlab><span class="ic">🧪</span><span class="grow">Nexus Lab (druhý grafový systém)</span></div>`;
     const bind = m => {
       $$('[data-dm]', m).forEach(x => x.onclick = () => { D.mode = x.dataset.dm; save(); paintDock(); m.innerHTML = html(); bind(m); });

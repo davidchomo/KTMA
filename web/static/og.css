@@ -1,4 +1,4 @@
-/* Nexus Overgrown Lab */
+/* NOL – Nexus Overgrown Lab */
 body.og { background: radial-gradient(120% 90% at 0% 0%, #13211a, #0f1218 60%); }
 #ogApp { position: fixed; inset: 0; display: flex; flex-direction: column; }
 #ogTop { display: flex; align-items: center; gap: 10px; padding: 5px 10px; background: rgba(20,26,22,.92); border-bottom: 1px solid #23402d; flex-wrap: wrap; font-size: 12px; }
@@ -6,7 +6,7 @@ body.og { background: radial-gradient(120% 90% at 0% 0%, #13211a, #0f1218 60%); 
 #ogTop input[type=number] { width: 64px; } #ogTop label { display: flex; align-items: center; gap: 4px; color: var(--muted); }
 .og-logo { color: #a3e635; text-decoration: none; font-weight: 600; } .og-logo b { color: #84cc16; } .og-lnk { color: var(--muted); text-decoration: none; }
 #ogMain { flex: 1; min-height: 0; display: flex; }
-#ogGrid { flex: 1; min-width: 0; display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: 1fr 1fr; gap: 4px; padding: 4px; }
+#ogGrid { flex: 1; min-width: 0; display: grid; grid-template-columns: repeat(var(--og-cols, 3), minmax(0, 1fr)); grid-template-rows: repeat(var(--og-rows, 2), minmax(0, 1fr)); gap: 4px; padding: 4px; }
 .og-cell { display: flex; flex-direction: column; min-height: 0; border: 1px solid #23302a; border-radius: 6px; background: rgba(15,20,18,.7); transition: box-shadow .3s; }
 .og-cell.flash { box-shadow: 0 0 0 2px #84cc16; }
 .og-h { display: flex; align-items: center; gap: 6px; padding: 3px 8px; font-size: 12px; border-bottom: 1px solid #23302a; }
@@ -26,4 +26,21 @@ body.og { background: radial-gradient(120% 90% at 0% 0%, #13211a, #0f1218 60%); 
 .og-mv.b { border-color: #26a69a; } .og-mv.s { border-color: #ef5350; } .og-mv:hover { background: rgba(132,204,22,.08); }
 .og-mv small { color: var(--muted); display: block; margin-top: 1px; } .og-mv small b { color: var(--text); }
 .og-st { color: #ffd600; letter-spacing: -1px; }
-@media (max-width: 1100px) { #ogMain { flex-direction: column; } #ogSide { width: auto; max-height: 45vh; border-left: 0; } #ogGrid { grid-template-columns: repeat(2, 1fr); grid-template-rows: repeat(3, 260px); overflow: auto; } }
+@media (max-width: 1100px) { #ogMain { flex-direction: column; } #ogSide { width: auto; max-height: 45vh; border-left: 0; } #ogGrid { grid-template-columns: repeat(min(2, var(--og-cols, 2)), minmax(0, 1fr)); grid-template-rows: none; grid-auto-rows: 260px; overflow: auto; } }
+#ogTabs { display: flex; gap: 3px; align-items: center; flex-wrap: wrap; }
+.og-tab { display: flex; align-items: center; gap: 5px; background: transparent; border: 1px solid #23402d; color: var(--muted); border-radius: 7px; padding: 3px 8px; cursor: pointer; font: inherit; }
+.og-tab b { width: 16px; height: 16px; line-height: 16px; border-radius: 4px; background: rgba(255,255,255,.08); font-size: 10px; text-align: center; } .og-tab small { color: #6b7a70; font-size: 10px; }
+.og-tab i { font-style: normal; opacity: 0; margin-left: 2px; } .og-tab:hover i { opacity: .7; } .og-tab i:hover { opacity: 1; color: #ff7b86; }
+.og-tab:hover { color: #fff; } .og-tab.on { background: rgba(132,204,22,.18); border-color: #84cc16; color: #fff; } .og-tab.on b { background: #84cc16; color: #0b0e14; }
+.og-tab.add { padding: 3px 9px; }
+#ogPx { font-variant-numeric: tabular-nums; min-width: 70px; } #ogPx.live::before { content: ''; display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #22c55e; margin-right: 5px; box-shadow: 0 0 6px #22c55e; vertical-align: 1px; }
+.og-h select { background: transparent; color: var(--text); border: 1px solid transparent; border-radius: 4px; font: inherit; font-weight: 700; padding: 0 2px; cursor: pointer; } .og-h select:hover { border-color: var(--border); }
+.og-h select option { background: var(--panel); }
+.og-px { font-variant-numeric: tabular-nums; font-size: 11px; color: var(--text); }
+.og-ci { display: flex; gap: 3px; overflow: hidden; } .og-chip { font-size: 10px; padding: 0 6px; border-radius: 8px; background: rgba(41,98,255,.2); color: #9db6ff; cursor: pointer; white-space: nowrap; }
+.og-add { background: transparent; border: 0; color: var(--muted); cursor: pointer; font-size: 11px; padding: 0 2px; opacity: .55; } .og-add:hover { opacity: 1; color: #fff; }
+.og-h { flex-wrap: nowrap; overflow: hidden; }
+.og-menu { min-width: 300px; } .og-menu .it input[type=number] { background: var(--panel2); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 1px 4px; }
+.og-menu .it input[data-q] { background: var(--panel2); color: var(--text); border: 1px solid var(--border); border-radius: 4px; padding: 4px 6px; font: inherit; }
+.og-nums { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; padding: 4px 12px 8px; }
+.og-nums span { text-align: center; padding: 5px 0; border-radius: 6px; background: rgba(255,255,255,.06); cursor: pointer; font-weight: 600; } .og-nums span:hover { background: rgba(132,204,22,.25); } .og-nums span.on { background: #84cc16; color: #0b0e14; }

@@ -1133,7 +1133,7 @@ api.log(text)  api.notify(text)  api.every(ms, async fn)  api.state (pamäť skr
     elec: ['Electricals', 'linear-gradient(135deg,#fde047,#ea580c)', 'Štatistiky z Nexus Lab: čo sa stalo pri akej hodnote RSI, MACD a všetkých indikátorov'],
     lab: ['Nexus Lab', 'linear-gradient(135deg,#34d399,#0f766e)', 'Druhý grafový systém: karty grafov, skener pohybov, učenie (otvorí sa v novej karte)'],
     script: ['Script', 'linear-gradient(135deg,#0ea5e9,#312e81)', 'Tvoje roboty v JavaScripte: 🎬 Director skenuje trhy, dáva signály BUY / SELL a môže sám klásť príkazy so SL, TP a BE'],
-    og: ['Overgrown Lab', 'linear-gradient(135deg,#a3e635,#166534)', 'Tretí grafový systém: trend a čiary na všetkých timeframoch, kde sa začína pohyb (otvorí sa v novej karte)'],
+    og: ['NOL', 'linear-gradient(135deg,#a3e635,#166534)', 'Nexus Overgrown Lab – trend a čiary na všetkých timeframoch, kde sa začína pohyb, živá cena, vlastné plochy s 1 – 10 grafmi'],
     saves: ['Uloženia', 'linear-gradient(135deg,#818cf8,#312e81)', 'Uložené rozloženia grafov – každé s vlastným názvom, dátumom a časom (Ctrl+S)'],
   };
   const ACTIONS = { og: () => window.NX_page ? (close(), window.NX_page('og')) : window.open('overgrown', '_blank'), lab: () => window.NX_page ? (close(), window.NX_page('lab')) : window.open('lab', '_blank'), chat: () => ctx.openChat(), lib: () => { close(); LIB.open(); }, ticket: () => { const P = PL(); P.open = !P.open; ctx.save(); paintTicket(); ctx.onTrades(); ctx.toast(P.open ? '💹 Obchodný panel zobrazený v grafe' : 'Obchodný panel skrytý'); } };

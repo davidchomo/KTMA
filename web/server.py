@@ -186,7 +186,7 @@ def _rec_loop(ticker: str) -> None:
         except Exception:
             time.sleep(60)
         rnd += 1
-        time.sleep(5)
+        time.sleep(8)
 
 
 def _rec_rows(ticker: str, from_ms: int, end_ms: int | None) -> tuple[list, int | None]:
@@ -201,6 +201,8 @@ def _rec_rows(ticker: str, from_ms: int, end_ms: int | None) -> tuple[list, int 
 
 @app.on_event("startup")
 def _rec_start() -> None:
+    if os.environ.get("NX_SEC_REC", "1") == "0":     # a second instance on the same IP can leave it to the first one
+        return
     for sym in SYMBOLS.values():
         if sym["market"] == "futures" and sym["ticker"] not in _rec:
             threading.Thread(target=_rec_loop, args=(sym["ticker"],), daemon=True).start()
