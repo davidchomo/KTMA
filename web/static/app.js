@@ -54,7 +54,7 @@
     nexus: { hudX: null, hudY: null, avatar: '', quote: 0 },
     account: { start: 10000, positions: [], history: [] }, accounts: [], accountId: 'main', board: { notes: [] },
     robot: { on: false, symbols: ['XAUUSD'], tfs: ['1m', '5m', '15m', '1h'], period: 10, sharpBars: 3, sharpAtr: 2, onSharp: 'both', paper: true, lots: 0.1, state: {}, log: [] },
-    alerts: [], scripts: [], addons: { follow: false, always: false, float: true, floatBg: 35, scroll: false, scrollH: 75, scrollCols: 1 },
+    alerts: [], scripts: [], addons: { follow: false, always: false, float: false, floatBg: 35, scroll: false, scrollH: 75, scrollCols: 1 },
     savedAt: 0,
   };
   const merge = (a, b) => { const o = { ...a }; for (const k in b || {}) o[k] = a && a[k] && typeof a[k] === 'object' && !Array.isArray(a[k]) && b[k] && typeof b[k] === 'object' && !Array.isArray(b[k]) ? merge(a[k], b[k]) : b[k]; return o; };
@@ -771,7 +771,7 @@
     showOHLC(); if (mainIdx) requestAnimationFrame(() => showOHLC());
     chart.subscribeCrosshairMove(p => { lastCross = p; crossTime = p && p.time !== undefined ? p.time : null; showOHLC(crossTime); floatCross(p); });
     paintTfBadge();
-    if (S.addons.fl0) { delete S.addons.fl0; S.addons.floatBg = 35; } // back to the v27 windows
+    if (!S.addons.fl2) { S.addons.fl2 = 1; delete S.addons.fl0; S.addons.floatBg = 35; if (S.addons.float || studies.some(x => x.float)) { S.addons.float = false; studies.forEach(x => { delete x.float; }); save(); return buildChart(keepRange); } } // indicators back in panels under the chart (v34)
     $('#chartWrap').style.setProperty('--fl-bg', ((S.addons.floatBg ?? 35) / 100).toFixed(2));
     const ts = chart.timeScale();
     if (range) ts.setVisibleLogicalRange(range);
