@@ -1137,16 +1137,14 @@ table.al-t tr.bad { opacity: .62; }
 .tools-menu .it.dis { opacity: .5; }
 
 /* 🪟 floating indicators */
-.fl-box { position: absolute; z-index: 4; display: flex; flex-direction: column; min-height: 30px; border-radius: 0; border: 1px solid transparent; border-left: 0; border-right: 0; box-sizing: border-box;
-  background: rgba(18,21,30,var(--fl-bg,0)); overflow: hidden; }
-.fl-box:hover { border-color: rgba(255,255,255,.14); }
+.fl-box { position: absolute; z-index: 4; display: flex; flex-direction: column; min-width: 120px; min-height: 60px; border-radius: 8px; border: 1px solid rgba(255,255,255,.14);
+  background: rgba(18,21,30,var(--fl-bg,.35)); box-shadow: 0 4px 16px rgba(0,0,0,.35); overflow: hidden; }
 .fl-box.drag { box-shadow: 0 0 0 2px var(--accent), 0 6px 20px rgba(0,0,0,.5); }
-.fl-h { display: flex; align-items: center; gap: 6px; padding: 2px 4px 2px 8px; font-size: 11px; cursor: default; user-select: none; background: rgba(18,21,30,var(--fl-bg,0)); border-bottom: 1px solid transparent; text-shadow: 0 1px 2px rgba(0,0,0,.8); white-space: nowrap; }
- .fl-n { font-weight: 600; } .fl-v { display: flex; gap: 5px; font-variant-numeric: tabular-nums; overflow: hidden; }
+.fl-h { display: flex; align-items: center; gap: 6px; padding: 2px 4px 2px 8px; font-size: 11px; cursor: grab; user-select: none; background: rgba(18,21,30,calc(var(--fl-bg,.35) + .3)); border-bottom: 1px solid rgba(255,255,255,.08); white-space: nowrap; }
+.fl-h:active { cursor: grabbing; } .fl-n { font-weight: 600; } .fl-v { display: flex; gap: 5px; font-variant-numeric: tabular-nums; overflow: hidden; }
 .fl-h button { background: none; border: 0; color: #9598a1; cursor: pointer; padding: 0 3px; font-size: 12px; } .fl-h button:hover { color: #fff; }
 .fl-c { flex: 1; min-height: 0; position: relative; }
-.fl-rz { position: absolute; z-index: 5; left: 0; right: 0; height: 6px; cursor: ns-resize; } .fl-rt { top: -1px; } .fl-rb { bottom: -1px; }
-.fl-box:hover .fl-rz { background: linear-gradient(transparent 2px, rgba(255,255,255,.25) 2px, rgba(255,255,255,.25) 4px, transparent 4px); } .fl-rz:hover { background: linear-gradient(transparent 2px, var(--accent) 2px, var(--accent) 4px, transparent 4px) !important; }
+.fl-rz { position: absolute; z-index: 5; right: 0; bottom: 0; width: 16px; height: 16px; cursor: nwse-resize; background: linear-gradient(135deg, transparent 50%, rgba(255,255,255,.35) 50%); border-bottom-right-radius: 7px; }
 .tools-menu .it.fl-sub { padding-left: 34px; } .tools-menu .fl-op input { width: 110px; }
 
 /* 📜 page of charts */

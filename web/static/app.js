@@ -54,7 +54,7 @@
     nexus: { hudX: null, hudY: null, avatar: '', quote: 0 },
     account: { start: 10000, positions: [], history: [] }, accounts: [], accountId: 'main', board: { notes: [] },
     robot: { on: false, symbols: ['XAUUSD'], tfs: ['1m', '5m', '15m', '1h'], period: 10, sharpBars: 3, sharpAtr: 2, onSharp: 'both', paper: true, lots: 0.1, state: {}, log: [] },
-    alerts: [], scripts: [], addons: { follow: false, always: false, float: true, floatBg: 0, scroll: false, scrollH: 75, scrollCols: 1 },
+    alerts: [], scripts: [], addons: { follow: false, always: false, float: true, floatBg: 35, scroll: false, scrollH: 75, scrollCols: 1 },
     savedAt: 0,
   };
   const merge = (a, b) => { const o = { ...a }; for (const k in b || {}) o[k] = a && a[k] && typeof a[k] === 'object' && !Array.isArray(a[k]) && b[k] && typeof b[k] === 'object' && !Array.isArray(b[k]) ? merge(a[k], b[k]) : b[k]; return o; };
@@ -675,55 +675,37 @@
     return s.type === 'volume' && s.float === true;
   }
   const clampN = (a, v, b) => Math.max(a, Math.min(b, v));
-  // a floating indicator is locked to the price area: same left edge, plot width and price-scale width as the candles,
-  // so every bar sits exactly under its candle; only its top and bottom (in % of the price pane) can be changed
-  // every bar time as whitespace, so logical index i is the same bar as on the price chart (indicators start later)
-  function floatTimes(u) { if (!u.tl || !disp || u.tlN === disp.length) return; u.tl.setData(disp.map(b => ({ time: b.time }))); u.tlN = disp.length; }
-  function priceArea() {
-    const wrap = $('#chartWrap').getBoundingClientRect(), r = el.getBoundingClientRect(), P = chart.panes();
-    return { left: r.left - wrap.left, top: r.top - wrap.top + mainTop(), w: chart.timeScale().width(), h: P[mainIdx] ? P[mainIdx].getHeight() : r.height };
-  }
-  function placeFloat(u) {
-    if (!chart) return;
-    const b = u.s.box, A = priceArea();
-    Object.assign(u.fel.style, { left: A.left + 'px', width: A.w + 'px', top: A.top + A.h * b.y / 100 + 'px', height: A.h * b.h / 100 + 'px' });
-  }
-  function alignFloats(force) {
-    const fl = (units || []).filter(u => u.fc); if (!chart || !fl.length) return;
-    fl.forEach(u => { floatTimes(u); placeFloat(u); });
-  }
+  function placeFloat(u) { const b = u.s.box; Object.assign(u.fel.style, { left: b.x + '%', top: b.y + '%', width: b.w + '%', height: b.h + '%' }); }
   function makeFloat(u, k) {
     const s = u.s, wrap = $('#chartWrap');
-    if (!s.box || s.box.v !== 2) s.box = { v: 2, h: 22, y: clampN(0, 100 - 22 * (k + 1), 78) };
+    if (!s.box || s.box.x === undefined) s.box = { x: 1 + (k % 2) * 45, y: clampN(4, 70 - Math.floor(k / 2) * 27, 90), w: 43, h: 25 };
     const el = u.fel = document.createElement('div'); el.className = 'fl-box no-chart';
     el.innerHTML = `<div class="fl-h"><span class="fl-n">${esc(u.def.label(s))}</span><span class="fl-v"></span><span class="grow"></span>
       <button data-fa="cfg" title="Nastavenia indikátora">⚙</button><button data-fa="dock" title="Späť do panela pod grafom">⇲</button><button data-fa="hide" title="Skryť">✕</button></div>
-      <div class="fl-c"></div><span class="fl-rz fl-rt" title="Ťahaj = horný okraj"></span><span class="fl-rz fl-rb" title="Ťahaj = spodný okraj"></span>`;
-    wrap.appendChild(el);
+      <div class="fl-c"></div><span class="fl-rz" title="Ťahaj = veľkosť okna"></span>`;
+    wrap.appendChild(el); placeFloat(u);
     const L = S.look;
     u.fc = LW.createChart($('.fl-c', el), { autoSize: true,
       layout: { background: { type: 'solid', color: 'rgba(0,0,0,0)' }, textColor: L.text, fontSize: Math.max(9, L.fontSize - 1), fontFamily: fontCss(L.font), attributionLogo: false },
       grid: { vertLines: { visible: false }, horzLines: { color: rgba(L.gridH.color, 45), visible: L.gridH.on } },
-      rightPriceScale: { visible: false, scaleMargins: { top: 0.12, bottom: 0.08 } }, timeScale: { visible: false, borderVisible: false, rightOffset: 0 },
-      crosshair: { mode: 0, vertLine: { labelVisible: false, color: rgba(S.crosshair.color, 60) }, horzLine: { labelVisible: false, color: rgba(S.crosshair.color, 60) } },
-      handleScroll: false, handleScale: false });
-    u.tl = u.fc.addSeries(LW.LineSeries, { lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false }); u.tlN = 0; floatTimes(u);
-    // top / bottom edge = height (in % of the price pane, so it fits any window size); the width always follows the price
+      rightPriceScale: { borderVisible: false, scaleMargins: { top: 0.12, bottom: 0.08 } }, timeScale: { visible: false, borderVisible: false },
+      crosshair: { mode: 0, vertLine: { labelVisible: false, color: rgba(S.crosshair.color, 60) }, horzLine: { color: rgba(S.crosshair.color, 60) } },
+      handleScroll: false, handleScale: { axisPressedMouseMove: { time: false, price: true }, axisDoubleClickReset: { price: true, time: false }, mouseWheel: false, pinch: false } });
+    // move by the title, resize by the corner (in % of the chart, so it fits any window size)
     const drag = (handle, fn) => {
       let d = null;
-      handle.addEventListener('pointerdown', e => { if (e.button !== 0) return; d = { y: e.clientY, b: { ...s.box }, H: priceArea().h }; handle.setPointerCapture(e.pointerId); e.preventDefault(); e.stopPropagation(); el.classList.add('drag'); });
-      handle.addEventListener('pointermove', e => { if (!d) return; fn(d, 100 * (e.clientY - d.y) / d.H); placeFloat(u); });
+      handle.addEventListener('pointerdown', e => { if (e.button !== 0 || e.target.closest('button')) return; d = { x: e.clientX, y: e.clientY, b: { ...s.box }, W: wrap.getBoundingClientRect() }; handle.setPointerCapture(e.pointerId); e.preventDefault(); e.stopPropagation(); el.classList.add('drag'); });
+      handle.addEventListener('pointermove', e => { if (!d) return; fn(d, 100 * (e.clientX - d.x) / d.W.width, 100 * (e.clientY - d.y) / d.W.height); placeFloat(u); });
       handle.addEventListener('pointerup', () => { if (d) { d = null; el.classList.remove('drag'); save(); } });
     };
-    drag($('.fl-rt', el), (d, dy) => { const bot = d.b.y + d.b.h; s.box.y = clampN(0, d.b.y + dy, bot - 5); s.box.h = bot - s.box.y; });
-    drag($('.fl-rb', el), (d, dy) => { s.box.h = clampN(5, d.b.h + dy, 100 - s.box.y); });
+    drag($('.fl-h', el), (d, dx, dy) => { s.box.x = clampN(0, d.b.x + dx, 100 - s.box.w); s.box.y = clampN(0, d.b.y + dy, 100 - 5); });
+    drag($('.fl-rz', el), (d, dx, dy) => { s.box.w = clampN(12, d.b.w + dx, 100 - s.box.x); s.box.h = clampN(8, d.b.h + dy, 100 - s.box.y); });
     el.addEventListener('click', e => { const a = e.target.closest('[data-fa]'); if (!a) return;
       if (a.dataset.fa === 'cfg') studySettings(s); else if (a.dataset.fa === 'dock') { s.float = false; studiesChanged(); toast(`${u.def.name}: späť v paneli pod grafom (🧩 Add-ons ho vráti do okna)`); } else { s.visible = false; studiesChanged(); } });
     el.addEventListener('dblclick', e => { if (e.target.closest('.fl-h')) studySettings(s); });
   }
-  new ResizeObserver(() => { try { alignFloats(); } catch (e) {} }).observe($('#chartWrap'));
   function destroyFloats() { for (const u of units || []) if (u.fc) { try { u.fc.remove(); } catch (e) {} u.fel.remove(); u.fc = null; } $$('#chartWrap .fl-box').forEach(x => x.remove()); }
-  function syncFloats(r) { if (!r) return; for (const u of units) if (u.fc) { floatTimes(u); u.fc.timeScale().setVisibleLogicalRange(r); } }
+  function syncFloats(r) { if (!r) return; for (const u of units) if (u.fc) u.fc.timeScale().setVisibleLogicalRange(r); }
   // the crosshair and the values of the bar under the mouse (the last bar otherwise)
   function floatCross(p) {
     const n = D ? D.t.length : 0;
@@ -789,14 +771,14 @@
     showOHLC(); if (mainIdx) requestAnimationFrame(() => showOHLC());
     chart.subscribeCrosshairMove(p => { lastCross = p; crossTime = p && p.time !== undefined ? p.time : null; showOHLC(crossTime); floatCross(p); });
     paintTfBadge();
-    if (!S.addons.fl0) { S.addons.fl0 = 1; S.addons.floatBg = 0; } // floating windows became transparent (v29)
-    $('#chartWrap').style.setProperty('--fl-bg', ((S.addons.floatBg ?? 0) / 100).toFixed(2));
+    if (S.addons.fl0) { delete S.addons.fl0; S.addons.floatBg = 35; } // back to the v27 windows
+    $('#chartWrap').style.setProperty('--fl-bg', ((S.addons.floatBg ?? 35) / 100).toFixed(2));
     const ts = chart.timeScale();
     if (range) ts.setVisibleLogicalRange(range);
     else if (view.focus !== undefined) focusOn(view.focus);
     else { ts.applyOptions({ barSpacing: S.look.candle.spacing }); ts.scrollToRealTime(); }
-    ts.subscribeVisibleLogicalRangeChange(r => { if (r && r.from < 30) loadOlder(); syncFloats(r); alignFloats(); });
-    if (units.some(u => u.fc)) requestAnimationFrame(() => { if (chart) { alignFloats(true); syncFloats(chart.timeScale().getVisibleLogicalRange()); floatCross(null); } });
+    ts.subscribeVisibleLogicalRangeChange(r => { if (r && r.from < 30) loadOlder(); syncFloats(r); });
+    if (units.some(u => u.fc)) requestAnimationFrame(() => { if (chart) { syncFloats(chart.timeScale().getVisibleLogicalRange()); floatCross(null); } });
     if (S.addons.follow && !range) followTick(true);
     paintAddonsBtn();
     perf.build = performance.now() - tB;
@@ -3109,10 +3091,10 @@
         <select data-scrc>${[1, 2, 3].map(v => `<option value="${v}" ${(A.scrollCols || 1) === v ? 'selected' : ''}>${v} ${v === 1 ? 'stĺpec' : 'stĺpce'}</option>`).join('')}</select>
         <select data-scrn>${[2, 3, 4, 5, 6, 7, 8, 9, 10].map(v => `<option value="${v}" ${S.layout.n === v ? 'selected' : ''}>${v} grafov</option>`).join('')}</select></div>
       <div class="sec">🪟 Plávajúce indikátory</div>
-      <label class="it"><input type="checkbox" data-ad="float" ${A.float ? 'checked' : ''}><span class="grow"><b>Indikátory v plávajúcich oknách</b><br><small class="muted">MACD, RSI… nezmenšujú sviečky a sú presne pod svojimi sviečkami (šírka ide s cenou) · výšku meníš ťahaním horného alebo spodného okraja, hodnoty sú v názve okna</small></span></label>
+      <label class="it"><input type="checkbox" data-ad="float" ${A.float ? 'checked' : ''}><span class="grow"><b>Indikátory v plávajúcich oknách</b><br><small class="muted">MACD, RSI… nezmenšujú sviečky: okno presunieš za názov, veľkosť rohom ◢, mierku ťahaním po jeho cenovej osi (dvojklik = späť)</small></span></label>
       ${studies.filter(s => !s.temp && (KS.STUDIES[s.type].pane === true || s.type === 'volume') && !KS.STUDIES[s.type].custom && !KS.STUDIES[s.type].pattern).map(s => `<label class="it fl-sub"><input type="checkbox" data-fls="${s.uid}" ${isFloat(s) ? 'checked' : ''} ${s.overlay ? 'disabled' : ''}><span class="grow">${esc(KS.STUDIES[s.type].label(s))}${s.overlay ? ' <small class="muted">(prekrýva graf)</small>' : s.float === undefined && s.type !== 'volume' ? ' <small class="muted">podľa hlavného prepínača</small>' : ''}</span></label>`).join('')}
-      <div class="it fl-op"><span class="ic">◐</span><span class="grow">Pozadie okien</span><input type="range" min="0" max="90" step="5" data-flbg value="${A.floatBg ?? 0}"><b>${A.floatBg ?? 0} %</b></div>
-      <div class="it" data-flarr><span class="ic">⊞</span><span class="grow">Zoradiť okná (dole pod sebou)</span></div>
+      <div class="it fl-op"><span class="ic">◐</span><span class="grow">Pozadie okien</span><input type="range" min="0" max="90" step="5" data-flbg value="${A.floatBg ?? 35}"><b>${A.floatBg ?? 35} %</b></div>
+      <div class="it" data-flarr><span class="ic">⊞</span><span class="grow">Zoradiť okná (dole vľavo)</span></div>
       <div class="sep"></div>
       <div class="it" data-adall><span class="ic">🔁</span><span class="grow">Tieto doplnky aj vo všetkých grafoch</span></div>
       <div class="it" data-adfeat><span class="ic">🎛</span><span class="grow">Všetky funkcie on / off…</span></div>`;
