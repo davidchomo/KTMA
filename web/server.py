@@ -161,8 +161,10 @@ def _rec_loop(ticker: str) -> None:
                             R["last"] = tr[-1]["a"]
                     if len(tr) < 1000:
                         break
-            # one older page per round until REC_BACK is covered
-            if R["first"] and B and min(B) > time.time() - REC_BACK:
+            # two older pages per round until REC_BACK is covered
+            for _ in range(2):
+                if not (R["first"] and B and min(B) > time.time() - REC_BACK):
+                    break
                 tr = [t for t in _get(url, {"symbol": ticker, "fromId": max(0, R["first"] - 1000), "limit": 1000}) if t["a"] < R["first"]]
                 with _rec_lock:
                     _rec_add(R, tr, older=True)
@@ -207,9 +209,9 @@ def _seconds(sym: dict, sec: int, end_ms: int | None, limit: int) -> list[list]:
         return _bucket(_klines(sym, "1s", end_ms, min(limit * sec, MAX_REQUESTS * 1000)), sec)
     rec, rec_from = _rec_rows(sym["ticker"], (end_ms or int(time.time() * 1000)) - limit * sec * 1000, end_ms)
     if rec_from is not None and (end_ms is None or end_ms > rec_from + sec * 1000):
-        # the recording covers this window (or its newest part); scrolling back past it falls back to the trades
+        # the recording covers this window (or its newest part); older than the recording (just after a restart, scrolling back) comes from the trades
         n = len(_bucket(rec, sec))
-        older = _seconds_trades(sym, sec, rec_from - 1, limit - n) if end_ms is not None and n < limit * 0.9 else []
+        older = _seconds_trades(sym, sec, rec_from - 1, limit - n) if n < limit * 0.9 else []
         return _bucket([r for r in older if r[0] < rec_from] + rec, sec)
     return _bucket(_seconds_trades(sym, sec, end_ms, limit), sec)
 
