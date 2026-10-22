@@ -612,6 +612,8 @@ const KS = (() => {
     const o = x.out || {};
     return { uid: x.uid || `s${Date.now().toString(36)}${(seq++).toString(36)}`, type: x.type, v: def.v || 1, visible: x.visible !== false,
              inputs, plots, tfs, temp: !!x.temp, above: !!x.above, alpha: num(x.alpha, def.alpha ?? 100), overlay: !!x.overlay, ovH: num(x.ovH, 30),
+             float: x.float === undefined || x.float === null ? undefined : !!x.float,
+             box: x.box && typeof x.box === 'object' ? { x: num(x.box.x, 1), y: num(x.box.y, 70), w: num(x.box.w, 43), h: num(x.box.h, 25) } : undefined,
              out: { precision: o.precision ?? 'auto', priceLabels: !!o.priceLabels, legendValues: o.legendValues !== false } };
   }
   function rgba(hex, opacity) {

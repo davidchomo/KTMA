@@ -1135,3 +1135,20 @@ table.al-t tr.bad { opacity: .62; }
 /* 🧩 Toolbar Add-ons */
 #bAddons.on .ic { filter: drop-shadow(0 0 4px #00e676); } #bAddons.paused .ic { filter: grayscale(1); opacity: .6; }
 .tools-menu .it.dis { opacity: .5; }
+
+/* 🪟 floating indicators */
+.fl-box { position: absolute; z-index: 4; display: flex; flex-direction: column; min-width: 120px; min-height: 60px; border-radius: 8px; border: 1px solid rgba(255,255,255,.14);
+  background: rgba(18,21,30,var(--fl-bg,.35)); box-shadow: 0 4px 16px rgba(0,0,0,.35); overflow: hidden; }
+.fl-box.drag { box-shadow: 0 0 0 2px var(--accent), 0 6px 20px rgba(0,0,0,.5); }
+.fl-h { display: flex; align-items: center; gap: 6px; padding: 2px 4px 2px 8px; font-size: 11px; cursor: grab; user-select: none; background: rgba(18,21,30,calc(var(--fl-bg,.35) + .3)); border-bottom: 1px solid rgba(255,255,255,.08); white-space: nowrap; }
+.fl-h:active { cursor: grabbing; } .fl-n { font-weight: 600; } .fl-v { display: flex; gap: 5px; font-variant-numeric: tabular-nums; overflow: hidden; }
+.fl-h button { background: none; border: 0; color: #9598a1; cursor: pointer; padding: 0 3px; font-size: 12px; } .fl-h button:hover { color: #fff; }
+.fl-c { flex: 1; min-height: 0; position: relative; }
+.fl-rz { position: absolute; z-index: 5; right: 0; bottom: 0; width: 16px; height: 16px; cursor: nwse-resize; background: linear-gradient(135deg, transparent 50%, rgba(255,255,255,.35) 50%); border-bottom-right-radius: 7px; }
+.tools-menu .it.fl-sub { padding-left: 34px; } .tools-menu .fl-op input { width: 110px; }
+
+/* 📜 page of charts */
+#paneGrid.scroll { overflow-y: auto; align-content: start; scroll-behavior: smooth; }
+#paneGrid.scroll > * { min-height: 220px; }
+.tools-menu .sc-cfg select { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 4px; font: inherit; padding: 1px 3px; margin-left: 4px; }
+.dd.tools-menu { overflow-x: hidden; } .tools-menu .it small { white-space: normal; }
