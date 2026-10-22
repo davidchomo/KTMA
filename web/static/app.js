@@ -675,55 +675,37 @@
     return s.type === 'volume' && s.float === true;
   }
   const clampN = (a, v, b) => Math.max(a, Math.min(b, v));
-  // a floating indicator is locked to the price area: same left edge, plot width and price-scale width as the candles,
-  // so every bar sits exactly under its candle; only its top and bottom (in % of the price pane) can be changed
-  // every bar time as whitespace, so logical index i is the same bar as on the price chart (indicators start later)
-  function floatTimes(u) { if (!u.tl || !disp || u.tlN === disp.length) return; u.tl.setData(disp.map(b => ({ time: b.time }))); u.tlN = disp.length; }
-  function priceArea() {
-    const wrap = $('#chartWrap').getBoundingClientRect(), r = el.getBoundingClientRect(), P = chart.panes();
-    return { left: r.left - wrap.left, top: r.top - wrap.top + mainTop(), w: chart.timeScale().width(), h: P[mainIdx] ? P[mainIdx].getHeight() : r.height };
-  }
-  function placeFloat(u) {
-    if (!chart) return;
-    const b = u.s.box, A = priceArea();
-    Object.assign(u.fel.style, { left: A.left + 'px', width: A.w + 'px', top: A.top + A.h * b.y / 100 + 'px', height: A.h * b.h / 100 + 'px' });
-  }
-  function alignFloats(force) {
-    const fl = (units || []).filter(u => u.fc); if (!chart || !fl.length) return;
-    fl.forEach(u => { floatTimes(u); placeFloat(u); });
-  }
+  function placeFloat(u) { const b = u.s.box; Object.assign(u.fel.style, { left: b.x + '%', top: b.y + '%', width: b.w + '%', height: b.h + '%' }); }
   function makeFloat(u, k) {
     const s = u.s, wrap = $('#chartWrap');
-    if (!s.box || s.box.v !== 2) s.box = { v: 2, h: 22, y: clampN(0, 100 - 22 * (k + 1), 78) };
+    if (!s.box || s.box.v === 2 || s.box.x === undefined) s.box = { x: 1 + (k % 2) * 45, y: clampN(4, 70 - Math.floor(k / 2) * 27, 90), w: 43, h: 25 };
     const el = u.fel = document.createElement('div'); el.className = 'fl-box no-chart';
     el.innerHTML = `<div class="fl-h"><span class="fl-n">${esc(u.def.label(s))}</span><span class="fl-v"></span><span class="grow"></span>
       <button data-fa="cfg" title="Nastavenia indikátora">⚙</button><button data-fa="dock" title="Späť do panela pod grafom">⇲</button><button data-fa="hide" title="Skryť">✕</button></div>
-      <div class="fl-c"></div><span class="fl-rz fl-rt" title="Ťahaj = horný okraj"></span><span class="fl-rz fl-rb" title="Ťahaj = spodný okraj"></span>`;
-    wrap.appendChild(el);
+      <div class="fl-c"></div><span class="fl-rz" title="Ťahaj = veľkosť okna"></span>`;
+    wrap.appendChild(el); placeFloat(u);
     const L = S.look;
     u.fc = LW.createChart($('.fl-c', el), { autoSize: true,
       layout: { background: { type: 'solid', color: 'rgba(0,0,0,0)' }, textColor: L.text, fontSize: Math.max(9, L.fontSize - 1), fontFamily: fontCss(L.font), attributionLogo: false },
       grid: { vertLines: { visible: false }, horzLines: { color: rgba(L.gridH.color, 45), visible: L.gridH.on } },
-      rightPriceScale: { visible: false, scaleMargins: { top: 0.12, bottom: 0.08 } }, timeScale: { visible: false, borderVisible: false, rightOffset: 0 },
-      crosshair: { mode: 0, vertLine: { labelVisible: false, color: rgba(S.crosshair.color, 60) }, horzLine: { labelVisible: false, color: rgba(S.crosshair.color, 60) } },
-      handleScroll: false, handleScale: false });
-    u.tl = u.fc.addSeries(LW.LineSeries, { lastValueVisible: false, priceLineVisible: false, crosshairMarkerVisible: false }); u.tlN = 0; floatTimes(u);
-    // top / bottom edge = height (in % of the price pane, so it fits any window size); the width always follows the price
+      rightPriceScale: { borderVisible: false, scaleMargins: { top: 0.12, bottom: 0.08 } }, timeScale: { visible: false, borderVisible: false },
+      crosshair: { mode: 0, vertLine: { labelVisible: false, color: rgba(S.crosshair.color, 60) }, horzLine: { color: rgba(S.crosshair.color, 60) } },
+      handleScroll: false, handleScale: { axisPressedMouseMove: { time: false, price: true }, axisDoubleClickReset: { price: true, time: false }, mouseWheel: false, pinch: false } });
+    // move by the title, resize by the corner (in % of the chart, so it fits any window size)
     const drag = (handle, fn) => {
       let d = null;
-      handle.addEventListener('pointerdown', e => { if (e.button !== 0) return; d = { y: e.clientY, b: { ...s.box }, H: priceArea().h }; handle.setPointerCapture(e.pointerId); e.preventDefault(); e.stopPropagation(); el.classList.add('drag'); });
-      handle.addEventListener('pointermove', e => { if (!d) return; fn(d, 100 * (e.clientY - d.y) / d.H); placeFloat(u); });
+      handle.addEventListener('pointerdown', e => { if (e.button !== 0 || e.target.closest('button')) return; d = { x: e.clientX, y: e.clientY, b: { ...s.box }, W: wrap.getBoundingClientRect() }; handle.setPointerCapture(e.pointerId); e.preventDefault(); e.stopPropagation(); el.classList.add('drag'); });
+      handle.addEventListener('pointermove', e => { if (!d) return; fn(d, 100 * (e.clientX - d.x) / d.W.width, 100 * (e.clientY - d.y) / d.W.height); placeFloat(u); });
       handle.addEventListener('pointerup', () => { if (d) { d = null; el.classList.remove('drag'); save(); } });
     };
-    drag($('.fl-rt', el), (d, dy) => { const bot = d.b.y + d.b.h; s.box.y = clampN(0, d.b.y + dy, bot - 5); s.box.h = bot - s.box.y; });
-    drag($('.fl-rb', el), (d, dy) => { s.box.h = clampN(5, d.b.h + dy, 100 - s.box.y); });
+    drag($('.fl-h', el), (d, dx, dy) => { s.box.x = clampN(0, d.b.x + dx, 100 - s.box.w); s.box.y = clampN(0, d.b.y + dy, 100 - 5); });
+    drag($('.fl-rz', el), (d, dx, dy) => { s.box.w = clampN(12, d.b.w + dx, 100 - s.box.x); s.box.h = clampN(8, d.b.h + dy, 100 - s.box.y); });
     el.addEventListener('click', e => { const a = e.target.closest('[data-fa]'); if (!a) return;
       if (a.dataset.fa === 'cfg') studySettings(s); else if (a.dataset.fa === 'dock') { s.float = false; studiesChanged(); toast(`${u.def.name}: späť v paneli pod grafom (🧩 Add-ons ho vráti do okna)`); } else { s.visible = false; studiesChanged(); } });
     el.addEventListener('dblclick', e => { if (e.target.closest('.fl-h')) studySettings(s); });
   }
-  new ResizeObserver(() => { try { alignFloats(); } catch (e) {} }).observe($('#chartWrap'));
   function destroyFloats() { for (const u of units || []) if (u.fc) { try { u.fc.remove(); } catch (e) {} u.fel.remove(); u.fc = null; } $$('#chartWrap .fl-box').forEach(x => x.remove()); }
-  function syncFloats(r) { if (!r) return; for (const u of units) if (u.fc) { floatTimes(u); u.fc.timeScale().setVisibleLogicalRange(r); } }
+  function syncFloats(r) { if (!r) return; for (const u of units) if (u.fc) u.fc.timeScale().setVisibleLogicalRange(r); }
   // the crosshair and the values of the bar under the mouse (the last bar otherwise)
   function floatCross(p) {
     const n = D ? D.t.length : 0;
@@ -794,8 +776,8 @@
     if (range) ts.setVisibleLogicalRange(range);
     else if (view.focus !== undefined) focusOn(view.focus);
     else { ts.applyOptions({ barSpacing: S.look.candle.spacing }); ts.scrollToRealTime(); }
-    ts.subscribeVisibleLogicalRangeChange(r => { if (r && r.from < 30) loadOlder(); syncFloats(r); alignFloats(); });
-    if (units.some(u => u.fc)) requestAnimationFrame(() => { if (chart) { alignFloats(true); syncFloats(chart.timeScale().getVisibleLogicalRange()); floatCross(null); } });
+    ts.subscribeVisibleLogicalRangeChange(r => { if (r && r.from < 30) loadOlder(); syncFloats(r); });
+    if (units.some(u => u.fc)) requestAnimationFrame(() => { if (chart) { syncFloats(chart.timeScale().getVisibleLogicalRange()); floatCross(null); } });
     if (S.addons.follow && !range) followTick(true);
     paintAddonsBtn();
     perf.build = performance.now() - tB;
@@ -1155,8 +1137,9 @@
     if (view.mode === 'alert') $('#histText').textContent = `Alert #${view.id} · ${fmtTime(view.time)}${view.blind ? ' · naslepo' : ''}`;
     else connectLive();
   }
+  const OLDER_MAX = 20000;
   async function loadOlder() {
-    if (loadingOlder || olderDone || !raw.length || view.mode !== 'live') return;
+    if (loadingOlder || olderDone || !raw.length || view.mode !== 'live' || raw.length >= Math.max(OLDER_MAX, S.bars)) return;
     loadingOlder = true;
     try {
       const older = await fetchBars(S.symbol, S.tf, raw[0].time * 1000 - 1, 1000);
@@ -1497,7 +1480,7 @@
       data: `<div class="fld">${cb('hours', S.hours, 'Zlato a striebro: iba obchodné hodiny (bez víkendu a dennej pauzy)')}</div>
         <div class="fld">${cb('spot', S.spot !== false, 'Spot cena ako na TradingView (zlato, striebro, forex) – Binance futures sú o pár dolárov inde, ceny posunieme o rozdiel')}</div>
         <div class="muted" style="font-size:11px;margin:-4px 0 8px">Teraz posun ${esc(sym().name || S.symbol)}: ${(sym().off || 0) >= 0 ? '+' : ''}${(sym().off || 0).toFixed(sym().digits || 2)} (spot podľa Swissquote, kontrola raz za minútu)</div>
-        <div class="fld"><span>Sviečok načítať</span>${num('bars', S.bars, 200, 5000, 100)}</div>
+        <div class="fld"><span>Sviečok načítať</span>${num('bars', S.bars, 50, 10000, 50)}</div>
         <div class="fld"><span>Tvoje meno (nastavenia na všetkých zariadeniach)</span><input type="text" data-k="labeler" value="${esc(S.labeler)}"></div>
         <div class="muted" style="margin-top:14px;font-size:11px">Grafy: <a href="https://www.tradingview.com/lightweight-charts/" target="_blank" rel="noopener" style="color:inherit">TradingView Lightweight Charts™</a> · Dáta: Binance</div>`,
     })[tab];
@@ -2878,6 +2861,7 @@
   function setPathLive(path, v) {
     if (JSON.stringify(getPath(S, path)) === JSON.stringify(v)) return;
     setPath(S, path, v); save(); tlKey = ''; stKey = '';
+    if (path === 'bars') return load();
     if (path.startsWith('bgImg')) { applyBg(); applyAnim(); }
     buildChart(); applyTint(true); const b = $('#bAuto'); if (b) b.classList.toggle('on', !!S.auto.on);
   }
@@ -2935,11 +2919,24 @@
     ['Čiernobiela', '#e0e3eb', '#5d606b'], ['Zlato', '#d4a017', '#8d6e63'], ['Fialová', '#7c4dff', '#ff4081'], ['Farboslepé', '#0072b2', '#e69f00']];
   const shapeSvg = p => `<svg viewBox="0 0 40 24" width="40" height="24">${[[4, 14, 4, 20], [7, 17, 3, 22], [10, 12, 2, 18]].map(([y, h, top, bot], i) => { const x = 6 + i * 12, w = Math.max(1.5, 9 * p.body / 100);
     return `<line x1="${x}" y1="${top}" x2="${x}" y2="${bot}" stroke="currentColor" stroke-width="${p.wick}"/><rect x="${x - w / 2}" y="${y}" width="${w}" height="${h - y + 2}" rx="${Math.min(w / 2, p.radius / 12)}" fill="${i === 1 ? 'var(--down)' : 'var(--up)'}"/>`; }).join('')}</svg>`;
+  // how many candles to load: 50 – 10 000 (Binance gives ~15 000 per call, but every indicator and the auto lines run over all of them)
+  const BARS_MAX = 10000, BARS_PRE = [50, 100, 200, 500, 1000, 2000, 3000, 5000, 7500, 10000];
+  let barsAll = true;
+  function setBars(v) {
+    v = Math.round(clampN(50, v || 1000, BARS_MAX) / 50) * 50; if (v === S.bars) return;
+    S.bars = v; save(); if (barsAll) syncAll('bars', v); load();
+    toast(`📊 ${v.toLocaleString('sk')} sviečok${barsAll ? ' vo všetkých grafoch' : ''}${v > 5000 ? ' – ak graf zaostáva, zníž počet' : ''}`);
+  }
   function candlesMenu(anchor) {
     const L = S.look, CS = L.candle;
     const html = () => `<div class="tl-head"><b>🕯 Sviečky</b><span class="muted">typ grafu, tvar, farby</span></div>
       <div class="sec">Typ grafu</div><div class="tl-grid">${TYPES.map(([k, n, ic]) => `<div class="tl-t ${k === S.type ? 'on' : ''}" data-ct="${k}"><span class="tl-ic">${ic}</span><small>${esc(n)}</small></div>`).join('')}</div>
       <div class="sec">Tvar sviečok</div><div class="tl-grid">${Object.entries(CANDLE_PRESETS).map(([k, [n, p]]) => `<div class="tl-t ${CS.preset === k ? 'on' : ''}" data-cpr="${k}"><span class="tl-ic">${shapeSvg(p)}</span><small>${esc(n)}</small></div>`).join('')}</div>
+      <div class="sec">📊 Počet sviečok <small class="muted">koľko sa načíta · posun doľava dotiahne staršie (max ${OLDER_MAX.toLocaleString('sk')})</small></div>
+      <div class="tl-grid">${BARS_PRE.map(v => `<div class="tl-t ${S.bars === v ? 'on' : ''}" data-bpre="${v}"><b>${v >= 1000 ? v / 1000 + 'k' : v}</b><small>${v > 5000 ? 'môže spomaliť' : v <= 200 ? 'najrýchlejšie' : 'sviečok'}</small></div>`).join('')}</div>
+      <div class="cm-row"><label>Vlastný počet <input type="number" min="50" max="${BARS_MAX}" step="50" data-bnum value="${S.bars}" style="width:80px"></label>
+        <label><input type="checkbox" data-ball ${barsAll ? 'checked' : ''}> vo všetkých grafoch</label></div>
+      ${S.bars > 5000 ? '<div class="muted" style="padding:0 12px 6px;font-size:11px">⚠ Nad 5 000 sviečok sa indikátory a auto čiary počítajú dlhšie – pri viacerých grafoch môže graf zaostávať.</div>' : ''}
       ${copHtml()}
       <div class="sec">Farby</div><div class="tl-grid">${CANDLE_COLORS.map(([n, u, d], k) => `<div class="tl-t ${L.up === u && L.down === d ? 'on' : ''}" data-ccol="${k}"><span class="tl-ic"><i class="cc-sw" style="background:${u}"></i><i class="cc-sw" style="background:${d}"></i></span><small>${esc(n)}</small></div>`).join('')}</div>
       <div class="cm-row"><label>▲ rast <input type="color" data-cc="up" value="${L.up}"></label><label>▼ pokles <input type="color" data-cc="down" value="${L.down}"></label>
@@ -2954,6 +2951,9 @@
       $$('[data-cc]', m).forEach(x => x.onchange = () => { const k = x.dataset.cc, c = x.value; if (k === 'up') Object.assign(L, { up: c, borderUp: c, wickUp: c }); else Object.assign(L, { down: c, borderDown: c, wickDown: c }); save(); buildChart(); });
       $$('[data-cb]', m).forEach(x => x.onchange = () => { L[x.dataset.cb] = x.checked; save(); buildChart(); });
       $('[data-cset]', m).onclick = () => { closeMenu(); settings('bars'); };
+      $$('[data-bpre]', m).forEach(x => x.onclick = () => { setBars(+x.dataset.bpre); re(m); });
+      const bn = $('[data-bnum]', m); bn.onchange = () => { setBars(+bn.value); re(m); };
+      $('[data-ball]', m).onchange = e => { barsAll = e.target.checked; if (barsAll) syncAll('bars'); };
       bindCop(m, re);
       $('[data-allc]', m).addEventListener('click', () => closeMenu());
     };
@@ -3053,10 +3053,10 @@
         <select data-scrc>${[1, 2, 3].map(v => `<option value="${v}" ${(A.scrollCols || 1) === v ? 'selected' : ''}>${v} ${v === 1 ? 'stĺpec' : 'stĺpce'}</option>`).join('')}</select>
         <select data-scrn>${[2, 3, 4, 5, 6, 7, 8, 9, 10].map(v => `<option value="${v}" ${S.layout.n === v ? 'selected' : ''}>${v} grafov</option>`).join('')}</select></div>
       <div class="sec">🪟 Plávajúce indikátory</div>
-      <label class="it"><input type="checkbox" data-ad="float" ${A.float ? 'checked' : ''}><span class="grow"><b>Indikátory v plávajúcich oknách</b><br><small class="muted">MACD, RSI… nezmenšujú sviečky a sú presne pod svojimi sviečkami (šírka ide s cenou) · výšku meníš ťahaním horného alebo spodného okraja, hodnoty sú v názve okna</small></span></label>
+      <label class="it"><input type="checkbox" data-ad="float" ${A.float ? 'checked' : ''}><span class="grow"><b>Indikátory v plávajúcich oknách</b><br><small class="muted">MACD, RSI… nezmenšujú sviečky: okno presunieš za názov, veľkosť rohom ◢, mierku ťahaním po jeho cenovej osi (dvojklik = späť)</small></span></label>
       ${studies.filter(s => !s.temp && (KS.STUDIES[s.type].pane === true || s.type === 'volume') && !KS.STUDIES[s.type].custom && !KS.STUDIES[s.type].pattern).map(s => `<label class="it fl-sub"><input type="checkbox" data-fls="${s.uid}" ${isFloat(s) ? 'checked' : ''} ${s.overlay ? 'disabled' : ''}><span class="grow">${esc(KS.STUDIES[s.type].label(s))}${s.overlay ? ' <small class="muted">(prekrýva graf)</small>' : s.float === undefined && s.type !== 'volume' ? ' <small class="muted">podľa hlavného prepínača</small>' : ''}</span></label>`).join('')}
       <div class="it fl-op"><span class="ic">◐</span><span class="grow">Pozadie okien</span><input type="range" min="0" max="90" step="5" data-flbg value="${A.floatBg ?? 0}"><b>${A.floatBg ?? 0} %</b></div>
-      <div class="it" data-flarr><span class="ic">⊞</span><span class="grow">Zoradiť okná (dole pod sebou)</span></div>
+      <div class="it" data-flarr><span class="ic">⊞</span><span class="grow">Zoradiť okná (dole vľavo)</span></div>
       <div class="sep"></div>
       <div class="it" data-adall><span class="ic">🔁</span><span class="grow">Tieto doplnky aj vo všetkých grafoch</span></div>
       <div class="it" data-adfeat><span class="ic">🎛</span><span class="grow">Všetky funkcie on / off…</span></div>`;

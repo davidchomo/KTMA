@@ -190,7 +190,7 @@ def spot():
 
 
 @app.get("/api/candles")
-def candles(symbol: str, tf: str, end: int | None = None, limit: int = Query(1000, ge=10, le=5000),
+def candles(symbol: str, tf: str, end: int | None = None, limit: int = Query(1000, ge=10, le=10000),
             hours: bool = True, spot: bool = True):
     """Bars oldest first as [time_s, open, high, low, close, volume, buy volume]; the last one may still be forming."""
     sym = SYMBOLS.get(symbol)
