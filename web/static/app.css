@@ -1131,3 +1131,7 @@ table.al-t tr.bad { opacity: .62; }
 .sc-doc { font-size: 11px; } .sc-doc pre { white-space: pre-wrap; background: rgba(0,0,0,.25); padding: 6px; border-radius: 6px; margin: 4px 0 0; }
 .sc-log { height: 130px; overflow: auto; background: rgba(0,0,0,.3); border-radius: 6px; padding: 4px 6px; font: 11px/1.4 Consolas, monospace; }
 .sc-log .err { color: #ff7b86; } .sc-log .ok { color: #4cd6b5; }
+
+/* 🧩 Toolbar Add-ons */
+#bAddons.on .ic { filter: drop-shadow(0 0 4px #00e676); } #bAddons.paused .ic { filter: grayscale(1); opacity: .6; }
+.tools-menu .it.dis { opacity: .5; }

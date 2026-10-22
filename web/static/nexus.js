@@ -434,7 +434,7 @@ const NEXUS = (() => {
     if (!Number.isFinite(v)) return;
     if (p.best === undefined || v > p.best) { p.best = v; p.bestPx = price; }
     if (p.worst === undefined || v < p.worst) { p.worst = v; p.worstPx = price; }
-    if (Date.now() - trackSave > 5000) { trackSave = Date.now(); ctx.save(); }
+    if (Date.now() - trackSave > 30000) { trackSave = Date.now(); ctx.save(); }
   }
   // what the trade makes if the stop loss is hit, and if every take profit is hit (partials first)
   function expected(p) {

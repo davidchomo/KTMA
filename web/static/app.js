@@ -54,7 +54,7 @@
     nexus: { hudX: null, hudY: null, avatar: '', quote: 0 },
     account: { start: 10000, positions: [], history: [] }, accounts: [], accountId: 'main', board: { notes: [] },
     robot: { on: false, symbols: ['XAUUSD'], tfs: ['1m', '5m', '15m', '1h'], period: 10, sharpBars: 3, sharpAtr: 2, onSharp: 'both', paper: true, lots: 0.1, state: {}, log: [] },
-    alerts: [], scripts: [],
+    alerts: [], scripts: [], addons: { follow: false, always: false },
     savedAt: 0,
   };
   const merge = (a, b) => { const o = { ...a }; for (const k in b || {}) o[k] = a && a[k] && typeof a[k] === 'object' && !Array.isArray(a[k]) && b[k] && typeof b[k] === 'object' && !Array.isArray(b[k]) ? merge(a[k], b[k]) : b[k]; return o; };
@@ -215,18 +215,16 @@
     return chart.addSeries(LW.LineSeries, { ...fmtP, color: L.line, lineWidth: L.lineWidth, lineType: t === 'step' ? 1 : 0, lineVisible: t !== 'dot',
       pointMarkersVisible: t === 'linedot' || t === 'dot', pointMarkersRadius: t === 'dot' ? 2.5 : 2 });
   }
-  function mainData() {
-    const L = S.look, t = S.type;
-    if (['candles', 'ha', 'renko'].includes(t)) return disp.map(b => ({ time: b.time, open: b.open, high: b.high, low: b.low, close: b.close }));
-    if (t === 'hollow') return disp.map((b, i) => {   // hollow = rising candle, colour = close vs previous close
-      const c = i && b.close < disp[i - 1].close ? L.down : L.up;
-      return { time: b.time, open: b.open, high: b.high, low: b.low, close: b.close, color: b.close >= b.open ? 'rgba(0,0,0,0)' : c, borderColor: c, wickColor: c };
-    });
-    if (t === 'bars' || t === 'hlc') return disp.map(b => ({ time: b.time, open: b.open, high: b.high, low: b.low, close: b.close }));
-    if (t.startsWith('cbar')) return disp.map((b, i) => ({ time: b.time, open: b.open, high: b.high, low: b.low, close: b.close, color: i && b.close < disp[i - 1].close ? L.down : L.up }));
-    if (t === 'forest') return disp.map((b, i) => ({ time: b.time, value: b.close, color: rgba(i && b.close < disp[i - 1].close ? L.down : L.up, 80) }));
-    return disp.map(b => ({ time: b.time, value: b.close }));
+  function pointOf(b, i) {
+    const L = S.look, t = S.type, dn = i > 0 && b.close < disp[i - 1].close;
+    if (['candles', 'ha', 'renko', 'bars', 'hlc'].includes(t)) return { time: b.time, open: b.open, high: b.high, low: b.low, close: b.close };
+    if (t === 'hollow') { const c = dn ? L.down : L.up;   // hollow = rising candle, colour = close vs previous close
+      return { time: b.time, open: b.open, high: b.high, low: b.low, close: b.close, color: b.close >= b.open ? 'rgba(0,0,0,0)' : c, borderColor: c, wickColor: c }; }
+    if (t.startsWith('cbar')) return { time: b.time, open: b.open, high: b.high, low: b.low, close: b.close, color: dn ? L.down : L.up };
+    if (t === 'forest') return { time: b.time, value: b.close, color: rgba(dn ? L.down : L.up, 80) };
+    return { time: b.time, value: b.close };
   }
+  const mainData = () => disp.map(pointOf);
 
   // ---- filled areas between two lines (no band fill in Lightweight Charts) -------------------------
   class BandFill {
@@ -719,6 +717,8 @@
     else if (view.focus !== undefined) focusOn(view.focus);
     else { ts.applyOptions({ barSpacing: S.look.candle.spacing }); ts.scrollToRealTime(); }
     ts.subscribeVisibleLogicalRangeChange(r => { if (r && r.from < 30) loadOlder(); });
+    if (S.addons.follow && !range) followTick(true);
+    paintAddonsBtn();
     perf.build = performance.now() - tB;
   }
   function focusOn(time) {
@@ -726,9 +726,28 @@
     if (i < 0) return;
     chart.timeScale().setVisibleLogicalRange({ from: i - 90, to: i + 50 });
   }
-  // Re-run the indicators and push new data into the existing series (live ticks, older history).
+  let heavyAt = 0, heavyT = null;
+  function liveTick() {
+    if (!chart) return;
+    const n = raw.length;
+    if (S.type !== 'ha' && S.type !== 'renko' && !view.replay && disp === raw && D && D.t.length === n && n) {
+      const i = n - 1, b = raw[i];
+      D.o[i] = b.open; D.h[i] = b.high; D.l[i] = b.low; D.c[i] = b.close; D.v[i] = b.volume || 0; D.bv[i] = b.buy ?? NaN;
+      main.update(pointOf(b, i));
+      if (window.NEXUS && NEXUS.tick) NEXUS.tick();
+      if (crossTime === null || crossTime === undefined) showOHLC();
+      followTick();
+      if (document.hidden) return;
+      const gap = EMBED ? 2000 : 1000, wait = gap - (Date.now() - heavyAt);
+      if (wait <= 0) refreshAll(); else if (!heavyT) heavyT = setTimeout(() => { heavyT = null; if (!document.hidden) refreshAll(); }, wait);
+      return;
+    }
+    refreshAll();          // a new bar (or Heikin Ashi / Renko / replay): everything at once
+  }
+  // Re-run the indicators and push new data into the existing series (new bars, older history, every second while live).
   function refreshAll() {
     if (!chart) return;
+    heavyAt = Date.now(); clearTimeout(heavyT); heavyT = null;
     disp = transform(src()); D = toD(disp);
     main.setData(mainData());
     const tT = performance.now();
@@ -743,6 +762,7 @@
     updateMarkers();
     draw.redraw();
     showOHLC();
+    followTick();
   }
   function lineOptions(u, st) {
     const prec = u.s.out.precision === 'auto' ? null : +u.s.out.precision;
@@ -1094,7 +1114,7 @@
         else { last.high = Math.max(last.high, bar.high); last.low = Math.min(last.low, bar.low); last.close = bar.close; last.volume += bar.volume; last.buy = (last.buy || 0) + bar.buy; }
       } else if (!last || bar.time > last.time) { delete bar.replace; raw.push(bar); }
       else return;
-      if (!refreshTimer) refreshTimer = setTimeout(() => { refreshTimer = null; refreshAll(); }, 250);
+      if (!refreshTimer) refreshTimer = setTimeout(() => { refreshTimer = null; liveTick(); }, 250);
     };
   }
 
@@ -1119,7 +1139,7 @@
     fitToolbar();
   }
   // ---- undo / redo: drawings, indicators, symbol, timeframe, chart type, look… (not window positions) ----
-  const HIST_SKIP = ['alerts', 'scripts', 'wsShared', 'wsDock', 'algo', 'board', 'accounts', 'accountId', 'workspaces', 'wsId', 'layout', 'savedAt', 'chat', 'news', 'idea', 'labeler', 'legendOpen', 'lastToolbar', 'flow', 'folders', 'nexus', 'account', 'robot'];
+  const HIST_SKIP = ['addons', 'alerts', 'scripts', 'wsShared', 'wsDock', 'algo', 'board', 'accounts', 'accountId', 'workspaces', 'wsId', 'layout', 'savedAt', 'chat', 'news', 'idea', 'labeler', 'legendOpen', 'lastToolbar', 'flow', 'folders', 'nexus', 'account', 'robot'];
   function snap() { const o = { ...S }; HIST_SKIP.forEach(k => delete o[k]); return JSON.stringify(o, (k, v) => (k[0] === '_' ? undefined : v)); }
   function pushHist() {
     clearTimeout(histT); histT = null;
@@ -2725,7 +2745,7 @@
 
   // ---- 🔁 the same look / candles / background / indicator style on every chart (every workspace, the small charts too) ----
   // The small charts keep their own copy of the settings (localStorage nx2:pane…); open ones reload it at once.
-  const LOOK_KEYS = ['look', 'bgImg', 'type', 'renko', 'crosshair', 'legend', 'tint'], VIEW_KEYS = ['hideScale', 'hideTime', 'hideLegend'];
+  const LOOK_KEYS = ['look', 'bgImg', 'type', 'renko', 'crosshair', 'legend', 'tint', 'addons'], VIEW_KEYS = ['hideScale', 'hideTime', 'hideLegend'];
   const clone = x => JSON.parse(JSON.stringify(x));
   const lookNow = () => Object.fromEntries(LOOK_KEYS.map(k => [k, S[k]]));
   const studyStyle = s => ({ type: s.type, set: clone({ inputs: s.inputs, plots: s.plots, tfs: s.tfs, out: s.out, alpha: s.alpha, overlay: s.overlay, ovH: s.ovH }) });
@@ -2852,6 +2872,51 @@
   $('#bSig').onclick = () => sigDialog();
   $('#bFeat').onclick = () => featuresDialog();
 
+  // ---- 🧩 Toolbar Add-ons: small extras of the chart, the first one follows the live price -------------------------------
+  // Follow: the last candle stays at the right edge and the price in view. Scroll back and it pauses until you return to the end
+  // (or, with "always", every tick brings the chart back).
+  const idle = () => new Promise(r => (window.requestIdleCallback ? requestIdleCallback(() => r(), { timeout: 300 }) : setTimeout(r, 0)));
+  let followPaused = false;
+  function followTick(force) {
+    if (!chart || !main || !S.addons.follow || view.replay || !disp.length) { if (followPaused) { followPaused = false; paintAddonsBtn(); } return; }
+    const ts = chart.timeScale(), r = ts.getVisibleLogicalRange(), n = disp.length;
+    const paused = !force && !S.addons.always && r && r.to < n - 2;
+    if (paused !== followPaused) { followPaused = paused; paintAddonsBtn(); }
+    if (paused) return;
+    if (!r || r.to < n - 1 || force) ts.scrollToRealTime();
+    const y = main.priceToCoordinate(disp[n - 1].close), h = chart.paneSize(mainIdx).height;
+    if (y === null || y < 12 || y > h - 12) main.priceScale().applyOptions({ autoScale: true });
+  }
+  function setFollow(on) {
+    S.addons.follow = on; save(); followPaused = false;
+    if (on) followTick(true);
+    paintAddonsBtn();
+    toast(on ? '📡 Sledovať cenu: zapnuté – graf ide so živou cenou (Alt+F)' : '📡 Sledovať cenu: vypnuté');
+  }
+  function paintAddonsBtn() {
+    const b = $('#bAddons'); if (!b) return;
+    b.classList.toggle('on', !!S.addons.follow); b.classList.toggle('paused', !!(S.addons.follow && followPaused));
+    b.title = S.addons.follow ? (followPaused ? '📡 Sledovanie pozastavené – odscrolloval si. Klik → Späť na cenu' : '📡 Graf sleduje živú cenu') : 'Toolbar Add-ons: sledovať cenu a ďalšie doplnky';
+  }
+  function addonsMenu(anchor) {
+    const A = S.addons;
+    const html = () => `<div class="tl-head"><b>🧩 Toolbar Add-ons</b><span class="muted">doplnky grafu</span></div>
+      <label class="it"><input type="checkbox" data-ad="follow" ${A.follow ? 'checked' : ''}><span class="grow">📡 <b>Sledovať cenu</b> ${A.follow ? (followPaused ? '<small class="muted">⏸ pozastavené</small>' : '<small class="up">● zapnuté</small>') : ''}<br><small class="muted">graf sa posúva so živou cenou – posledná sviečka vpravo, cena vždy v obraze · Alt+F</small></span></label>
+      <label class="it ${A.follow ? '' : 'dis'}"><input type="checkbox" data-ad="always" ${A.always ? 'checked' : ''} ${A.follow ? '' : 'disabled'}><span class="grow">Vrátiť sa na cenu aj keď odscrollujem<br><small class="muted">inak sa sledovanie pozastaví, kým sa nevrátiš na koniec grafu</small></span></label>
+      <div class="it" data-adback><span class="ic">⏎</span><span class="grow">Späť na živú cenu teraz</span></div>
+      <div class="sep"></div>
+      <div class="it" data-adall><span class="ic">🔁</span><span class="grow">Tieto doplnky aj vo všetkých grafoch</span></div>
+      <div class="it" data-adfeat><span class="ic">🎛</span><span class="grow">Všetky funkcie on / off…</span></div>`;
+    const bind = m => {
+      $$('[data-ad]', m).forEach(x => x.onchange = () => { if (x.dataset.ad === 'follow') setFollow(x.checked); else { A.always = x.checked; save(); followTick(true); } m.innerHTML = html(); bind(m); });
+      $('[data-adback]', m).onclick = () => { closeMenu(); followPaused = false; if (chart) { chart.timeScale().scrollToRealTime(); main.priceScale().applyOptions({ autoScale: true }); } paintAddonsBtn(); };
+      $('[data-adall]', m).onclick = () => { closeMenu(); applyAll('look', { addons: S.addons }); };
+      $('[data-adfeat]', m).onclick = () => { closeMenu(); featuresDialog(); };
+    };
+    openMenu(anchor, html(), bind, { side: side(), cls: 'tools-menu' });
+  }
+  $('#bAddons').onclick = e => addonsMenu(e.currentTarget);
+
   // ---- 🔔 alerts: RSI reaching its levels (e.g. 80 / 20 on 1 minute) – toast, sound and a system notification -------------
   const alertsOn = () => (S.alerts || []).filter(a => a.on).length;
   let alertT = null;
@@ -2909,6 +2974,7 @@
     const R = (g, k, name, on, set, cost, info, cfg) => ({ g, k, name, on: !!on, set, cost, info: info || '', cfg });
     const unitOf = s => units.find(u => u.s === s);
     return [
+      R('Graf', 'follow', '📡 Sledovať cenu (graf ide s cenou)', S.addons.follow, v => setFollow(v), 0, S.addons.follow ? (S.addons.always ? 'vráti sa aj po odscrollovaní' : 'pri odscrollovaní sa pozastaví') : '', () => addonsMenu($('#bAddons'))),
       R('Graf', 'live', 'Živá cenová čiara', S.look.lastLine, v => { S.look.lastLine = v; buildChart(); }, 0, `hrúbka ${S.look.liveW || 2} px`, () => settings('scale')),
       R('Graf', 'legend', 'Legenda (názvy a hodnoty)', !S.look.hideLegend, v => setView({ legend: v }), 0),
       R('Graf', 'photo', 'Pozadie – fotka / kreslená scéna', !!bgUrl(), v => { if (v) { if (S.bgImg.prevId) S.bgImg.id = S.bgImg.prevId; else return stylesDialog(); } else { S.bgImg.prevId = S.bgImg.id; S.bgImg.id = 'none'; S.bgImg.auto = false; } applyBg(); buildChart(); }, 1, S.bgImg.id !== 'none' ? S.bgImg.id : '', () => stylesDialog()),
@@ -2961,7 +3027,7 @@
 
   // ---- ⊞ every function in one place, by category; choose which buttons stay on the toolbar -------------------
   const FUNCS = [
-    ['Graf', [['bSymbol', '◆', 'Symbol', 'Vyber trh'], ['bType', '🕯', 'Typ grafu', 'Sviečky, Heikin Ashi, Renko…'], ['bTf', '⏱', 'Timeframe', '1 s až 1 mesiac'], ['bLayout', '▦', 'Rozloženie a plochy', '1–10 grafov, prepínanie plôch'], ['saves', '💾', 'Uloženia', 'Ulož rozloženie pod názvom (s dátumom a časom), načítaj neskôr · Ctrl+S']]],
+    ['Graf', [['bSymbol', '◆', 'Symbol', 'Vyber trh'], ['bType', '🕯', 'Typ grafu', 'Sviečky, Heikin Ashi, Renko…'], ['bTf', '⏱', 'Timeframe', '1 s až 1 mesiac'], ['bLayout', '▦', 'Rozloženie a plochy', '1–10 grafov, prepínanie plôch'], ['bAddons', '🧩', 'Toolbar Add-ons', 'Sledovať cenu a ďalšie doplnky · Alt+F'], ['saves', '💾', 'Uloženia', 'Ulož rozloženie pod názvom (s dátumom a časom), načítaj neskôr · Ctrl+S']]],
     ['Kreslenie a text', [['bTools', '🧰', 'Tools', 'Kreslenie + text + indikátory v jednom menu · Alt+T'], ['bHideInd', '👁', 'Skryť indikátory', 'Skryje / zobrazí všetky indikátory vo všetkých grafoch · Alt+H'], ['bCandles', '🕯', 'Sviečky', 'Typ grafu, tvar a farby sviečok'], ['bDraw', '✎', 'Kreslenie', 'Čiary, Fibonacci, vzory, tvary'], ['bText', 'T', 'Text', 'Poznámky, pin, tabuľka, obrázok, nápad']]],
     ['Analýza', [['bInd', 'ƒx', 'Indikátory', 'RSI, MACD, kĺzavé priemery, vzory'], ['bFunc', '🧩', 'Funkcie', 'Čiary, objem, stratégie, pozadie podľa Technicals'], ['lines', '📐', 'Čiary', 'Auto trendové čiary a úrovne'], ['volume', '🫧', 'Objem', 'Bubliny, delta, tok obchodov'], ['strats', '⚡', 'Stratégie nápadov', 'Zapnúť / vypnúť, R:R, stop'], ['bAlgo', '🧠', 'Algo', 'Overené stratégie, test, živé signály'], ['area', '✂', 'Oblasť do učenia', 'Označ sviečky, ktoré už prebehli: štatistika + indikátory v číslach do Nexus Lab'],
       ['tech', '📊', 'Technicals', 'Súhrn pre všetky timeframy (v Knižnici)'], ['bScan', '🔍', 'Skenovať', 'Hľadá vstupy na trhoch'], ['bSig', '🎯', 'Buy / Sell skener', 'Nákup alebo predaj? Verdikt pre každý trh a timeframe'], ['bFeat', '🎛', 'Prehľad funkcií', 'Všetko, čo je zapnuté – vypni / zapni a pozri, ako zaťažuje graf'], ['alerts', '🔔', 'RSI upozornenia', 'Napr. RSI 80 / 20 na 1 minúte'],
@@ -3743,6 +3809,7 @@
     if ((e.ctrlKey || e.metaKey) && !e.altKey && !EMBED && e.code === 'KeyS') { e.preventDefault(); NEXUS.openApp('saves'); setTimeout(() => { const i = $('#svName'); if (i) i.focus(); }, 50); return; }
     if (e.ctrlKey && e.key === 'Enter' && S.idea.open && current) { e.preventDefault(); if (e.shiftKey) openAlert(qi + 1); else saveLabel(); return; }
     if (e.altKey && !typing && e.code === 'KeyR' && !e.shiftKey) { e.preventDefault(); if (view.replay) exitReplay(); else startReplay(true); return; }
+    if (e.altKey && !typing && e.code === 'KeyF' && !e.shiftKey) { e.preventDefault(); setFollow(!S.addons.follow); return; }
     if (e.altKey && !typing && e.code === 'KeyH' && !e.shiftKey && !EMBED) { e.preventDefault(); $('#bHideInd').click(); return; }
     if (e.altKey && !typing && e.code === 'KeyT' && !e.shiftKey && !EMBED) { e.preventDefault(); toolsMenu($('#bTools').style.display === 'none' ? $('#bAll') : $('#bTools')); return; }
     if (e.altKey && !typing && e.code === 'KeyA' && !e.shiftKey) { e.preventDefault(); toggleAuto(); return; }
@@ -3785,10 +3852,10 @@
       newFolder, folderColors: () => FOLDER_COLORS, saves,
       pickPrice: (text, label) => pickChart(text, { label }).then(p => (p && p.price != null ? p.price : null)),
       notify: (title, body) => notifyOS(title, body),
-      signal: async (s, tf) => { const k = s + '|' + tf, c = sigCache[k]; if (c && Date.now() - c.at < 20000) return c.v;
-        const bars = await fetchBars(s, tf, null, 600), Dx = toD(bars.slice(0, -1)); Dx.s = Dx.t.map(t => (SYM[s] && SYM[s].hours === 'gold' ? sessGold(t) : Math.floor(t / 86400)));
+      signal: async (s, tf) => { const k = s + '|' + tf, c = sigCache[k]; if (c && Date.now() - c.at < (TF_SEC[tf] <= 300 ? 20000 : 60000)) return c.v;
+        const bars = await fetchBars(s, tf, null, 600), Dx = toD(bars.slice(0, -1)); await idle(); Dx.s = Dx.t.map(t => (SYM[s] && SYM[s].hours === 'gold' ? sessGold(t) : Math.floor(t / 86400)));
         const v = { ...verdict(Dx, tf), price: bars[bars.length - 1].close }; sigCache[k] = { at: Date.now(), v }; return v; },
-      moves: async (s, tf, o = {}) => { const bars = await fetchBars(s, tf, null, 800), Dx = toD(bars.slice(0, -1));
+      moves: async (s, tf, o = {}) => { const bars = await fetchBars(s, tf, null, 800), Dx = toD(bars.slice(0, -1)); await idle();
         const r = MV.moves(Dx, { tf, tfSec: TF_SEC[tf], digits: (SYM[s] || {}).digits, ...o });
         return { moves: r.moves.slice(-40), starting: r.starting, trend: MV.trend(Dx, r.R), price: bars[bars.length - 1].close }; },
       openChat: filter => { if (filter) S.chat.filter = filter; toggleChat(true); renderChatFilter(); renderChatList(); },
